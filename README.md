@@ -1,0 +1,100 @@
+# Nutrikal ERP + CRM — Phase 1
+
+Sales, inventory and production for the contract manufacturing business in one app (app.nutrikal.com), in Bulgarian and English.
+
+```
+nutrikal-erp/
+  supabase/migrations/   database schema (Supabase / Postgres)
+  web/                   the app (Next.js 16 + TypeScript + Tailwind)
+  test/                  database rule tests + browser tests
+```
+
+## Run the app locally
+
+Needs Node.js 20 or newer.
+
+```
+cd web
+npm install
+npm run dev
+```
+
+Open http://localhost:3000.
+
+- On first start the app creates a local database in `web/.data/`, runs every migration from `supabase/migrations`, and loads sample data (4 clients, 6 projects, 11 items, lots, reservations). Delete `web/.data/` to start over.
+- **Demo sign-in.** The selector in the top bar switches between the four roles (Admin, Sales, Inventory, Partner facility), so you can see what each one sees. It is replaced by Supabase Auth when we go live.
+- **Language.** The БГ / EN switch changes the whole interface. The choice is saved on the user's profile, so it follows them to other devices.
+
+### What works now
+
+| Screen | What you can do |
+| --- | --- |
+| Dashboard | Clients, open projects, production, stock alerts, sales pipeline, my tasks (tick to complete) |
+| Clients | List with search and status filter; create a client with VAT clean-up and payment terms |
+| Client page | Company and terms, contacts (first one becomes primary), projects with 8-stage tracker and reserved materials, change project stage, new project, activity log and tasks |
+| Projects | All projects with stage filter |
+| Inventory | Stock per item: on hand, quarantine, reserved, available, next expiry and status; expand an item for lots and reservations; filter by type, search |
+| Receive goods | New lot into quarantine, lot number assigned, expiry from shelf life if left empty |
+| Quality control | Admin releases or rejects quarantined lots; Admin or Inventory approves or rejects stock corrections |
+| Partner portal | Projects by code only, stock at the facility, receive goods, request stock corrections and follow their status |
+
+Offers, formulas, orders, invoices, purchasing and production orders are shown in the menu with the phase they arrive in.
+
+## How the app talks to the database
+
+All reads and writes run **as the signed-in user** (`web/src/lib/db/engine.ts` → `withUser`), so the row-level security and role checks in the migrations decide what each person sees and can do. The app has no separate permission logic to keep in sync.
+
+Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase's `auth.uid()` stubbed. Moving to Supabase means replacing `getDb`/`withUser` with a connection to the Supabase database that sets the same two settings per transaction (`request.jwt.claim.sub` and role `authenticated`); queries stay the same.
+
+## Migrations
+
+| File | Contents |
+| --- | --- |
+| `20261019000100_core.sql` | Roles (admin, sales, inventory, partner), user profiles, company settings, audit log, number series |
+| `20261019000200_crm.sql` | Clients (NK-C-0001), contacts, projects (NK-P-0001), activities, client files |
+| `20261019000300_items_suppliers.sql` | Item master (raw materials, excipients, packaging, semi-finished, finished goods) with Novel Food status, EU allergens and shelf life; suppliers, supplier items, purchase prices with validity |
+| `20261019000400_inventory.sql` | Locations, lots, stock ledger, reservations, adjustment requests, stock views and the stock functions |
+| `20261019000500_access.sql` | Row-level security for every table, per role |
+| `20261019000600_seed.sql` | Company settings row, number series, locations (Nutrikal warehouse + partner facility areas) |
+| `20261019000700_storage.sql` | Private storage buckets `client-files` and `lot-documents` with access rules (Supabase only) |
+| `20261019000800_user_prefs.sql` | Users can save their own interface language |
+
+## Rules the database enforces
+
+- **Stock is a ledger.** Balances are always summed from `stock_movements`. Rows cannot be edited or deleted; corrections are new movements.
+- **Writes go through functions** that check the caller's role: `receive_lot`, `transfer_stock`, `post_stock_movement`, `reserve_stock`, `close_reservation`, `set_lot_qc_status`, `request_stock_adjustment`, `decide_stock_adjustment`.
+- **No negative stock** per lot and location (locked per lot/location against concurrent writes).
+- **QC gate.** New lots start in quarantine. Only Admin releases or rejects. Unreleased or expired lots cannot be consumed or dispatched.
+- **Shelf life.** Lot expiry defaults to manufacture (or receipt) date + the item's shelf life. `expiring_lots` lists stock inside the warning window (90 days by default).
+- **Reservations** cannot exceed available stock (released, not expired, minus active reservations).
+- **Partner user** works only in partner-visible locations. They see projects by code only (`partner_projects`), never clients, prices, suppliers or invoices. They cannot adjust stock directly: they file a request that Admin or Inventory approves.
+- **Purchase prices** are visible to Admin and Inventory, and to Sales users only if `can_see_purchase_prices` is on.
+- **Raw materials and excipients** must have a Novel Food status.
+- **Number series.** Invoices, credit and debit notes share one 10-digit series. Admin can set the next number (for example to continue from the current invoicing tool). Every change is audited.
+- **Audit log** on all key tables, readable by Admin only.
+
+## Tests
+
+```
+cd test && npm install
+node run-tests.mjs          # 39 database rule checks across the four roles
+python3 ui_test.py http://localhost:3000   # 20 browser checks (needs Python Playwright + Chromium)
+```
+
+The browser tests create a client, contact, project and task, receive and release a lot, send and approve a partner correction, switch languages, and check every page in both languages at 375, 768, 1024 and 1440 px for sideways scrolling. Run them on a fresh `web/.data`.
+
+## Apply to Supabase (later)
+
+1. Create a Supabase project in a Nutrikal-owned organization (paid plan for daily backups), e.g. `nutrikal-erp`.
+2. `supabase link --project-ref <ref>` and `supabase db push` from this folder.
+3. Invite users in Supabase Auth, then add one `profiles` row per user with their role.
+4. Fill `company_settings` (legal name, VAT, EIK, bank details) and set `number_series.next_number` for invoices.
+
+## Points to review
+
+- Bulgarian text: Poppins has no Cyrillic letters, so Bulgarian falls back to Montserrat, a similar geometric typeface. Latin text stays in Poppins.
+- `NK-WH` (Nutrikal warehouse) is seeded as a location. Deactivate it if all stock is kept at the partner.
+- Location names, item names and project names are data, so they show as entered. Items have a Bulgarian name field used in the Bulgarian interface.
+- The partner can read item names, including finished goods. If a product name reveals the client's brand, use neutral names.
+- Reservations are per item or per lot. Linking them to manufacturing orders and consuming them automatically comes with production in Phase 3.
+- Lot numbers use `LOT-000001`. Change the prefix in `number_series` before the first real receipt if you prefer another format.

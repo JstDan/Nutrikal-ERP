@@ -1,0 +1,29 @@
+# Runs on every push and pull request: database rule tests + app build.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Database rule tests
+        working-directory: test
+        run: |
+          npm install --no-audit --no-fund
+          node run-tests.mjs
+
+      - name: Build the app (includes type-check)
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
