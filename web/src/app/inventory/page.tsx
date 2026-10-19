@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
-import { fmt, formatDate, formatQty, type Locale } from "@/lib/i18n";
+import { fmt, formatDate, formatPrice, formatQty, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import { Chip, Empty, PageHeader, type Tone } from "@/components/ui";
 import { qcTone } from "@/lib/status";
@@ -11,7 +11,7 @@ type Item = {
   novel_food_status: string | null; on_hand: string; usable: string; quarantine: string; reserved: string; available: string;
   reorder_level: string | null; below_reorder_level: boolean; next_expiry: string | null; days_left: number | null;
 };
-type Lot = { lot_id: string; item_id: string; lot_number: string; location: string; quantity: string; qc_status: string; expires_on: string | null; supplier_lot: string | null; is_expired: boolean };
+type Lot = { lot_id: string; item_id: string; lot_number: string; location: string; quantity: string; qc_status: string; expires_on: string | null; supplier_lot: string | null; is_expired: boolean; unit_cost: string | null };
 type Res = { item_id: string; code: string; client: string | null; quantity: string };
 
 const TYPES = ["raw_material", "excipient", "packaging", "semi_finished", "finished_good"] as const;
@@ -50,14 +50,19 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       [type, term],
     )).rows;
     const lots = (await tx.query<Lot>(
-      `select b.lot_id, b.item_id, b.lot_number, l.name as location, b.quantity, b.qc_status, b.expires_on::text, lo.supplier_lot, b.is_expired
+      // lot_costs is visible only to users who may see purchase prices (RLS); others get null
+      `select b.lot_id, b.item_id, b.lot_number, l.name as location, b.quantity, b.qc_status, b.expires_on::text, lo.supplier_lot, b.is_expired,
+              lc.unit_cost::text
          from stock_balances b join locations l on l.id = b.location_id join lots lo on lo.id = b.lot_id
+         left join lot_costs lc on lc.lot_id = b.lot_id
         where b.quantity > 0 order by b.expires_on nulls last, b.lot_number`,
     )).rows;
     const res = (await tx.query<Res>(
-      `select r.item_id, p.code, c.legal_name as client, sum(r.quantity)::text as quantity
-         from stock_reservations r join projects p on p.id = r.project_id left join clients c on c.id = p.client_id
-        where r.status = 'active' group by r.item_id, p.code, c.legal_name order by p.code`,
+      `select r.item_id, coalesce(mo.code || coalesce(' · ' || p.code, ''), p.code) as code, c.legal_name as client, sum(r.quantity)::text as quantity
+         from stock_reservations r
+         left join projects p on p.id = r.project_id left join clients c on c.id = p.client_id
+         left join manufacturing_orders mo on mo.id = r.manufacturing_order_id
+        where r.status = 'active' group by r.item_id, mo.code, p.code, c.legal_name order by 2`,
     )).rows;
     return { warn, items, lots, res };
   });
@@ -137,7 +142,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                   <>
                     <div className="row hide-sm text-xs font-semibold tracking-[1px] uppercase text-ink-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_100px_120px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_100px_120px_110px_minmax(0,1fr)]">
                       <span>{t.inventory.lot}</span><span>{t.inventory.location}</span><span className="text-right">{t.inventory.qty}</span>
-                      <span>{t.inventory.qc}</span><span className="hide-md">{t.inventory.expires}</span><span className="hide-md">{t.inventory.supplierLot}</span>
+                      <span>{t.inventory.qc}</span><span className="hide-md">{t.inventory.expires}</span><span className="hide-md">{t.inventory.supplierLot}{data.lots.some((x) => x.unit_cost) ? ` · ${t.inventory.cost}` : ""}</span>
                     </div>
                     {lots.map((l) => (
                       <div key={l.lot_id + l.location} className="row grid-cols-[minmax(0,1fr)_auto] text-sm md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_100px_120px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_100px_120px_110px_minmax(0,1fr)]">
@@ -149,7 +154,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                         <span className="text-right">{q(l.quantity, i.base_unit)}</span>
                         <span className="hide-sm"><Chip tone={qcTone(l.qc_status)}>{t.enums.qcStatus[l.qc_status as "released"]}</Chip></span>
                         <span className={`hide-md ${l.is_expired ? "font-semibold text-red-ink" : ""}`}>{formatDate(locale, l.expires_on)}</span>
-                        <span className="hide-md min-w-0 break-words">{l.supplier_lot ?? "—"}</span>
+                        <span className="hide-md min-w-0 break-words">{l.supplier_lot ?? "—"}{l.unit_cost != null && <span className="block text-xs text-ink-2">{formatPrice(locale, l.unit_cost, "EUR", 4)} / {i.base_unit === "pcs" ? t.common.units : i.base_unit}</span>}</span>
                       </div>
                     ))}
                   </>

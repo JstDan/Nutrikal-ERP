@@ -7,7 +7,7 @@ import { Card, Chip, Dot, Empty, Fact, PageHeader, type Tone } from "@/component
 import { ActionForm } from "@/components/action-form";
 import { formulaTone } from "@/lib/status";
 import {
-  addFormulaClaim, addFormulaLine, approveFormulaVersion, discardFormulaDraft, newFormulaVersion,
+  addFormulaClaim, addFormulaLine, addFormulaPackaging, removeFormulaPackaging, approveFormulaVersion, discardFormulaDraft, newFormulaVersion,
   removeFormulaClaim, removeFormulaLine, saveFormulaVersion,
 } from "@/app/actions";
 
@@ -96,10 +96,15 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
     const items = (await tx.query<ItemOption>(
       `select id, sku, name, name_bg, type from items
         where is_active and type in ('raw_material', 'excipient', 'semi_finished') order by type, name`)).rows;
-    return { formula, versions, current, lines, checks, nutrients, claims, claimOptions, items };
+    const packaging = (await tx.query<{ id: string; sku: string; name: string; name_bg: string | null; qty_per_pack: string }>(
+      `select fp.id, i.sku, i.name, i.name_bg, fp.qty_per_pack::text from formula_packaging fp join items i on i.id = fp.item_id
+        where fp.version_id = $1 order by i.name`, [current.id])).rows;
+    const packOptions = (await tx.query<{ id: string; sku: string; name: string; name_bg: string | null }>(
+      "select id, sku, name, name_bg from items where is_active and type = 'packaging' order by name")).rows;
+    return { formula, versions, current, lines, checks, nutrients, claims, claimOptions, items, packaging, packOptions };
   });
   if (!data) notFound();
-  const { formula: f, versions, current: v, lines, checks: c, nutrients, claims, claimOptions, items } = data;
+  const { formula: f, versions, current: v, lines, checks: c, nutrients, claims, claimOptions, items, packaging, packOptions } = data;
 
   const isDraft = v.status === "draft";
   const editable = isDraft && canEdit;
@@ -238,6 +243,39 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                   <small id="overage-hint" className="-mt-2 text-xs text-ink-2">{d.overageHint}</small>
                 </ActionForm>
               </div>
+            )}
+          </Card>
+
+          <Card title={d.packaging} id="packaging-h">
+            <p className="m-0 text-[13px] text-ink-2">{d.packagingNote}</p>
+            {packaging.length === 0 && <Empty>{d.noPackaging}</Empty>}
+            {packaging.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-mist pb-3 text-sm last:border-0">
+                <span className="min-w-0 flex-[1_1_200px] break-words"><span className="font-semibold">{bgName(p)}</span> <span className="text-ink-2">· {p.sku}</span></span>
+                <span>{formatNumber(locale, p.qty_per_pack, 3)} {t.common.units}</span>
+                {editable && (
+                  <form action={removeFormulaPackaging}>
+                    <input type="hidden" name="packaging_id" value={p.id} />
+                    <input type="hidden" name="formula_id" value={f.id} />
+                    <button type="submit" className="btn btn-outline" aria-label={`${d.remove}: ${bgName(p)}`}>{d.remove}</button>
+                  </form>
+                )}
+              </div>
+            ))}
+            {editable && (
+              <ActionForm action={addFormulaPackaging} submitLabel={d.addPackaging}>
+                <input type="hidden" name="version_id" value={v.id} />
+                <input type="hidden" name="formula_id" value={f.id} />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                  <label className="field"><span>{d.item} *</span>
+                    <select name="item_id" required className="input" defaultValue="">
+                      <option value="" disabled>{d.choosePackaging}</option>
+                      {packOptions.map((p) => <option key={p.id} value={p.id}>{bgName(p)} · {p.sku}</option>)}
+                    </select>
+                  </label>
+                  <label className="field"><span>{d.qtyPerPack}</span><input name="qty_per_pack" type="number" min="0.0001" step="any" defaultValue={1} className="input" /></label>
+                </div>
+              </ActionForm>
             )}
           </Card>
 

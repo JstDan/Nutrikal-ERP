@@ -599,6 +599,58 @@ await ok('partner sees no purchase requests and no simulations', async () => {
   eq((await as('partner', 'select id from partner_manufacturing_orders')).length, 1, 'only the released one');
 });
 
+console.log('\nPackaging on formulas and costs');
+let v3;
+await ok('packaging goes on a draft formula version and is copied to the next version', async () => {
+  v3 = { id: (await one('sales', `select new_formula_version($1, 'Jar and label') as id`, [formula.id])).id };
+  await as('sales', 'insert into formula_packaging (version_id, item_id, qty_per_pack) values ($1, $2, 1)', [v3.id, jar.id]);
+  await as('admin', 'select approve_formula_version($1)', [v3.id]);
+  const v4 = await one('sales', 'select new_formula_version($1) as id', [formula.id]);
+  eq((await as('sales', 'select * from formula_packaging where version_id = $1', [v4.id])).length, 1, 'copied');
+  await as('sales', `update formula_versions set status = 'archived' where id = $1`, [v4.id]);
+});
+await fails('only packaging items are packaging', async () => {
+  const v = await one('sales', 'select new_formula_version($1) as id', [formula.id]);
+  try { await as('sales', 'insert into formula_packaging (version_id, item_id) values ($1, $2)', [v.id, mcc.id]); }
+  finally { await as('sales', `update formula_versions set status = 'archived' where id = $1`, [v.id]); }
+}, 'only packaging');
+await fails('packaging of an approved version is locked', () =>
+  as('admin', 'delete from formula_packaging where version_id = $1', [v3.id]), 'only drafts');
+await ok('a new offer and a stand-alone production order start with the formula packaging', async () => {
+  const o = await one('sales', 'insert into offers (client_id, project_id, formula_version_id) values ($1, $2, $3) returning id', [client.id, project.id, v3.id]);
+  eq((await as('sales', 'select * from offer_packaging where offer_id = $1', [o.id])).length, 1, 'offer');
+  const m = await one('sales', 'insert into manufacturing_orders (formula_version_id, project_id, quantity) values ($1, $2, 100) returning id', [v3.id, project.id]);
+  eq((await as('sales', 'select * from mo_packaging where mo_id = $1', [m.id])).length, 1, 'production order');
+  const c = await one('admin', 'select * from mo_cost($1)', [m.id]);
+  eq(c.is_actual, false, 'planned cost before production');
+});
+await ok('a received lot gets the current purchase price as its cost', async () => {
+  const c = await one('inventory', 'select unit_cost, source from lot_costs where lot_id = $1', [lots.mcc]);
+  eq(Number(c.unit_cost), 4, 'cost'); eq(c.source, 'supplier_price', 'source');
+});
+await ok('inventory enters the actual landed cost', async () => {
+  await as('inventory', 'select set_lot_cost($1, 4.35)', [mccWh]);
+  const c = await one('admin', 'select unit_cost, source from lot_costs where lot_id = $1', [mccWh]);
+  eq(Number(c.unit_cost), 4.35, 'cost'); eq(c.source, 'receipt', 'source');
+});
+await fails('sales cannot set lot costs', () => as('sales', 'select set_lot_cost($1, 1)', [mccWh]), 'not allowed');
+await ok('partner and sales without the price flag see no lot costs', async () => {
+  eq((await as('partner', 'select * from lot_costs')).length, 0, 'partner');
+  eq((await as('sales', 'select * from lot_costs')).length, 0, 'sales');
+});
+await ok('batch cost: consumed lots at their cost + partner invoice; per pack on the finished lot', async () => {
+  const c = await one('admin', 'select * from mo_cost($1)', [mo.id]);
+  eq(c.is_actual, true, 'actual');
+  eq(Number(c.material_cost), 1424.25, 'materials (22.5×18.5 + 2×4 + 1.5×100 + 60000×0.01 + 1000×0.25)');
+  eq(Number(c.partner_cost), 1450, 'partner invoice'); eq(Number(c.total_cost), 2874.25, 'total');
+  eq(Number(c.cost_per_pack), 2.903283, 'per pack (990 made)');
+  const fg = await one('admin', 'select lc.unit_cost, lc.source from manufacturing_orders m join lot_costs lc on lc.lot_id = m.finished_lot_id where m.id = $1', [mo.id]);
+  eq(Number(fg.unit_cost), 2.903283, 'finished lot cost'); eq(fg.source, 'production', 'source');
+  eq((await as('admin', 'select * from mo_costs($1)', [mo.id])).length, 5, 'one line per consumed lot');
+});
+await fails('partner cannot see batch costs', () => as('partner', 'select * from mo_cost($1)', [mo.id]), 'not allowed');
+await fails('sales without the price flag cannot see batch costs', () => as('sales', 'select * from mo_costs($1)', [mo.id]), 'not allowed');
+
 console.log('\nNumbering and audit');
 await fails('partner cannot draw invoice numbers', () => as('partner', `select next_number('invoice')`), 'not allowed');
 await ok('invoice series is a 10-digit sequence', async () => {

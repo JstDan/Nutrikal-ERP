@@ -1,4 +1,4 @@
-# Nutrikal ERP + CRM — Phases 1–2, Phase 3 (orders, production)
+# Nutrikal ERP + CRM — Phases 1–2, Phase 3 (orders, production, costing)
 
 Sales, inventory and production for the contract manufacturing business in one app (app.nutrikal.com), in Bulgarian and English.
 
@@ -40,6 +40,7 @@ Open http://localhost:3000.
 | Offers | Offer for a client on an approved formula version; packaging per pack; quantities priced from a margin or a fixed price; cost per pack from purchase prices (with price breaks), capsule shells, production costs of the format and set-up spread over the quantity; cost breakdown for users who may see purchase prices; status; offer document in the offer's language (print or save as PDF from the browser) |
 | Sales orders | One client, several products: each line comes from a sent or accepted offer at one of its quantities (the offer becomes accepted); status from draft to closed; deposit and balance dates; "Plan production" per product. Inventory sees orders without prices |
 | Production | Schedule of manufacturing orders with material status. Simulate a run (from an order line or on its own): materials needed (formula with overage and loss, packaging), reserved, free, at the partner, requested; reserve what is free; raise purchase requests for what is missing; put in the schedule (reserves); send to the partner (only when everything is reserved); cancel (releases reservations) |
+| Costs | Packaging (jars, caps, labels) per formula version, copied into new offers and production orders. Every lot has a cost per unit (current purchase price on receipt, or the actual landed cost entered at receipt). Production orders show the planned cost, and after the batch the actual cost: lots consumed at their cost + partner invoices, total and per pack; the finished-goods lot carries the cost per pack. Visible only to users who may see purchase prices |
 | Purchasing | Purchase requests from production, with status (open, ordered, received, cancelled) |
 | Production costs | Admin keeps per-format fees (per pack, per 1000 units, per kg), set-up per batch, material loss and default margin |
 | Partner portal | Production orders sent by Nutrikal (by project code), materials needed against stock at the facility; start production; report the batch (lots used, pre-filled first-expiry-first; quantity made; their batch number); finished goods go to quarantine for QC; enter their invoice per batch. Stock at the facility, receive goods, stock correction requests |
@@ -67,6 +68,7 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 | `20261019001000_offers.sql` | Production costs per format, offers (OF-00001), packaging, quantity tiers, costing functions and access rules |
 | `20261019001100_sales_orders.sql` | Sales orders (SO-00001) with lines from offers, status rules, overviews without prices |
 | `20261019001200_manufacturing.sql` | Manufacturing orders (MO-00001), packaging, material requirements, reservations per manufacturing order, purchase requests (PR-00001), partner batch reporting, production invoices, partner view |
+| `20261019001300_costing.sql` | Packaging per formula version, lot costs, consumption linked to the manufacturing order, batch cost functions |
 | `20261019000900_formulation.sql` | Formulas (NK-F-0001), versions, lines, nutrients with NRV (Reg. 1169/2011 Annex XIII), item nutrient content, health claims, checks and access rules |
 
 ## Rules the database enforces
@@ -88,13 +90,14 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 - **Offers.** Only on an approved formula version, of the same client or a stock formula. Cost and price of each quantity are recalculated on every change while the offer is a draft and frozen once it is sent; only draft offers can be edited. Admin and Sales work with offers; Inventory and the partner see none. Production costs: Admin writes, Sales reads.
 - **Sales orders.** Only from offers of the same client; lines change only on a draft. Status order: draft → confirmed → in production → ready → dispatched → closed (cancel before dispatch). Production starts only after the deposit is received; with "balance before dispatch" the order is dispatched only after the balance is received; Admin may override both. The projects of the lines follow the order. Inventory sees orders without prices; the partner sees none.
 - **Manufacturing.** Status changes only through the production functions. Simulation: anyone on staff; scheduling, sending to the partner and cancelling: Admin or Inventory. Quantity, formula and project change only in simulation. Scheduling reserves free stock; sending needs every material fully reserved. The partner sees only orders sent to it, by project code, and the materials without Nutrikal's free stock; it consumes only lots at partner locations and only materials of the order; the finished lot gets the partner's batch number and starts in quarantine. Completing closes the reservations as consumed. The partner enters its own invoice per batch; Sales cannot see production invoices.
+- **Costs.** Lot costs live in their own table, readable only by users who may see purchase prices (never the partner); Admin or Inventory set them. Batch cost = consumed lots × lot cost (current purchase price, marked as estimated, when a lot has no cost) + partner invoices; recalculated when an invoice is added. Valuation is by actual lot cost (specific identification).
 - **Purchase prices on offers.** The cost breakdown per item is shown only to users who may see purchase prices; Sales see cost and margin per quantity.
 
 ## Tests
 
 ```
 cd test && npm install
-node run-tests.mjs          # 113 database rule checks across the four roles
+node run-tests.mjs          # 124 database rule checks across the four roles
 python3 ui_test.py http://localhost:3000   # 20 browser checks (needs Python Playwright + Chromium)
 ```
 
@@ -115,6 +118,7 @@ The browser tests create a client, contact, project and task, receive and releas
 - The partner can read item names, including finished goods. If a product name reveals the client's brand, use neutral names.
 - Reservations are per item or per lot. Linking them to manufacturing orders and consuming them automatically comes with production in Phase 3.
 - Logo: the NUTRIKAL wordmark (`web/public/nutrikal-wordmark.webp`) is in the menu and on the offer document. The browser icon (`web/src/app/icon.svg`) is a vector redraw of the "n" icon; replace it with the original artwork if you have it.
+- Reports for the accountant (stock valuation, materials consumed, cost of batches and of goods sold) come as a separate module and build on lot and batch costs.
 - Purchase requests are a list for now; purchase orders to suppliers (and receiving against them) come next.
 - The partner enters its invoice per batch (owner decision, to be reviewed after trying it).
 - Admin can start production before the deposit and dispatch before the balance (override). Remove the override in `sales_orders_guard` if it should be blocked for everyone.

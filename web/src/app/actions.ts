@@ -249,6 +249,28 @@ export async function addFormulaClaim(_: ActionState, fd: FormData): Promise<Act
   return { ok: true, message: t.common.saved };
 }
 
+export async function addFormulaPackaging(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(
+      user.id,
+      `insert into formula_packaging (version_id, item_id, qty_per_pack) values ($1, $2, coalesce($3, 1))
+       on conflict (version_id, item_id) do update set qty_per_pack = excluded.qty_per_pack`,
+      [str(fd, "version_id"), str(fd, "item_id"), num(fd, "qty_per_pack")],
+    );
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+  return { ok: true, message: t.common.saved };
+}
+
+export async function removeFormulaPackaging(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "delete from formula_packaging where id = $1", [str(fd, "packaging_id")]);
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+}
+
 export async function removeFormulaClaim(fd: FormData) {
   const { user } = await getSession();
   await q(user.id, "delete from formula_version_claims where version_id = $1 and claim_id = $2",
@@ -580,6 +602,8 @@ export async function receiveGoods(_: ActionState, fd: FormData): Promise<Action
         [str(fd, "item_id"), str(fd, "location_id"), num(fd, "quantity"), str(fd, "supplier_id"),
          str(fd, "supplier_lot"), str(fd, "manufactured_on"), str(fd, "expires_on"), str(fd, "reference")],
       );
+      const cost = num(fd, "unit_cost");
+      if (cost != null) await tx.query("select set_lot_cost($1, $2)", [r.rows[0].id, cost]);
       const l = await tx.query<{ lot_number: string }>("select lot_number from lots where id = $1", [r.rows[0].id]);
       return l.rows[0]?.lot_number ?? "";
     });

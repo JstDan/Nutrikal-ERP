@@ -152,7 +152,7 @@ export async function seedDemo(db: PGlite) {
   const clC = await claim("vit_c", "Vitamin C contributes to the normal function of the immune system", "Витамин C допринася за нормалното функциониране на имунната система");
   await claim("zinc", "Zinc contributes to the normal function of the immune system", "Цинкът допринася за нормалното функциониране на имунната система");
 
-  const formula = async (sql: string, params: unknown[], lines: [string, number, string, number][], shelf: number | null, claims: string[]) => {
+  const formula = async (sql: string, params: unknown[], lines: [string, number, string, number][], shelf: number | null, claims: string[], packaging: string[] = []) => {
     const f = await one(SALES, sql, params);
     const v = await one(SALES, "select id from formula_versions where formula_id = $1 and version = 1", [f]);
     for (const [it, amount, unit, overage] of lines) {
@@ -160,14 +160,16 @@ export async function seedDemo(db: PGlite) {
                        values ($1, $2, $3, $4::dose_unit, $5, (select count(*) from formula_lines where version_id = $1))`, [v, it, amount, unit, overage]);
     }
     for (const c of claims) await as(SALES, "insert into formula_version_claims (version_id, claim_id) values ($1, $2)", [v, c]);
+    for (const pk of packaging) await as(SALES, "insert into formula_packaging (version_id, item_id) values ($1, $2)", [v, pk]);
     if (shelf) await as(SALES, "update formula_versions set shelf_life_months = $2 where id = $1", [v, shelf]);
     return { f, v };
   };
 
+  const label = await item("PK-LBL", "packaging", "Self-adhesive label", "Самозалепващ етикет", "pcs");
   const fMag = await formula(
     `insert into formulas (name, name_bg, product_format, project_id, serving_size, servings_per_pack, shell_item_id)
      values ('Magnesium Sleep', 'Магнезий за сън', 'capsule', $1, 2, 30, $2) returning id`, [pMag, caps],
-    [[mg, 750, "mg", 0], [the, 100, "mg", 5], [mcc, 40, "mg", 0]], 24, [clMg]);
+    [[mg, 750, "mg", 0], [the, 100, "mg", 5], [mcc, 40, "mg", 0]], 24, [clMg], [jar, label]);
   await as(ADMIN, "select approve_formula_version($1)", [fMag.v]);
   const v2 = await one(SALES, "select new_formula_version($1, 'More L-theanine after client feedback') as id", [fMag.f]);
   await as(SALES, "update formula_lines set amount = 150 where version_id = $1 and item_id = $2", [v2, the]);
@@ -175,7 +177,7 @@ export async function seedDemo(db: PGlite) {
   const fCol = await formula(
     `insert into formulas (name, name_bg, product_format, project_id, serving_size, serving_unit, servings_per_pack)
      values ('Collagen + Vitamin C', 'Колаген + витамин C', 'powder', $1, 10, 'g', 30) returning id`, [pCol],
-    [[col, 9.5, "g", 0], [vitc, 80, "mg", 10]], 24, [clC]);
+    [[col, 9.5, "g", 0], [vitc, 80, "mg", 10]], 24, [clC], [jar]);
   await as(ADMIN, "select approve_formula_version($1)", [fCol.v]);
 
   await formula(
@@ -188,18 +190,16 @@ export async function seedDemo(db: PGlite) {
                      default_margin_pct = 35, min_order_packs = 1000 where product_format = 'capsule'`);
   await as(ADMIN, `update format_costing set fee_per_pack = 0.35, fee_per_kg = 1.6, setup_fee = 250, loss_pct = 2,
                      default_margin_pct = 32, min_order_packs = 500 where product_format = 'powder'`);
-  const label = await item("PK-LBL", "packaging", "Self-adhesive label", "Самозалепващ етикет", "pcs");
   const siLabel = await one(INVENTORY, `insert into supplier_items (supplier_id, item_id, is_preferred, lead_time_days) values ($1, $2, true, 10) returning id`, [sup2, label]);
   await as(INVENTORY, `insert into supplier_prices (supplier_item_id, price) values ($1, 0.035)`, [siLabel]);
 
   const ofMag = await one(SALES, `insert into offers (client_id, project_id, formula_version_id, notes)
                                   values ($1, $2, $3, 'Artwork and label text supplied by the client.') returning id`, [acme, pMag, fMag.v]);
-  await as(SALES, `insert into offer_packaging (offer_id, item_id) values ($1, $2), ($1, $3)`, [ofMag, jar, label]);
   await as(SALES, `insert into offer_tiers (offer_id, quantity) values ($1, 5000), ($1, 10000), ($1, 20000)`, [ofMag]);
   await as(SALES, `update offers set status = 'sent' where id = $1`, [ofMag]);
 
   const ofCol = await one(SALES, `insert into offers (client_id, project_id, formula_version_id) values ($1, $2, $3) returning id`, [nordic, pCol, fCol.v]);
-  await as(SALES, `insert into offer_packaging (offer_id, item_id) values ($1, $2), ($1, $3)`, [ofCol, jar, label]);
+  await as(SALES, `insert into offer_packaging (offer_id, item_id) values ($1, $2)`, [ofCol, label]);
   await as(SALES, `insert into offer_tiers (offer_id, quantity) values ($1, 1500), ($1, 3000)`, [ofCol]);
   await as(SALES, `insert into offer_tiers (offer_id, quantity, unit_price, price_is_manual) values ($1, 5000, 6.90, true)`, [ofCol]);
 
@@ -218,7 +218,6 @@ export async function seedDemo(db: PGlite) {
   }
   const moCol = await one(INVENTORY, `insert into manufacturing_orders (formula_version_id, project_id, quantity, notes)
                                       values ($1, $2, 1000, 'Second batch') returning id`, [fCol.v, pCol]);
-  await as(INVENTORY, `insert into mo_packaging (mo_id, item_id) values ($1, $2)`, [moCol, jar]);
   await as(INVENTORY, `select schedule_mo($1, current_date + 3)`, [moCol]);
   await as(INVENTORY, `select release_mo($1)`, [moCol]);
 
