@@ -4,7 +4,7 @@ import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice, getDict } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
-import { LogoMark } from "@/components/logo";
+import { Wordmark } from "@/components/logo";
 
 type Doc = {
   code: string; locale: "bg" | "en"; currency: string; incoterm: string; valid_until: string | null; created_at: string;
@@ -64,7 +64,7 @@ export default async function OfferPrintPage({ params }: PageProps<"/offers/[id]
       <article lang={l} className="card flex flex-col gap-6 p-6 text-sm sm:p-10 print:border-0 print:p-0">
         <header className="flex flex-wrap justify-between gap-6">
           <div className="min-w-0">
-            <div className="flex items-center gap-2.5 text-[22px] font-extrabold tracking-[0.6px]"><LogoMark size={36} />{co?.trade_name ?? "Nutrikal"}</div>
+            <Wordmark height={26} className="mb-2" />
             <div className="text-ink-2">
               {[co?.legal_name, co?.address_line1, [co?.postal_code, co?.city].filter(Boolean).join(" "), co?.vat_number].filter(Boolean).join(" · ")}
             </div>

@@ -6,7 +6,7 @@ import { LOCALES } from "@/lib/i18n";
 import { SideNav, type NavGroup } from "./side-nav";
 import { DemoUserSwitch } from "./demo-user-switch";
 import { MobileMenu } from "./mobile-menu";
-import { LogoMark } from "./logo";
+import { Wordmark } from "./logo";
 
 export async function AppShell({ children }: { children: ReactNode }) {
   const { user, locale, t } = await getSession();
@@ -49,12 +49,9 @@ export async function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-wrap">
       <aside className="relative flex print:hidden w-full flex-col gap-6 bg-ink px-4 py-5 text-white lg:w-[248px] lg:shrink-0 lg:py-6">
-        <a href={isPartner ? "/partner" : "/"} className="flex flex-col gap-1 px-2 text-white no-underline">
-          <span className="flex items-center gap-2.5">
-            <LogoMark size={32} inverted />
-            <span className="text-[22px] font-extrabold tracking-[0.6px]">Nutrikal</span>
-            <span className="text-[11px] font-semibold tracking-[2px] text-green">{isPartner ? t.nav.productionLabel.toUpperCase() : "ERP"}</span>
-          </span>
+        <a href={isPartner ? "/partner" : "/"} className="flex flex-col gap-2 px-2 text-white no-underline">
+          <Wordmark height={20} inverted />
+          <span className="text-[11px] font-semibold tracking-[2px] text-green">{isPartner ? t.nav.productionLabel.toUpperCase() : "ERP"}</span>
           {isPartner && <span className="text-xs text-side-muted">{t.nav.partnerFacility}</span>}
         </a>
         <MobileMenu label={t.nav.menu} closeLabel={t.nav.close}>

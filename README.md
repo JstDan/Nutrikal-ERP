@@ -107,7 +107,7 @@ The browser tests create a client, contact, project and task, receive and releas
 - Location names, item names and project names are data, so they show as entered. Items have a Bulgarian name field used in the Bulgarian interface.
 - The partner can read item names, including finished goods. If a product name reveals the client's brand, use neutral names.
 - Reservations are per item or per lot. Linking them to manufacturing orders and consuming them automatically comes with production in Phase 3.
-- The logo in the app (menu, browser tab, offer document) is a vector redraw of the Nutrikal "n" icon. Replace `web/src/components/logo.tsx` and `web/src/app/icon.svg` with the original artwork.
+- Logo: the NUTRIKAL wordmark (`web/public/nutrikal-wordmark.webp`) is in the menu and on the offer document. The browser icon (`web/src/app/icon.svg`) is a vector redraw of the "n" icon; replace it with the original artwork if you have it.
 - Sales users see cost and margin per quantity on offers (not the purchase price of each item). Change `offer_tiers` access if Sales should see prices only.
 - Health claims in the demo data are examples. Copy the wording from the EU Register (Reg. 432/2012) in both languages before using claims on real labels.
 - Nutrient content (e.g. 14 % magnesium in magnesium bisglycinate) is entered per item; check it against the supplier specification or COA.
