@@ -141,6 +141,121 @@ export async function completeTask(fd: FormData) {
   revalidatePath("/", "layout");
 }
 
+// ------------------------------------------------------------ formulation
+export async function createFormula(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    const [row] = await q<{ id: string }>(
+      user.id,
+      `insert into formulas (name, name_bg, product_format, project_id, serving_size, serving_unit, servings_per_pack,
+         shell_item_id, description)
+       values ($1, $2, $3::product_format, $4, $5, coalesce($6, 'pcs')::serving_unit, $7, $8, $9)
+       returning id`,
+      [str(fd, "name"), str(fd, "name_bg"), str(fd, "product_format"), str(fd, "project_id"), num(fd, "serving_size"),
+       str(fd, "serving_unit"), num(fd, "servings_per_pack"), str(fd, "shell_item_id"), str(fd, "description")],
+    );
+    id = row.id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/formulas");
+  redirect(`/formulas/${id}`);
+}
+
+export async function addFormulaLine(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(
+      user.id,
+      `insert into formula_lines (version_id, item_id, amount, unit, overage_pct, sort_order)
+       values ($1, $2, $3, coalesce($4, 'mg')::dose_unit, coalesce($5, 0),
+               (select coalesce(max(sort_order), 0) + 1 from formula_lines where version_id = $1))`,
+      [str(fd, "version_id"), str(fd, "item_id"), num(fd, "amount"), str(fd, "unit"), num(fd, "overage_pct")],
+    );
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+  return { ok: true, message: t.common.saved };
+}
+
+export async function removeFormulaLine(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "delete from formula_lines where id = $1", [str(fd, "line_id")]);
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+}
+
+export async function saveFormulaVersion(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(
+      user.id,
+      "update formula_versions set shelf_life_months = $2, change_note = $3, notes = $4 where id = $1",
+      [str(fd, "version_id"), num(fd, "shelf_life_months"), str(fd, "change_note"), str(fd, "notes")],
+    );
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+  return { ok: true, message: t.common.saved };
+}
+
+export async function approveFormulaVersion(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, "select approve_formula_version($1)", [str(fd, "version_id")]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/formulas", "layout");
+  return { ok: true, message: t.common.saved };
+}
+
+export async function newFormulaVersion(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  const formulaId = str(fd, "formula_id");
+  let version: number;
+  try {
+    const [row] = await q<{ version: number }>(
+      user.id,
+      "select version from formula_versions where id = new_formula_version($1, $2)",
+      [formulaId, str(fd, "change_note")],
+    );
+    version = row.version;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/formulas", "layout");
+  redirect(`/formulas/${formulaId}?v=${version}`);
+}
+
+export async function discardFormulaDraft(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "update formula_versions set status = 'archived' where id = $1 and status = 'draft'", [str(fd, "version_id")]);
+  revalidatePath("/formulas", "layout");
+  redirect(`/formulas/${str(fd, "formula_id")}`);
+}
+
+export async function addFormulaClaim(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, "insert into formula_version_claims (version_id, claim_id) values ($1, $2) on conflict do nothing",
+      [str(fd, "version_id"), str(fd, "claim_id")]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+  return { ok: true, message: t.common.saved };
+}
+
+export async function removeFormulaClaim(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "delete from formula_version_claims where version_id = $1 and claim_id = $2",
+    [str(fd, "version_id"), str(fd, "claim_id")]);
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+}
+
 // -------------------------------------------------------------- inventory
 export async function receiveGoods(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();

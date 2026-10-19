@@ -233,6 +233,113 @@ await ok('partner sees only partner lots and locations', async () => {
   eq((await as('partner', 'select * from stock_movements where location_id = $1', [L['NK-WH']])).length, 0, 'warehouse moves');
 });
 
+console.log('\nFormulation');
+let formula, v1, v2, mcc, novelPending, novelBlocked, caps, magnesium, claim;
+await ok('inventory sets up an excipient, two Novel Food cases and a capsule shell', async () => {
+  mcc = await one('inventory', `insert into items (sku, type, name, base_unit, novel_food_status, shelf_life_months, is_vegan)
+                                values ('EX-MCC', 'excipient', 'Microcrystalline cellulose', 'kg', 'not_novel', 60, true) returning id`);
+  novelPending = await one('inventory', `insert into items (sku, type, name, base_unit, novel_food_status, shelf_life_months)
+                                         values ('RM-NEW', 'raw_material', 'New extract', 'kg', 'pending', 12) returning id`);
+  novelBlocked = await one('inventory', `insert into items (sku, type, name, base_unit, novel_food_status, allergens)
+                                         values ('RM-BAN', 'raw_material', 'Unauthorised extract', 'kg', 'not_authorised', '{soybeans}') returning id`);
+  caps = await one('inventory', `insert into items (sku, type, name, base_unit, capacity, capacity_unit)
+                                 values ('PK-CAP0', 'packaging', 'HPMC capsule size 0', 'pcs', 500, 'mg') returning id`);
+});
+await ok('sales creates a formula for the project: code, client and version 1 draft are set', async () => {
+  formula = await one('sales', `insert into formulas (name, product_format, project_id, serving_size, servings_per_pack, shell_item_id)
+                                values ('Magnesium Sleep', 'capsule', $1, 2, 30, $2) returning id, code, client_id`, [project.id, caps.id]);
+  eq(formula.code, 'NK-F-0001', 'formula code');
+  eq(formula.client_id, client.id, 'client from project');
+  v1 = await one('sales', `select id, version, status from formula_versions where formula_id = $1`, [formula.id]);
+  eq(v1.version, 1, 'version'); eq(v1.status, 'draft', 'status');
+});
+await fails('inventory cannot create formulas', () =>
+  as('inventory', `insert into formulas (name, product_format, serving_size) values ('X', 'capsule', 1)`), 'row-level security');
+await ok('sales adds ingredients per serving', async () => {
+  await as('sales', `insert into formula_lines (version_id, item_id, amount, overage_pct, sort_order) values
+                       ($1, $2, 750, 0, 1), ($1, $3, 140, 5, 2)`, [v1.id, item.id, mcc.id]);
+});
+await fails('packaging cannot be an ingredient', () =>
+  as('sales', `insert into formula_lines (version_id, item_id, amount) values ($1, $2, 1)`, [v1.id, caps.id]), 'only raw materials');
+await ok('admin records the magnesium content; label shows 105 mg = 28 % NRV', async () => {
+  magnesium = await one('admin', `select id from nutrients where code = 'magnesium'`);
+  await as('inventory', `insert into item_nutrients (item_id, nutrient_id, content_pct) values ($1, $2, 14)`, [item.id, magnesium.id]);
+  const n = await one('sales', `select amount, pct_nrv from formula_version_nutrients where version_id = $1`, [v1.id]);
+  eq(Number(n.amount), 105, 'magnesium mg'); eq(Number(n.pct_nrv), 28, '% NRV');
+});
+await ok('checks: fill per capsule includes overage; shell capacity is known', async () => {
+  const c = await one('sales', `select line_count, fill_mg_per_unit, shell_capacity_mg, novel_to_review from formula_version_checks where version_id = $1`, [v1.id]);
+  eq(c.line_count, 2, 'lines'); eq(Number(c.fill_mg_per_unit), 448.5, 'mg per capsule');
+  eq(Number(c.shell_capacity_mg), 500, 'capacity'); eq(c.novel_to_review, 0, 'novel to review');
+});
+await ok('a met and an unmet health claim', async () => {
+  claim = await one('admin', `insert into health_claims (nutrient_id, claim_en) values ($1, 'Magnesium contributes to a reduction of tiredness and fatigue') returning id`, [magnesium.id]);
+  const vitC = await one('admin', `select id from nutrients where code = 'vit_c'`);
+  const claimC = await one('admin', `insert into health_claims (nutrient_id, claim_en) values ($1, 'Vitamin C contributes to the normal function of the immune system') returning id`, [vitC.id]);
+  await as('sales', `insert into formula_version_claims (version_id, claim_id) values ($1, $2), ($1, $3)`, [v1.id, claim.id, claimC.id]);
+  const rows = await as('sales', `select claim_id, is_met from formula_version_claim_checks where version_id = $1`, [v1.id]);
+  eq(rows.find(r => r.claim_id === claim.id).is_met, true, 'magnesium claim met');
+  eq(rows.find(r => r.claim_id === claimC.id).is_met, false, 'vitamin C claim not met');
+  await as('sales', `delete from formula_version_claims where version_id = $1 and claim_id = $2`, [v1.id, claimC.id]);
+});
+await fails('sales cannot approve', () => as('sales', 'select approve_formula_version($1)', [v1.id]), 'not allowed');
+await fails('sales cannot approve by changing the status directly', () =>
+  as('sales', `update formula_versions set status = 'approved' where id = $1`, [v1.id]), 'only admin');
+await fails('approval without a shelf life is refused', () =>
+  as('admin', 'select approve_formula_version($1)', [v1.id]), 'shelf life');
+await ok('shelf life longer than an ingredient allows is flagged', async () => {
+  await as('sales', `update formula_versions set shelf_life_months = 36 where id = $1`, [v1.id]);
+  const c = await one('sales', `select shelf_life_exceeds_items, min_item_shelf_life from formula_version_checks where version_id = $1`, [v1.id]);
+  eq(c.shelf_life_exceeds_items, true, 'flag'); eq(c.min_item_shelf_life, 24, 'shortest ingredient');
+  await as('sales', `update formula_versions set shelf_life_months = 24 where id = $1`, [v1.id]);
+});
+await fails('approval with a not authorised Novel Food ingredient is refused', async () => {
+  const l = await one('sales', `insert into formula_lines (version_id, item_id, amount) values ($1, $2, 10) returning id`, [v1.id, novelBlocked.id]);
+  try { await as('admin', 'select approve_formula_version($1)', [v1.id]); }
+  finally { await as('sales', 'delete from formula_lines where id = $1', [l.id]); }
+}, 'not authorised novel food');
+await ok('admin approves version 1; approver is recorded', async () => {
+  await as('admin', 'select approve_formula_version($1)', [v1.id]);
+  const v = await one('admin', 'select status, approved_by from formula_versions where id = $1', [v1.id]);
+  eq(v.status, 'approved', 'status'); eq(v.approved_by, U.admin, 'approved by');
+});
+await fails('approved version: lines are locked', () =>
+  as('admin', `insert into formula_lines (version_id, item_id, amount) values ($1, $2, 5)`, [v1.id, mcc.id]), 'only drafts');
+await fails('approved version: locked even for the database owner', () =>
+  db.query(`update formula_lines set amount = 1 where version_id = $1`, [v1.id]), 'only drafts');
+await fails('approved version: shelf life cannot be changed', () =>
+  as('admin', `update formula_versions set shelf_life_months = 12 where id = $1`, [v1.id]), 'locked');
+await ok('new version copies lines and claims into a draft', async () => {
+  v2 = await one('sales', `select new_formula_version($1, 'Add theanine') as id`, [formula.id]);
+  v2 = { id: v2.id };
+  const v = await one('sales', 'select version, status, shelf_life_months from formula_versions where id = $1', [v2.id]);
+  eq(v.version, 2, 'version'); eq(v.status, 'draft', 'status'); eq(v.shelf_life_months, 24, 'shelf life copied');
+  eq((await as('sales', 'select id from formula_lines where version_id = $1', [v2.id])).length, 2, 'lines copied');
+  eq((await as('sales', 'select claim_id from formula_version_claims where version_id = $1', [v2.id])).length, 1, 'claims copied');
+});
+await fails('only one draft per formula', () => as('sales', 'select new_formula_version($1)', [formula.id]), 'already has a draft');
+await ok('a pending Novel Food ingredient is flagged for review but does not block', async () => {
+  await as('sales', `insert into formula_lines (version_id, item_id, amount) values ($1, $2, 50)`, [v2.id, novelPending.id]);
+  eq((await one('sales', 'select novel_to_review from formula_version_checks where version_id = $1', [v2.id])).novel_to_review, 1, 'to review');
+});
+await ok('approving version 2 archives version 1', async () => {
+  await as('sales', `update formula_versions set shelf_life_months = 12 where id = $1`, [v2.id]);
+  await as('admin', 'select approve_formula_version($1)', [v2.id]);
+  eq((await one('admin', 'select status from formula_versions where id = $1', [v1.id])).status, 'archived', 'v1');
+  eq((await one('admin', 'select status from formula_versions where id = $1', [v2.id])).status, 'approved', 'v2');
+});
+await ok('inventory can read formulas and lines', async () => {
+  eq((await as('inventory', 'select id from formulas')).length, 1, 'formulas');
+  eq((await as('inventory', 'select id from formula_line_details where version_id = $1', [v2.id])).length, 3, 'lines');
+});
+await ok('partner sees no formulas, versions, lines, nutrients or claims', async () => {
+  for (const t of ['formulas', 'formula_versions', 'formula_lines', 'formula_line_details', 'formula_version_checks',
+                   'formula_version_nutrients', 'formula_version_claim_checks', 'item_nutrients', 'nutrients', 'health_claims']) {
+    eq((await as('partner', `select * from ${t}`)).length, 0, t);
+  }
+});
+await fails('partner cannot create a formula version', () => as('partner', 'select new_formula_version($1)', [formula.id]), 'not allowed');
+
 console.log('\nNumbering and audit');
 await fails('partner cannot draw invoice numbers', () => as('partner', `select next_number('invoice')`), 'not allowed');
 await ok('invoice series is a 10-digit sequence', async () => {

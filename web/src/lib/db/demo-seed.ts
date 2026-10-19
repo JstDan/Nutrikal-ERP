@@ -97,7 +97,7 @@ export async function seedDemo(db: PGlite) {
                                     values ('EX-MCC', 'excipient', 'Microcrystalline cellulose', 'Микрокристална целулоза', 'kg', 'not_novel', 'Filler', 60) returning id`);
   await one(INVENTORY, `insert into items (sku, type, name, name_bg, base_unit, novel_food_status, excipient_function, shelf_life_months)
                         values ('EX-MGST', 'excipient', 'Magnesium stearate (vegetable)', 'Магнезиев стеарат (растителен)', 'kg', 'not_novel', 'Flow agent', 36) returning id`);
-  const caps = await item("PK-HPMC0", "packaging", "HPMC capsules size 0", "HPMC капсули размер 0", "pcs", "reorder_level, material=100000, 'HPMC'");
+  const caps = await item("PK-HPMC0", "packaging", "HPMC capsules size 0", "HPMC капсули размер 0", "pcs", "reorder_level, material, capacity, capacity_unit=100000, 'HPMC', 500, 'mg'");
   const jar = await item("PK-JAR300", "packaging", "PET jar 300 ml + cap", "PET бурканче 300 ml + капачка", "pcs", "capacity, capacity_unit, material=300, 'ml', 'PET'");
 
   const sup = await one(INVENTORY, `insert into suppliers (name, country_code, email, is_approved) values ('EuroIngredients GmbH', 'DE', 'orders@euroingredients.example', true) returning id`);
@@ -138,6 +138,50 @@ export async function seedDemo(db: PGlite) {
   await as(SALES, `select reserve_stock($1, $2, 60, null, null, 'First batch')`, [mg, pMag]);
   await as(INVENTORY, `select reserve_stock($1, $2, 36)`, [ash, pAsh]);
   await as(INVENTORY, `select reserve_stock($1, $2, 450, null, null, 'Rest of the running batch')`, [col, pCol]);
+
+  // ------------------------------------------------------- formulation
+  for (const [it, code, pct] of [[mg, "magnesium", 14], [vitc, "vit_c", 100], [zn, "zinc", 20]] as const) {
+    await as(INVENTORY, `insert into item_nutrients (item_id, nutrient_id, content_pct)
+                         select $1, id, $3 from nutrients where code = $2`, [it, code, pct]);
+  }
+  // Demo claims. Check the wording against the EU Register before real use.
+  const claim = (nutrient: string, en: string, bgText: string) =>
+    one(ADMIN, `insert into health_claims (nutrient_id, claim_en, claim_bg, register_ref)
+                select id, $2, $3, 'Reg. (EU) 432/2012' from nutrients where code = $1 returning id`, [nutrient, en, bgText]);
+  const clMg = await claim("magnesium", "Magnesium contributes to a reduction of tiredness and fatigue", "Магнезият допринася за намаляване на умората и отпадналостта");
+  const clC = await claim("vit_c", "Vitamin C contributes to the normal function of the immune system", "Витамин C допринася за нормалното функциониране на имунната система");
+  await claim("zinc", "Zinc contributes to the normal function of the immune system", "Цинкът допринася за нормалното функциониране на имунната система");
+
+  const formula = async (sql: string, params: unknown[], lines: [string, number, string, number][], shelf: number | null, claims: string[]) => {
+    const f = await one(SALES, sql, params);
+    const v = await one(SALES, "select id from formula_versions where formula_id = $1 and version = 1", [f]);
+    for (const [it, amount, unit, overage] of lines) {
+      await as(SALES, `insert into formula_lines (version_id, item_id, amount, unit, overage_pct, sort_order)
+                       values ($1, $2, $3, $4::dose_unit, $5, (select count(*) from formula_lines where version_id = $1))`, [v, it, amount, unit, overage]);
+    }
+    for (const c of claims) await as(SALES, "insert into formula_version_claims (version_id, claim_id) values ($1, $2)", [v, c]);
+    if (shelf) await as(SALES, "update formula_versions set shelf_life_months = $2 where id = $1", [v, shelf]);
+    return { f, v };
+  };
+
+  const fMag = await formula(
+    `insert into formulas (name, name_bg, product_format, project_id, serving_size, servings_per_pack, shell_item_id)
+     values ('Magnesium Sleep', 'Магнезий за сън', 'capsule', $1, 2, 30, $2) returning id`, [pMag, caps],
+    [[mg, 750, "mg", 0], [the, 100, "mg", 5], [mcc, 40, "mg", 0]], 24, [clMg]);
+  await as(ADMIN, "select approve_formula_version($1)", [fMag.v]);
+  const v2 = await one(SALES, "select new_formula_version($1, 'More L-theanine after client feedback') as id", [fMag.f]);
+  await as(SALES, "update formula_lines set amount = 150 where version_id = $1 and item_id = $2", [v2, the]);
+
+  const fCol = await formula(
+    `insert into formulas (name, name_bg, product_format, project_id, serving_size, serving_unit, servings_per_pack)
+     values ('Collagen + Vitamin C', 'Колаген + витамин C', 'powder', $1, 10, 'g', 30) returning id`, [pCol],
+    [[col, 9.5, "g", 0], [vitc, 80, "mg", 10]], 24, [clC]);
+  await as(ADMIN, "select approve_formula_version($1)", [fCol.v]);
+
+  await formula(
+    `insert into formulas (name, name_bg, product_format, serving_size, servings_per_pack, shell_item_id)
+     values ('Immune Support', 'Имунна подкрепа', 'capsule', 2, 30, $1) returning id`, [caps],
+    [[vitc, 200, "mg", 5], [zn, 50, "mg", 0], [mcc, 150, "mg", 0]], null, []);
 
   // Partner reports a spill and asks for a correction
   await as(PARTNER, `select request_stock_adjustment($1, $2, -2, 'Spillage during weighing')`, [lotMg, PF_RM]);

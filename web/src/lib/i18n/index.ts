@@ -33,6 +33,14 @@ export function formatQty(l: Locale, n: number | string | null | undefined, unit
   return `${formatNumber(l, n, 3)} ${u}`;
 }
 
+/** A mass given in mg, shown as mcg, mg or g, whichever reads best. */
+export function formatMass(l: Locale, mg: number | string | null | undefined): string {
+  const v = Number(mg ?? 0);
+  if (v !== 0 && Math.abs(v) < 1) return `${formatNumber(l, v * 1000, 1)} mcg`;
+  if (Math.abs(v) >= 1000) return `${formatNumber(l, v / 1000, 2)} g`;
+  return `${formatNumber(l, v, 1)} mg`;
+}
+
 export function formatMoney(l: Locale, n: number | string | null | undefined, currency = "EUR"): string {
   return new Intl.NumberFormat(intlLocale(l), { style: "currency", currency, maximumFractionDigits: 0 }).format(Number(n ?? 0));
 }
