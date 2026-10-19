@@ -282,10 +282,11 @@ export async function saveOfferTerms(_: ActionState, fd: FormData): Promise<Acti
     await q(
       user.id,
       `update offers set valid_until = $2::date, incoterm = coalesce($3, 'EXW'), deposit_pct = $4,
-              balance_terms = $5::balance_terms, balance_net_days = $6, locale = $7::app_locale, notes = $8, internal_notes = $9
+              balance_terms = $5::balance_terms, balance_net_days = $6, locale = $7::app_locale, notes = $8, internal_notes = $9,
+              project_id = $10
         where id = $1`,
       [str(fd, "offer_id"), str(fd, "valid_until"), str(fd, "incoterm"), num(fd, "deposit_pct"), str(fd, "balance_terms"),
-       num(fd, "balance_net_days"), str(fd, "locale"), str(fd, "notes"), str(fd, "internal_notes")],
+       num(fd, "balance_net_days"), str(fd, "locale"), str(fd, "notes"), str(fd, "internal_notes"), str(fd, "project_id")],
     );
   } catch (e) {
     return { error: errorText(e) };
@@ -379,6 +380,64 @@ export async function saveFormatCosting(_: ActionState, fd: FormData): Promise<A
   }
   revalidatePath("/offers/costing");
   return { ok: true, message: t.common.saved };
+}
+
+// ----------------------------------------------------------------- orders
+export async function createOrderFromOffer(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    const [row] = await q<{ id: string }>(
+      user.id,
+      "select create_order_from_offer($1, $2::int, $3, $4::date) as id",
+      [str(fd, "offer_id"), num(fd, "quantity"), str(fd, "customer_ref"), str(fd, "requested_date")],
+    );
+    id = row.id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  redirect(`/orders/${id}`);
+}
+
+export async function saveOrder(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(
+      user.id,
+      `update sales_orders set deposit_pct = $2, deposit_received_on = $3::date, balance_received_on = $4::date,
+              requested_date = $5::date, customer_ref = $6, notes = $7
+        where id = $1`,
+      [str(fd, "order_id"), num(fd, "deposit_pct"), str(fd, "deposit_received_on"), str(fd, "balance_received_on"),
+       str(fd, "requested_date"), str(fd, "customer_ref"), str(fd, "notes")],
+    );
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/orders/${str(fd, "order_id")}`);
+  return { ok: true, message: t.common.saved };
+}
+
+export async function setOrderStatus(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, "update sales_orders set status = $2::order_status where id = $1", [str(fd, "order_id"), str(fd, "status")]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: t.common.saved };
+}
+
+export async function reserveOrderMaterials(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    const [r] = await q<{ n: number }>(user.id, "select reserve_order_materials($1) as n", [str(fd, "order_id")]);
+    revalidatePath("/", "layout");
+    return { ok: true, message: fmt(t.orders.detail.reservedN, { n: r.n }) };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
 }
 
 // -------------------------------------------------------------- inventory

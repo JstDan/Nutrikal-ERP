@@ -203,6 +203,11 @@ export async function seedDemo(db: PGlite) {
   await as(SALES, `insert into offer_tiers (offer_id, quantity) values ($1, 1500), ($1, 3000)`, [ofCol]);
   await as(SALES, `insert into offer_tiers (offer_id, quantity, unit_price, price_is_manual) values ($1, 5000, 6.90, true)`, [ofCol]);
 
+  // ------------------------------------------------------- sales orders
+  const soMag = await one(SALES, `select create_order_from_offer($1, 10000, 'ACME-PO-2291', current_date + 21) as id`, [ofMag]);
+  await as(SALES, `update sales_orders set status = 'confirmed', deposit_received_on = current_date - 2 where id = $1`, [soMag]);
+  await as(INVENTORY, `select reserve_order_materials($1)`, [soMag]);
+
   // Partner reports a spill and asks for a correction
   await as(PARTNER, `select request_stock_adjustment($1, $2, -2, 'Spillage during weighing')`, [lotMg, PF_RM]);
 }

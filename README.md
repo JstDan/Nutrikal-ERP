@@ -1,4 +1,4 @@
-# Nutrikal ERP + CRM — Phase 1 + Phase 2 (formulation, offers)
+# Nutrikal ERP + CRM — Phases 1–2, Phase 3 (sales orders)
 
 Sales, inventory and production for the contract manufacturing business in one app (app.nutrikal.com), in Bulgarian and English.
 
@@ -21,7 +21,7 @@ npm run dev
 
 Open http://localhost:3000.
 
-- On first start the app creates a local database in `web/.data/`, runs every migration from `supabase/migrations`, and loads sample data (4 clients, 6 projects, 11 items, lots, reservations, 3 formulas, 2 offers). Delete `web/.data/` to start over.
+- On first start the app creates a local database in `web/.data/`, runs every migration from `supabase/migrations`, and loads sample data (4 clients, 6 projects, 11 items, lots, reservations, 3 formulas, 2 offers, 1 sales order). Delete `web/.data/` to start over.
 - **Demo sign-in.** The selector in the top bar switches between the four roles (Admin, Sales, Inventory, Partner facility), so you can see what each one sees. It is replaced by Supabase Auth when we go live.
 - **Language.** The БГ / EN switch changes the whole interface. The choice is saved on the user's profile, so it follows them to other devices.
 
@@ -38,10 +38,11 @@ Open http://localhost:3000.
 | Quality control | Admin releases or rejects quarantined lots; Admin or Inventory approves or rejects stock corrections |
 | Formulas | Formula per serving (capsules, tablets, powders…), linked to a project or kept as a stock formula; versions (draft → approved → archived); ingredients with overage, input per unit and per 1000 packs; checks for Novel Food, shelf life, allergens, vegan/vegetarian and capsule fill; vitamins and minerals with % NRV; health claims with their conditions; Admin approves |
 | Offers | Offer for a client on an approved formula version; packaging per pack; quantities priced from a margin or a fixed price; cost per pack from purchase prices (with price breaks), capsule shells, production costs of the format and set-up spread over the quantity; cost breakdown for users who may see purchase prices; status; offer document in the offer's language (print or save as PDF from the browser) |
+| Sales orders | Created from a sent or accepted offer at one of its quantities (the offer becomes accepted); status from draft to closed; deposit and balance dates; materials needed (from formula, offer packaging and material loss) against reserved and available stock; reserve what is available for the project. Inventory sees orders and materials without prices |
 | Production costs | Admin keeps per-format fees (per pack, per 1000 units, per kg), set-up per batch, material loss and default margin |
 | Partner portal | Projects by code only, stock at the facility, receive goods, request stock corrections and follow their status |
 
-Orders, invoices, purchasing and production orders are shown in the menu with the phase they arrive in.
+Invoices, purchasing and production orders are shown in the menu with the phase they arrive in.
 
 ## How the app talks to the database
 
@@ -62,6 +63,7 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 | `20261019000700_storage.sql` | Private storage buckets `client-files` and `lot-documents` with access rules (Supabase only) |
 | `20261019000800_user_prefs.sql` | Users can save their own interface language |
 | `20261019001000_offers.sql` | Production costs per format, offers (OF-00001), packaging, quantity tiers, costing functions and access rules |
+| `20261019001100_sales_orders.sql` | Sales orders (SO-00001), status rules, material requirements and reservation functions, overview without prices |
 | `20261019000900_formulation.sql` | Formulas (NK-F-0001), versions, lines, nutrients with NRV (Reg. 1169/2011 Annex XIII), item nutrient content, health claims, checks and access rules |
 
 ## Rules the database enforces
@@ -81,13 +83,14 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 - **Label values.** Amount per serving and % NRV are calculated from the declared amounts (without overage) and each item's nutrient content. A health claim is marked as not met below its minimum (15 % NRV by default).
 - **Partner user** sees no formulas, nutrients or claims (production instructions come in Phase 3).
 - **Offers.** Only on an approved formula version, of the same client or a stock formula. Cost and price of each quantity are recalculated on every change while the offer is a draft and frozen once it is sent; only draft offers can be edited. Admin and Sales work with offers; Inventory and the partner see none. Production costs: Admin writes, Sales reads.
+- **Sales orders.** Only from offers. Quantity and price change only on a draft. Status order: draft → confirmed → in production → ready → dispatched → closed (cancel before dispatch). Production starts only after the deposit is received; with "balance before dispatch" the order is dispatched only after the balance is received; Admin may override both. The project stage follows the order. Inventory sees orders without prices; the partner sees none.
 - **Purchase prices on offers.** The cost breakdown per item is shown only to users who may see purchase prices; Sales see cost and margin per quantity.
 
 ## Tests
 
 ```
 cd test && npm install
-node run-tests.mjs          # 81 database rule checks across the four roles
+node run-tests.mjs          # 97 database rule checks across the four roles
 python3 ui_test.py http://localhost:3000   # 20 browser checks (needs Python Playwright + Chromium)
 ```
 
@@ -108,6 +111,8 @@ The browser tests create a client, contact, project and task, receive and releas
 - The partner can read item names, including finished goods. If a product name reveals the client's brand, use neutral names.
 - Reservations are per item or per lot. Linking them to manufacturing orders and consuming them automatically comes with production in Phase 3.
 - Logo: the NUTRIKAL wordmark (`web/public/nutrikal-wordmark.webp`) is in the menu and on the offer document. The browser icon (`web/src/app/icon.svg`) is a vector redraw of the "n" icon; replace it with the original artwork if you have it.
+- An order is one product (one project). A client ordering several products gets several orders.
+- Admin can start production before the deposit and dispatch before the balance (override). Remove the override in `sales_orders_guard` if it should be blocked for everyone.
 - Sales users see cost and margin per quantity on offers (not the purchase price of each item). Change `offer_tiers` access if Sales should see prices only.
 - Health claims in the demo data are examples. Copy the wording from the EU Register (Reg. 432/2012) in both languages before using claims on real labels.
 - Nutrient content (e.g. 14 % magnesium in magnesium bisglycinate) is entered per item; check it against the supplier specification or COA.

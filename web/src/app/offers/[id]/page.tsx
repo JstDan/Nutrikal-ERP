@@ -7,13 +7,13 @@ import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { offerTone } from "@/lib/status";
 import {
-  addOfferPackaging, addOfferTier, recalcOffer, removeOfferPackaging, removeOfferTier, saveOfferTerms, setOfferStatus,
+  addOfferPackaging, addOfferTier, createOrderFromOffer, recalcOffer, removeOfferPackaging, removeOfferTier, saveOfferTerms, setOfferStatus,
 } from "@/app/actions";
 
 type Offer = {
   id: string; code: string; status: string; locale: "bg" | "en"; currency: string; incoterm: string; valid_until: string | null;
   deposit_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
-  notes: string | null; internal_notes: string | null; client: string; client_id: string; project_code: string | null;
+  notes: string | null; internal_notes: string | null; client: string; client_id: string; project_id: string | null; project_code: string | null;
   formula_id: string; formula_code: string; formula: string; formula_bg: string | null; version: number;
   product_format: string; serving_size: string; serving_unit: "pcs" | "g" | "ml"; servings_per_pack: number;
 };
@@ -35,7 +35,7 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
     const offer = (await tx.query<Offer>(
       `select o.id, o.code, o.status, o.locale, o.currency, o.incoterm, o.valid_until::text, o.deposit_pct::text, o.balance_terms,
-              o.balance_net_days, o.notes, o.internal_notes, c.legal_name as client, c.id as client_id, p.code as project_code,
+              o.balance_net_days, o.notes, o.internal_notes, c.legal_name as client, c.id as client_id, o.project_id, p.code as project_code,
               f.id as formula_id, f.code as formula_code, f.name as formula, f.name_bg as formula_bg, v.version,
               f.product_format, f.serving_size::text, f.serving_unit, f.servings_per_pack
          from offers o
@@ -60,10 +60,15 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
           `select kind, sku, name, name_bg, qty_per_pack::text, base_unit, unit_price::text, cost_per_pack::text
              from offer_cost_breakdown($1, $2)`, [id, breakdownQty])).rows
       : [];
-    return { offer, tiers, packaging, packOptions, canSeeCosts, breakdownQty, breakdown };
+    const orders = (await tx.query<{ id: string; code: string; quantity: number; status: string }>(
+      "select id, code, quantity, status from sales_orders where offer_id = $1 order by code", [id])).rows;
+    const projects = (await tx.query<{ id: string; code: string; name: string }>(
+      "select id, code, name from projects where client_id = $1 and status not in ('completed', 'lost') order by code desc", [offer.client_id])).rows;
+    return { offer, tiers, packaging, packOptions, canSeeCosts, breakdownQty, breakdown, orders, projects };
   });
   if (!data) notFound();
-  const { offer: o, tiers, packaging, packOptions, canSeeCosts, breakdownQty, breakdown } = data;
+  const { offer: o, tiers, packaging, packOptions, canSeeCosts, breakdownQty, breakdown, orders, projects } = data;
+  const oc = t.orders.create;
   const isDraft = o.status === "draft";
   const money = (n: string | number | null, frac = 2) => (n == null ? "—" : formatPrice(locale, n, o.currency, frac));
   const incomplete = tiers.some((x) => !x.cost_complete);
@@ -211,6 +216,36 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
         </div>
 
         <div className="flex min-w-0 flex-col gap-4">
+          {(o.status === "sent" || o.status === "accepted") && tiers.length > 0 && (
+            <Card title={oc.title} id="order-h">
+              {orders.length > 0 && (
+                <div className="flex flex-col gap-1 text-sm">
+                  <span className="label">{oc.existing}</span>
+                  {orders.map((x) => (
+                    <Link key={x.id} href={`/orders/${x.id}`} className="text-ink">
+                      {x.code} · {formatNumber(locale, x.quantity)} · {t.enums.orderStatus[x.status as "draft"]}
+                    </Link>
+                  ))}
+                </div>
+              )}
+              {o.project_id ? (
+                <ActionForm action={createOrderFromOffer} submitLabel={oc.submit} resetOnSuccess={false}>
+                  <input type="hidden" name="offer_id" value={o.id} />
+                  <label className="field"><span>{oc.quantity} *</span>
+                    <select name="quantity" required className="input" defaultValue={tiers[0].quantity}>
+                      {tiers.filter((x) => x.unit_price).map((x) => (
+                        <option key={x.id} value={x.quantity}>{formatNumber(locale, x.quantity)} × {money(x.unit_price)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field"><span>{oc.customerRef}</span><input name="customer_ref" className="input" /></label>
+                  <label className="field"><span>{oc.requested}</span><input name="requested_date" type="date" className="input" /></label>
+                </ActionForm>
+              ) : (
+                <p className="m-0 text-sm text-ink-2">{oc.needsProject}</p>
+              )}
+            </Card>
+          )}
           <Card title={d.setStatus} id="status-h">
             {!isDraft && <p className="m-0 text-sm text-ink-2">{d.lockedNote}</p>}
             <ActionForm action={setOfferStatus} submitLabel={t.common.save} resetOnSuccess={false}>
@@ -227,6 +262,13 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
             <ActionForm action={saveOfferTerms} submitLabel={t.common.save} resetOnSuccess={false}>
               <input type="hidden" name="offer_id" value={o.id} />
               <fieldset disabled={!isDraft} className="m-0 grid grid-cols-1 gap-3 border-0 p-0">
+                <label className="field"><span>{t.orders.detail.project}</span>
+                  <select name="project_id" defaultValue={o.project_id ?? ""} className="input">
+                    <option value="">—</option>
+                    {projects.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+                    {o.project_id && !projects.some((p) => p.id === o.project_id) && <option value={o.project_id}>{o.project_code}</option>}
+                  </select>
+                </label>
                 <label className="field"><span>{t.offers.validUntil}</span><input name="valid_until" type="date" defaultValue={o.valid_until ?? ""} className="input" /></label>
                 <label className="field"><span>{d.incoterm}</span><input name="incoterm" defaultValue={o.incoterm} className="input" /></label>
                 <div className="grid grid-cols-2 gap-3">

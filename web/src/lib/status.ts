@@ -46,3 +46,19 @@ export function formulaTone(status: string): Tone {
 export function offerTone(status: string): Tone {
   return status === "accepted" ? "green" : status === "sent" ? "amber" : status === "rejected" ? "red" : "neutral";
 }
+
+export function orderTone(status: string): Tone {
+  switch (status) {
+    case "confirmed":
+    case "in_production":
+    case "ready":
+      return "amber";
+    case "dispatched":
+    case "closed":
+      return "green";
+    case "cancelled":
+      return "red";
+    default:
+      return "neutral";
+  }
+}

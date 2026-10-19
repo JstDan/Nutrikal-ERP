@@ -421,6 +421,76 @@ await fails('partner cannot call the cost breakdown', () =>
 await fails('users cannot call the internal costing function', () =>
   as('sales', 'select * from offer_cost_lines($1, 1000)', [offer.id]), 'permission denied');
 
+console.log('\nSales orders');
+let order;
+const req = async (user = 'sales') => Object.fromEntries(
+  (await as(user, 'select * from order_material_requirements($1)', [order.id])).map(r => [r.sku, r]));
+await fails('orders cannot be inserted directly', () =>
+  as('sales', `insert into sales_orders (client_id, project_id, offer_id, formula_version_id, quantity, unit_price)
+               values ($1, $2, $3, $4, 1000, 1)`, [client.id, project.id, offer.id, v2.id]), 'row-level security');
+await fails('a draft offer cannot become an order', () =>
+  as('sales', 'select create_order_from_offer($1, 1000)', [offer.id]), 'sent or accepted');
+await fails('the quantity must be one of the offer prices', async () => {
+  await as('sales', `update offers set status = 'sent' where id = $1`, [offer.id]);
+  await as('sales', 'select create_order_from_offer($1, 1234)', [offer.id]);
+}, 'no price for 1234');
+await ok('sales turns the offer into an order: code, price and accepted offer', async () => {
+  const r = await one('sales', `select create_order_from_offer($1, 1000, 'PO-778') as id`, [offer.id]);
+  order = await one('sales', 'select * from sales_orders where id = $1', [r.id]);
+  const t = await tier(1000);
+  eq(order.code, 'SO-00001', 'code'); eq(order.unit_price, t.unit_price, 'price from the tier');
+  eq(order.client_id, client.id, 'client'); eq(order.status, 'draft', 'status');
+  eq((await one('sales', 'select status from offers where id = $1', [offer.id])).status, 'accepted', 'offer');
+});
+await ok('confirming moves the project to the order stage', async () => {
+  await as('sales', `update sales_orders set status = 'confirmed', deposit_pct = 30 where id = $1`, [order.id]);
+  eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'order', 'project stage');
+});
+await fails('price is locked after confirmation', () =>
+  as('sales', 'update sales_orders set unit_price = 1 where id = $1', [order.id]), 'only change on a draft');
+await fails('an order cannot skip steps', () =>
+  as('sales', `update sales_orders set status = 'dispatched' where id = $1`, [order.id]), 'cannot go from confirmed to dispatched');
+await ok('materials for 1000 packs: 22.5 kg magnesium (already reserved), 60 000 capsules, 1000 jars', async () => {
+  const r = await req();
+  eq(Number(r['RM-MGBG'].required), 22.5, 'magnesium'); eq(Number(r['RM-MGBG'].reserved), 60, 'reserved earlier');
+  eq(Number(r['PK-CAP0'].required), 60000, 'capsules'); eq(Number(r['PK-JAR'].required), 1000, 'jars');
+});
+await ok('reserving takes what stock allows and leaves the rest missing', async () => {
+  const l = await one('inventory', `select receive_lot($1, $2, 3) as id`, [mcc.id, L['NK-WH']]);
+  await as('admin', `select set_lot_qc_status($1, 'released')`, [l.id]);
+  eq((await one('inventory', 'select reserve_order_materials($1) as n', [order.id])).n, 1, 'items reserved');
+  const r = await req('inventory');
+  eq(Number(r['EX-MCC'].reserved), 3, 'cellulose reserved'); eq(Number(r['EX-MCC'].required), 4.41, 'cellulose needed');
+  eq(Number(r['PK-JAR'].reserved), 0, 'no jars in stock');
+});
+await fails('production does not start before the deposit', () =>
+  as('sales', `update sales_orders set status = 'in_production' where id = $1`, [order.id]), 'deposit');
+await ok('with the deposit received, production starts; project follows', async () => {
+  await as('sales', `update sales_orders set deposit_received_on = current_date, status = 'in_production' where id = $1`, [order.id]);
+  eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'production', 'project stage');
+});
+await fails('no dispatch before the balance is paid', async () => {
+  await as('sales', `update sales_orders set status = 'ready' where id = $1`, [order.id]);
+  await as('sales', `update sales_orders set status = 'dispatched' where id = $1`, [order.id]);
+}, 'balance must be paid');
+await ok('balance paid: dispatched; project completed', async () => {
+  await as('sales', `update sales_orders set balance_received_on = current_date, status = 'dispatched' where id = $1`, [order.id]);
+  const o = await one('sales', 'select status, dispatched_at from sales_orders where id = $1', [order.id]);
+  eq(o.status, 'dispatched', 'status'); if (!o.dispatched_at) throw new Error('no dispatched_at');
+  eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'completed', 'project stage');
+});
+await ok('inventory sees the order overview without prices, not the orders table', async () => {
+  const rows = await as('inventory', 'select * from sales_order_overview');
+  eq(rows.length, 1, 'overview'); eq('unit_price' in rows[0], false, 'no price column');
+  eq((await as('inventory', 'select * from sales_orders')).length, 0, 'orders table');
+});
+await ok('partner sees no orders', async () => {
+  eq((await as('partner', 'select * from sales_order_overview')).length, 0, 'overview');
+  eq((await as('partner', 'select * from sales_orders')).length, 0, 'orders');
+});
+await fails('partner cannot read material requirements', () =>
+  as('partner', 'select * from order_material_requirements($1)', [order.id]), 'not allowed');
+
 console.log('\nNumbering and audit');
 await fails('partner cannot draw invoice numbers', () => as('partner', `select next_number('invoice')`), 'not allowed');
 await ok('invoice series is a 10-digit sequence', async () => {
