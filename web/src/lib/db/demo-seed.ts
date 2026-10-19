@@ -206,7 +206,25 @@ export async function seedDemo(db: PGlite) {
   // ------------------------------------------------------- sales orders
   const soMag = await one(SALES, `select create_order_from_offer($1, 10000, 'ACME-PO-2291', current_date + 21) as id`, [ofMag]);
   await as(SALES, `update sales_orders set status = 'confirmed', deposit_received_on = current_date - 2 where id = $1`, [soMag]);
-  await as(INVENTORY, `select reserve_order_materials($1)`, [soMag]);
+  const soMagLine = (await as<{ id: string }>(SALES, "select id from sales_order_lines where order_id = $1", [soMag]))[0].id;
+
+  // ------------------------------------------------------- production
+  // Acme: materials partly missing, purchase requests raised (scheduled below)
+  const moMag = await one(INVENTORY, `insert into manufacturing_orders (sales_order_line_id, quantity) values ($1, 10000) returning id`, [soMagLine]);
+
+  // Nordic Labs: next collagen batch, all materials reserved and sent to the partner
+  for (const r of await as<{ id: string }>(INVENTORY, `select id from stock_reservations where project_id = $1 and status = 'active'`, [pCol])) {
+    await as(INVENTORY, `select close_reservation($1, 'released')`, [r.id]);
+  }
+  const moCol = await one(INVENTORY, `insert into manufacturing_orders (formula_version_id, project_id, quantity, notes)
+                                      values ($1, $2, 1000, 'Second batch') returning id`, [fCol.v, pCol]);
+  await as(INVENTORY, `insert into mo_packaging (mo_id, item_id) values ($1, $2)`, [moCol, jar]);
+  await as(INVENTORY, `select schedule_mo($1, current_date + 3)`, [moCol]);
+  await as(INVENTORY, `select release_mo($1)`, [moCol]);
+
+  // Acme is scheduled after the collagen batch took its jars
+  await as(INVENTORY, `select schedule_mo($1, current_date + 10)`, [moMag]);
+  await as(INVENTORY, `select create_purchase_requests($1)`, [moMag]);
 
   // Partner reports a spill and asks for a correction
   await as(PARTNER, `select request_stock_adjustment($1, $2, -2, 'Spillage during weighing')`, [lotMg, PF_RM]);

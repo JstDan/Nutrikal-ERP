@@ -18,6 +18,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
         {
           items: [
             { href: "/partner", label: t.nav.today },
+            { href: "/partner/production", label: t.nav.production },
             { href: "/partner/receive", label: t.nav.receiveGoods },
           ],
         },
@@ -40,8 +41,8 @@ export async function AppShell({ children }: { children: ReactNode }) {
             { href: "/inventory", label: t.nav.inventory },
             { href: "/qc", label: t.nav.qc },
             { href: "/formulas", label: t.nav.formulas },
-            { label: t.nav.purchasing, soon: soon(3) },
-            { label: t.nav.production, soon: soon(3) },
+            { href: "/purchasing", label: t.nav.purchasing },
+            { href: "/production", label: t.nav.production },
           ],
         },
       ];

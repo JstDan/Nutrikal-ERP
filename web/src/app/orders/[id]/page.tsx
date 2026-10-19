@@ -2,23 +2,23 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
-import { fmt, formatDate, formatNumber, formatPrice, formatQty } from "@/lib/i18n";
+import { fmt, formatDate, formatNumber, formatPrice } from "@/lib/i18n";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { orderTone } from "@/lib/status";
-import { reserveOrderMaterials, saveOrder, setOrderStatus } from "@/app/actions";
+import { addOrderLine, createProductionFromLine, removeOrderLine, saveOrder, setOrderStatus } from "@/app/actions";
 
-type Overview = {
-  id: string; code: string; status: string; quantity: number; requested_date: string | null; client: string; client_id: string;
-  project_code: string; project_name: string; formula_id: string; formula_code: string; formula_version: number;
-  product: string; product_bg: string | null; product_format: string; confirmed_at: string | null; dispatched_at: string | null;
+type Overview = { id: string; code: string; status: string; requested_date: string | null; client: string; client_id: string };
+type Line = {
+  id: string; quantity: number; project_id: string; project_code: string; project_name: string; formula_id: string;
+  formula_code: string; formula_version: number; product: string; product_bg: string | null; offer_id: string;
 };
 type Commercial = {
-  offer_id: string; offer_code: string; unit_price: string; currency: string; deposit_pct: string | null;
-  balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null; deposit_received_on: string | null;
-  balance_received_on: string | null; customer_ref: string | null; notes: string | null;
+  currency: string; deposit_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
+  deposit_received_on: string | null; balance_received_on: string | null; customer_ref: string | null; notes: string | null;
 };
-type Req = { item_id: string; sku: string; name: string; name_bg: string | null; kind: string; base_unit: string; required: string; reserved: string; available: string };
+type Mo = { id: string; code: string; status: string; sales_order_line_id: string; quantity: number };
+type OfferOption = { offer_id: string; code: string; product: string; product_bg: string | null; quantity: number; unit_price: string };
 
 // Next steps offered per status (the database decides what is allowed)
 const NEXT: Record<string, string[]> = {
@@ -34,34 +34,48 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
   const { user, locale, t } = await requireStaff();
   const d = t.orders.detail;
   const canEdit = user.role === "admin" || user.role === "sales";
-  const bgName = (o: { name: string; name_bg: string | null }) => (locale === "bg" && o.name_bg ? o.name_bg : o.name);
+  const productName = (l: { product: string; product_bg: string | null }) => (locale === "bg" && l.product_bg ? l.product_bg : l.product);
 
   const data = await withUser(user.id, async (tx) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
     const o = (await tx.query<Overview>(
-      `select id, code, status, quantity, requested_date::text, client, client_id, project_code, project_name, formula_id,
-              formula_code, formula_version, product, product_bg, product_format, confirmed_at::text, dispatched_at::text
-         from sales_order_overview where id = $1`, [id])).rows[0];
+      "select id, code, status, requested_date::text, client, client_id from sales_order_overview where id = $1", [id])).rows[0];
     if (!o) return null;
+    const lines = (await tx.query<Line>(
+      `select id, quantity, project_id, project_code, project_name, formula_id, formula_code, formula_version, product, product_bg, offer_id
+         from sales_order_line_overview where order_id = $1 order by sort_order`, [id])).rows;
+    const mos = (await tx.query<Mo>(
+      `select id, code, status, sales_order_line_id, quantity from manufacturing_orders
+        where sales_order_line_id in (select id from sales_order_line_overview where order_id = $1) order by code`, [id])).rows;
     const c = canEdit
       ? (await tx.query<Commercial>(
-          `select so.offer_id, of.code as offer_code, so.unit_price::text, so.currency, so.deposit_pct::text, so.balance_terms,
-                  so.balance_net_days, so.deposit_received_on::text, so.balance_received_on::text, so.customer_ref, so.notes
-             from sales_orders so join offers of on of.id = so.offer_id where so.id = $1`, [id])).rows[0]
+          `select currency, deposit_pct::text, balance_terms, balance_net_days, deposit_received_on::text, balance_received_on::text,
+                  customer_ref, notes from sales_orders where id = $1`, [id])).rows[0]
       : undefined;
-    const reqs = (await tx.query<Req>(
-      `select item_id, sku, name, name_bg, kind, base_unit, required::text, reserved::text, available::text
-         from order_material_requirements($1)`, [id])).rows;
-    return { o, c, reqs };
+    const prices = canEdit
+      ? (await tx.query<{ id: string; unit_price: string; offer_code: string }>(
+          `select l.id, l.unit_price::text, of.code as offer_code from sales_order_lines l join offers of on of.id = l.offer_id
+            where l.order_id = $1`, [id])).rows
+      : [];
+    const offerOptions = canEdit && o.status === "draft"
+      ? (await tx.query<OfferOption>(
+          `select of.id as offer_id, of.code, f.name as product, f.name_bg as product_bg, t.quantity, t.unit_price::text
+             from offers of join offer_tiers t on t.offer_id = of.id
+             join formula_versions v on v.id = of.formula_version_id join formulas f on f.id = v.formula_id
+            where of.client_id = $1 and of.status in ('sent', 'accepted') and of.project_id is not null and t.unit_price is not null
+            order by of.code desc, t.quantity`, [o.client_id])).rows
+      : [];
+    return { o, lines, mos, c, prices, offerOptions };
   });
   if (!data) notFound();
-  const { o, c, reqs } = data;
+  const { o, lines, mos, c, prices, offerOptions } = data;
 
-  const total = c ? Number(c.unit_price) * o.quantity : 0;
+  const price = new Map(prices.map((p) => [p.id, p]));
+  const total = lines.reduce((s, l) => s + Number(price.get(l.id)?.unit_price ?? 0) * l.quantity, 0);
   const money = (n: number | string) => formatPrice(locale, n, c?.currency ?? "EUR");
-  const canReserve = o.status === "confirmed" || o.status === "in_production";
+  const isDraft = o.status === "draft";
+  const canPlan = !["cancelled", "dispatched", "closed"].includes(o.status);
   const balanceText = c ? fmt(t.enums.balanceTerms[c.balance_terms ?? "before_dispatch"], { days: c.balance_net_days ?? 0 }) : "";
-  const reqGrid = "md:grid-cols-[minmax(0,1.6fr)_120px_120px_150px] lg:grid-cols-[minmax(0,1.6fr)_120px_120px_120px_150px] xl:grid-cols-[minmax(0,1.6fr)_100px_115px_90px_160px] xl:max-[1439px]:grid-cols-[minmax(0,1.6fr)_110px_110px_170px]";
 
   return (
     <div className="flex flex-col gap-6">
@@ -71,62 +85,79 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
         subtitle={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Chip tone={orderTone(o.status)}>{t.enums.orderStatus[o.status as "draft"]}</Chip>
-            <span>{locale === "bg" && o.product_bg ? o.product_bg : o.product} · {formatNumber(locale, o.quantity)} {t.common.units}</span>
+            <span>{t.orders.products}: {lines.length}{c ? ` · ${money(total)}` : ""}</span>
           </span>
         }
       />
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-4">
-          <Card title={t.orders.product} id="product-h">
-            <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-              <Fact label={d.project}><Link href={`/clients/${o.client_id}`} className="text-ink">{o.project_code} · {o.project_name}</Link></Fact>
-              <Fact label={t.formulas.title}>
-                {canEdit
-                  ? <Link href={`/formulas/${o.formula_id}?v=${o.formula_version}`} className="text-ink">{fmt(t.offers.detail.formulaVersion, { code: o.formula_code, n: o.formula_version })}</Link>
-                  : fmt(t.offers.detail.formulaVersion, { code: o.formula_code, n: o.formula_version })}
-              </Fact>
-              <Fact label={t.formulas.format}>{t.enums.productFormat[o.product_format as "capsule"]}</Fact>
-              <Fact label={t.orders.quantity}>{formatNumber(locale, o.quantity)} {t.common.units}</Fact>
-              {c && <Fact label={d.unitPrice}>{money(c.unit_price)}</Fact>}
-              {c && <Fact label={t.orders.total}><strong>{money(total)}</strong></Fact>}
-              {c && <Fact label={d.offer}><Link href={`/offers/${c.offer_id}`} className="text-ink">{c.offer_code}</Link></Fact>}
-              <Fact label={d.requested}>{formatDate(locale, o.requested_date)}</Fact>
-            </div>
-          </Card>
-
-          <Card title={d.materials} id="materials-h">
-            <p className="m-0 text-[13px] text-ink-2">{d.materialsNote}</p>
-            <div>
-              <div className={`row hide-sm border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${reqGrid}`}>
-                <span>{d.item}</span><span>{d.required}</span><span>{d.reserved}</span>
-                <span className="hide-md xl:max-[1439px]:hidden">{d.available}</span><span><span className="sr-only">{t.orders.status}</span></span>
-              </div>
-              {reqs.length === 0 && <div className="py-3"><Empty>{d.noMaterials}</Empty></div>}
-              {reqs.map((r) => {
-                const missing = Number(r.required) - Number(r.reserved);
-                return (
-                  <div key={r.item_id} className={`row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3 text-sm last:border-0 ${reqGrid}`}>
-                    <div className="min-w-0">
-                      <div className="font-semibold break-words">{bgName(r)}</div>
-                      <div className="text-xs text-ink-2">{r.sku} · {t.offers.detail.kinds[r.kind as "ingredient"]}</div>
+          <Card title={d.lines} id="lines-h">
+            {lines.length === 0 && <Empty>{d.noLines}</Empty>}
+            {lines.map((l) => {
+              const p = price.get(l.id);
+              const lineMos = mos.filter((m) => m.sales_order_line_id === l.id);
+              const active = lineMos.some((m) => m.status !== "cancelled");
+              return (
+                <div key={l.id} className="flex flex-col gap-3 border-b border-mist pb-4 last:border-0">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-[1_1_240px]">
+                      <div className="font-semibold break-words">{productName(l)}</div>
+                      <div className="text-xs text-ink-2">
+                        {l.project_code} · {l.project_name} · {fmt(t.offers.detail.formulaVersion, { code: l.formula_code, n: l.formula_version })}
+                        {p && <> · <Link href={`/offers/${l.offer_id}`} className="text-ink-2">{p.offer_code}</Link></>}
+                      </div>
                     </div>
-                    <span className="hide-sm">{formatQty(locale, r.required, r.base_unit)}</span>
-                    <span className="hide-sm">{formatQty(locale, r.reserved, r.base_unit)}</span>
-                    <span className="hide-md xl:max-[1439px]:hidden">{formatQty(locale, r.available, r.base_unit)}</span>
-                    {missing > 0
-                      ? <Chip tone="red">{fmt(d.missing, { qty: formatQty(locale, missing, r.base_unit) })}</Chip>
-                      : <Chip tone="green">{d.covered}</Chip>}
+                    {isDraft && canEdit && (
+                      <form action={removeOrderLine}>
+                        <input type="hidden" name="line_id" value={l.id} />
+                        <input type="hidden" name="order_id" value={o.id} />
+                        <button type="submit" className="btn btn-outline" aria-label={`${d.remove}: ${productName(l)}`}>{d.remove}</button>
+                      </form>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-            {canReserve ? (
-              <ActionForm action={reserveOrderMaterials} submitLabel={d.reserve} resetOnSuccess={false}>
-                <input type="hidden" name="order_id" value={o.id} />
-              </ActionForm>
-            ) : (
-              <p className="m-0 text-sm text-ink-2">{d.reserveNote}</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
+                    <Fact label={d.quantity}>{formatNumber(locale, l.quantity)} {t.common.units}</Fact>
+                    {p && <Fact label={d.unitPrice}>{money(p.unit_price)}</Fact>}
+                    {p && <Fact label={d.lineTotal}><strong>{money(Number(p.unit_price) * l.quantity)}</strong></Fact>}
+                    <Fact label={d.production}>
+                      {lineMos.length === 0 ? "—" : (
+                        <span className="flex flex-col gap-1">
+                          {lineMos.map((m) => (
+                            <Link key={m.id} href={`/production/${m.id}`} className="text-ink">
+                              {m.code} · {t.enums.moStatus[m.status as "simulation"]}
+                            </Link>
+                          ))}
+                        </span>
+                      )}
+                    </Fact>
+                  </div>
+                  {canPlan && !active && (
+                    <ActionForm action={createProductionFromLine} submitLabel={d.planProduction} resetOnSuccess={false}>
+                      <input type="hidden" name="line_id" value={l.id} />
+                    </ActionForm>
+                  )}
+                </div>
+              );
+            })}
+            {isDraft && canEdit && offerOptions.length > 0 && (
+              <div className="flex flex-col gap-3 border-t border-mist pt-4">
+                <h3 className="m-0 text-base font-bold">{d.addLine}</h3>
+                <p className="m-0 text-[13px] text-ink-2">{d.addLineNote}</p>
+                <ActionForm action={addOrderLine} submitLabel={t.common.add}>
+                  <input type="hidden" name="order_id" value={o.id} />
+                  <label className="field"><span>{d.chooseOffer} *</span>
+                    <select name="offer_quantity" required className="input" defaultValue="">
+                      <option value="" disabled>—</option>
+                      {offerOptions.map((x) => (
+                        <option key={x.offer_id + x.quantity} value={`${x.offer_id}|${x.quantity}`}>
+                          {x.code} · {productName(x)} · {formatNumber(locale, x.quantity)} × {money(x.unit_price)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </ActionForm>
+              </div>
             )}
           </Card>
         </div>
@@ -145,7 +176,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
             </Card>
           )}
 
-          {c && (
+          {c ? (
             <Card title={d.payments} id="payments-h">
               <p className="m-0 text-sm">
                 {c.deposit_pct != null && Number(c.deposit_pct) > 0 && <>{fmt(d.depositAmount, { amount: money(total * Number(c.deposit_pct) / 100) })} · </>}
@@ -162,6 +193,10 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                   <label className="field"><span>{d.notes}</span><textarea name="notes" defaultValue={c.notes ?? ""} className="input" /></label>
                 </div>
               </ActionForm>
+            </Card>
+          ) : (
+            <Card title={d.payments} id="payments-h">
+              <Fact label={d.requested}>{formatDate(locale, o.requested_date)}</Fact>
             </Card>
           )}
         </div>

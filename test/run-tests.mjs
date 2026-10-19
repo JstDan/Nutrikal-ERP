@@ -422,74 +422,182 @@ await fails('users cannot call the internal costing function', () =>
   as('sales', 'select * from offer_cost_lines($1, 1000)', [offer.id]), 'permission denied');
 
 console.log('\nSales orders');
-let order;
-const req = async (user = 'sales') => Object.fromEntries(
-  (await as(user, 'select * from order_material_requirements($1)', [order.id])).map(r => [r.sku, r]));
+let order, offer2, line1, line2;
 await fails('orders cannot be inserted directly', () =>
-  as('sales', `insert into sales_orders (client_id, project_id, offer_id, formula_version_id, quantity, unit_price)
-               values ($1, $2, $3, $4, 1000, 1)`, [client.id, project.id, offer.id, v2.id]), 'row-level security');
+  as('sales', `insert into sales_orders (client_id) values ($1)`, [client.id]), 'row-level security');
 await fails('a draft offer cannot become an order', () =>
   as('sales', 'select create_order_from_offer($1, 1000)', [offer.id]), 'sent or accepted');
 await fails('the quantity must be one of the offer prices', async () => {
   await as('sales', `update offers set status = 'sent' where id = $1`, [offer.id]);
   await as('sales', 'select create_order_from_offer($1, 1234)', [offer.id]);
 }, 'no price for 1234');
-await ok('sales turns the offer into an order: code, price and accepted offer', async () => {
+await ok('sales turns the offer into an order: code, line price and accepted offer', async () => {
   const r = await one('sales', `select create_order_from_offer($1, 1000, 'PO-778') as id`, [offer.id]);
   order = await one('sales', 'select * from sales_orders where id = $1', [r.id]);
-  const t = await tier(1000);
-  eq(order.code, 'SO-00001', 'code'); eq(order.unit_price, t.unit_price, 'price from the tier');
-  eq(order.client_id, client.id, 'client'); eq(order.status, 'draft', 'status');
+  line1 = await one('sales', 'select * from sales_order_lines where order_id = $1', [order.id]);
+  eq(order.code, 'SO-00001', 'code'); eq(line1.unit_price, (await tier(1000)).unit_price, 'price from the tier');
+  eq(line1.project_id, project.id, 'project'); eq(order.status, 'draft', 'status');
   eq((await one('sales', 'select status from offers where id = $1', [offer.id])).status, 'accepted', 'offer');
 });
+await ok('a second product from another offer of the same client goes on the same order', async () => {
+  offer2 = await one('sales', `insert into offers (client_id, project_id, formula_version_id) values ($1, $2, $3) returning id`,
+                     [client.id, project.id, v2.id]);
+  await as('sales', 'insert into offer_tiers (offer_id, quantity) values ($1, 2000)', [offer2.id]);
+  await as('sales', `update offers set status = 'sent' where id = $1`, [offer2.id]);
+  line2 = { id: (await one('sales', 'select add_order_line_from_offer($1, $2, 2000) as id', [order.id, offer2.id])).id };
+  eq((await as('sales', 'select id from sales_order_lines where order_id = $1', [order.id])).length, 2, 'lines');
+});
+await fails('an offer of another client cannot be added', async () => {
+  const p2 = await one('sales', `insert into projects (client_id, name) values ($1, 'Other product') returning id`, [client2.id]);
+  const f2 = await one('sales', `insert into formulas (name, product_format, serving_size, servings_per_pack) values ('Stock C', 'capsule', 1, 30) returning id`);
+  const fv = await one('sales', 'select id from formula_versions where formula_id = $1', [f2.id]);
+  await as('sales', `insert into formula_lines (version_id, item_id, amount) values ($1, $2, 100)`, [fv.id, mcc.id]);
+  await as('sales', 'update formula_versions set shelf_life_months = 12 where id = $1', [fv.id]);
+  await as('admin', 'select approve_formula_version($1)', [fv.id]);
+  const o2 = await one('sales', `insert into offers (client_id, project_id, formula_version_id) values ($1, $2, $3) returning id`, [client2.id, p2.id, fv.id]);
+  await as('sales', 'insert into offer_tiers (offer_id, quantity) values ($1, 500)', [o2.id]);
+  await as('sales', `update offers set status = 'sent' where id = $1`, [o2.id]);
+  await as('sales', 'select add_order_line_from_offer($1, $2, 500)', [order.id, o2.id]);
+}, 'another client');
 await ok('confirming moves the project to the order stage', async () => {
   await as('sales', `update sales_orders set status = 'confirmed', deposit_pct = 30 where id = $1`, [order.id]);
   eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'order', 'project stage');
 });
-await fails('price is locked after confirmation', () =>
-  as('sales', 'update sales_orders set unit_price = 1 where id = $1', [order.id]), 'only change on a draft');
+await fails('products are locked after confirmation', () =>
+  as('sales', 'delete from sales_order_lines where id = $1', [line2.id]), 'only change on a draft');
 await fails('an order cannot skip steps', () =>
   as('sales', `update sales_orders set status = 'dispatched' where id = $1`, [order.id]), 'cannot go from confirmed to dispatched');
-await ok('materials for 1000 packs: 22.5 kg magnesium (already reserved), 60 000 capsules, 1000 jars', async () => {
-  const r = await req();
-  eq(Number(r['RM-MGBG'].required), 22.5, 'magnesium'); eq(Number(r['RM-MGBG'].reserved), 60, 'reserved earlier');
-  eq(Number(r['PK-CAP0'].required), 60000, 'capsules'); eq(Number(r['PK-JAR'].required), 1000, 'jars');
-});
-await ok('reserving takes what stock allows and leaves the rest missing', async () => {
-  const l = await one('inventory', `select receive_lot($1, $2, 3) as id`, [mcc.id, L['NK-WH']]);
-  await as('admin', `select set_lot_qc_status($1, 'released')`, [l.id]);
-  eq((await one('inventory', 'select reserve_order_materials($1) as n', [order.id])).n, 1, 'items reserved');
-  const r = await req('inventory');
-  eq(Number(r['EX-MCC'].reserved), 3, 'cellulose reserved'); eq(Number(r['EX-MCC'].required), 4.41, 'cellulose needed');
-  eq(Number(r['PK-JAR'].reserved), 0, 'no jars in stock');
-});
 await fails('production does not start before the deposit', () =>
   as('sales', `update sales_orders set status = 'in_production' where id = $1`, [order.id]), 'deposit');
 await ok('with the deposit received, production starts; project follows', async () => {
   await as('sales', `update sales_orders set deposit_received_on = current_date, status = 'in_production' where id = $1`, [order.id]);
   eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'production', 'project stage');
 });
-await fails('no dispatch before the balance is paid', async () => {
-  await as('sales', `update sales_orders set status = 'ready' where id = $1`, [order.id]);
-  await as('sales', `update sales_orders set status = 'dispatched' where id = $1`, [order.id]);
-}, 'balance must be paid');
-await ok('balance paid: dispatched; project completed', async () => {
-  await as('sales', `update sales_orders set balance_received_on = current_date, status = 'dispatched' where id = $1`, [order.id]);
-  const o = await one('sales', 'select status, dispatched_at from sales_orders where id = $1', [order.id]);
-  eq(o.status, 'dispatched', 'status'); if (!o.dispatched_at) throw new Error('no dispatched_at');
-  eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'completed', 'project stage');
-});
-await ok('inventory sees the order overview without prices, not the orders table', async () => {
-  const rows = await as('inventory', 'select * from sales_order_overview');
-  eq(rows.length, 1, 'overview'); eq('unit_price' in rows[0], false, 'no price column');
+await ok('inventory sees the orders and lines without prices, not the tables', async () => {
+  const h = await as('inventory', 'select * from sales_order_overview');
+  const l = await as('inventory', 'select * from sales_order_line_overview');
+  eq(h.length, 1, 'orders'); eq(l.length, 2, 'lines'); eq('unit_price' in l[0], false, 'no price column');
   eq((await as('inventory', 'select * from sales_orders')).length, 0, 'orders table');
+  eq((await as('inventory', 'select * from sales_order_lines')).length, 0, 'lines table');
 });
 await ok('partner sees no orders', async () => {
   eq((await as('partner', 'select * from sales_order_overview')).length, 0, 'overview');
-  eq((await as('partner', 'select * from sales_orders')).length, 0, 'orders');
+  eq((await as('partner', 'select * from sales_order_line_overview')).length, 0, 'lines');
 });
-await fails('partner cannot read material requirements', () =>
-  as('partner', 'select * from order_material_requirements($1)', [order.id]), 'not allowed');
+
+console.log('\nManufacturing');
+let mo, mo2, mccWh;
+const mreq = async (user = 'inventory', id = mo.id) => Object.fromEntries(
+  (await as(user, 'select * from mo_material_requirements($1)', [id])).map(r => [r.sku, r]));
+const recv = async (itemId, qty, loc) => {
+  const l = await one('inventory', 'select receive_lot($1, $2, $3) as id', [itemId, L[loc], qty]);
+  await as('admin', `select set_lot_qc_status($1, 'released')`, [l.id]);
+  return l.id;
+};
+await ok('sales simulates production of the first line: project, formula and packaging come along', async () => {
+  mo = await one('sales', 'insert into manufacturing_orders (sales_order_line_id, quantity) values ($1, 1000) returning *', [line1.id]);
+  eq(mo.code, 'MO-00001', 'code'); eq(mo.status, 'simulation', 'status');
+  eq(mo.project_id, project.id, 'project'); eq(mo.formula_version_id, v2.id, 'formula');
+  eq((await as('sales', 'select * from mo_packaging where mo_id = $1', [mo.id])).length, 1, 'jar copied from the offer');
+});
+await ok('materials: 22.5 kg magnesium (8 kg free), 60 000 capsules, 1000 jars', async () => {
+  const r = await mreq();
+  eq(Number(r['RM-MGBG'].required), 22.5, 'magnesium'); eq(Number(r['RM-MGBG'].available), 8, 'free magnesium');
+  eq(Number(r['PK-CAP0'].required), 60000, 'capsules'); eq(Number(r['PK-JAR'].required), 1000, 'jars');
+});
+await ok('reserving in simulation takes what is free', async () => {
+  mccWh = await recv(mcc.id, 3, 'NK-WH');
+  eq((await one('sales', 'select reserve_mo_materials($1) as n', [mo.id])).n, 2, 'items reserved');
+  const r = await mreq();
+  eq(Number(r['RM-MGBG'].reserved), 8, 'magnesium'); eq(Number(r['EX-MCC'].reserved), 3, 'cellulose');
+});
+await ok('purchase requests for what is missing, once', async () => {
+  eq((await one('sales', 'select create_purchase_requests($1) as n', [mo.id])).n, 5, 'requests');
+  eq(Number((await mreq())['RM-MGBG'].requested), 14.5, 'magnesium requested');
+  eq((await one('sales', 'select create_purchase_requests($1) as n', [mo.id])).n, 0, 'no duplicates');
+});
+await fails('sales cannot schedule production', () =>
+  as('sales', 'select schedule_mo($1, current_date + 7)', [mo.id]), 'not allowed');
+await fails('the status changes only through the production actions', () =>
+  as('inventory', `update manufacturing_orders set status = 'released' where id = $1`, [mo.id]), 'production actions');
+await ok('inventory schedules the order', async () => {
+  await as('inventory', 'select schedule_mo($1, current_date + 7)', [mo.id]);
+  eq((await one('inventory', 'select status from manufacturing_orders where id = $1', [mo.id])).status, 'scheduled', 'status');
+});
+await fails('quantity is fixed once scheduled', () =>
+  as('inventory', 'update manufacturing_orders set quantity = 2000 where id = $1', [mo.id]), 'only in simulation');
+await fails('it cannot go to the partner with materials missing', () =>
+  as('inventory', 'select release_mo($1)', [mo.id]), 'not all materials are reserved');
+const lots = {};
+await ok('stock arrives at the partner; everything gets reserved; sent to the partner', async () => {
+  const old = await one('inventory', `select id from stock_reservations where project_id = $1 and manufacturing_order_id is null and status = 'active'`, [project.id]);
+  await as('sales', `select close_reservation($1, 'released')`, [old.id]);
+  lots.mcc = await recv(mcc.id, 2, 'PF-RM');
+  lots.novel = await recv(novelPending.id, 2, 'PF-RM');
+  lots.caps = await recv(caps.id, 70000, 'PF-PACK');
+  lots.jar = await recv(jar.id, 1100, 'PF-PACK');
+  await as('inventory', 'select reserve_mo_materials($1)', [mo.id]);
+  await as('inventory', 'select release_mo($1)', [mo.id]);
+  eq((await one('inventory', 'select status from manufacturing_orders where id = $1', [mo.id])).status, 'released', 'status');
+});
+await ok('partner sees the order by project code only and the materials without free stock', async () => {
+  const rows = await as('partner', 'select * from partner_manufacturing_orders');
+  eq(rows.length, 1, 'orders'); eq(rows[0].project_code, 'NK-P-0001', 'project code');
+  eq(Object.keys(rows[0]).some(k => k.includes('client')), false, 'no client column');
+  eq((await as('partner', 'select * from manufacturing_orders')).length, 0, 'table hidden');
+  const r = await mreq('partner');
+  eq(r['RM-MGBG'].available, null, 'no free stock'); eq(Number(r['PK-JAR'].at_partner) >= 1000, true, 'jars at the facility');
+});
+await ok('partner starts production', async () => {
+  await as('partner', 'select start_production($1)', [mo.id]);
+});
+const consumption = () => JSON.stringify([
+  { lot_id: lot.id, location_id: L['PF-RM'], quantity: 22.5 },
+  { lot_id: lots.mcc, location_id: L['PF-RM'], quantity: 2 },
+  { lot_id: lots.novel, location_id: L['PF-RM'], quantity: 1.5 },
+  { lot_id: lots.caps, location_id: L['PF-PACK'], quantity: 60000 },
+  { lot_id: lots.jar, location_id: L['PF-PACK'], quantity: 1000 },
+]);
+await fails('partner cannot consume stock in the Nutrikal warehouse', () =>
+  as('partner', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb)`,
+     [mo.id, JSON.stringify([{ lot_id: mccWh, location_id: L['NK-WH'], quantity: 1 }])]), 'partner locations');
+await fails('a lot that is not a material of the order is refused', async () => {
+  const other = await one('inventory', 'select receive_lot($1, $2, 5) as id', [novelBlocked.id, L['PF-QUAR']]);
+  await as('partner', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb)`,
+           [mo.id, JSON.stringify([{ lot_id: other.id, location_id: L['PF-QUAR'], quantity: 1 }])]);
+}, 'not one of the materials');
+await ok('partner reports the batch: lots consumed, finished lot in quarantine at the facility', async () => {
+  const before = Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [lot.id])).q);
+  const r = await one('partner', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb) as lot`, [mo.id, consumption()]);
+  const fg = await one('admin', 'select l.lot_number, l.qc_status, i.type, i.sku from lots l join items i on i.id = l.item_id where l.id = $1', [r.lot]);
+  eq(fg.lot_number, 'B-24001', 'batch number'); eq(fg.qc_status, 'quarantine', 'QC'); eq(fg.type, 'finished_good', 'item type');
+  eq(fg.sku, 'FG-NK-P-0001', 'finished goods item');
+  eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1 and location_id = $2', [r.lot, L['PF-FG']])).q), 990, 'made');
+  eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [lot.id])).q), before - 22.5, 'magnesium used');
+  const m = await one('admin', 'select status, batch_number, produced_quantity from manufacturing_orders where id = $1', [mo.id]);
+  eq(m.status, 'completed', 'status'); eq(m.produced_quantity, 990, 'quantity');
+  eq((await as('admin', `select id from stock_reservations where manufacturing_order_id = $1 and status = 'active'`, [mo.id])).length, 0, 'reservations closed');
+});
+await ok('partner enters its invoice for the batch; sales cannot see it', async () => {
+  await as('partner', `insert into production_invoices (mo_id, invoice_number, invoice_date, amount) values ($1, 'PF-2026-118', current_date, 1450)`, [mo.id]);
+  eq((await as('partner', 'select * from production_invoices')).length, 1, 'partner sees own');
+  eq((await as('inventory', 'select * from production_invoices')).length, 1, 'inventory');
+  eq((await as('sales', 'select * from production_invoices')).length, 0, 'sales');
+});
+await fails('partner cannot invoice an order that was not sent to it', async () => {
+  mo2 = await one('sales', 'insert into manufacturing_orders (sales_order_line_id, quantity) values ($1, 2000) returning id', [line2.id]);
+  await as('partner', `insert into production_invoices (mo_id, invoice_number, invoice_date, amount) values ($1, 'X', current_date, 1)`, [mo2.id]);
+}, 'row-level security');
+await ok('cancelling releases reservations and open requests', async () => {
+  await as('sales', 'select create_purchase_requests($1)', [mo2.id]);
+  await as('inventory', 'select cancel_mo($1)', [mo2.id]);
+  eq((await one('inventory', 'select status from manufacturing_orders where id = $1', [mo2.id])).status, 'cancelled', 'status');
+  eq((await as('inventory', `select id from purchase_requests where manufacturing_order_id = $1 and status = 'open'`, [mo2.id])).length, 0, 'requests');
+});
+await ok('partner sees no purchase requests and no simulations', async () => {
+  eq((await as('partner', 'select * from purchase_requests')).length, 0, 'requests');
+  eq((await as('partner', 'select id from partner_manufacturing_orders')).length, 1, 'only the released one');
+});
 
 console.log('\nNumbering and audit');
 await fails('partner cannot draw invoice numbers', () => as('partner', `select next_number('invoice')`), 'not allowed');

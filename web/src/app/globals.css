@@ -78,3 +78,6 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
 /* aligned with Tailwind breakpoints: md = 768px, lg = 1024px */
 @media (max-width: 1023px) { .hide-md { display: none !important; } }
 @media (max-width: 767px)  { .hide-sm { display: none !important; } }
+
+/* Long button labels wrap on phones instead of pushing the page sideways */
+@media (max-width: 479px) { .btn { white-space: normal; text-align: center; } }

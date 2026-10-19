@@ -62,3 +62,22 @@ export function orderTone(status: string): Tone {
       return "neutral";
   }
 }
+
+export function moTone(status: string): Tone {
+  switch (status) {
+    case "scheduled":
+    case "released":
+    case "in_production":
+      return "amber";
+    case "completed":
+      return "green";
+    case "cancelled":
+      return "red";
+    default:
+      return "neutral";
+  }
+}
+
+export function purchaseTone(status: string): Tone {
+  return status === "received" ? "green" : status === "ordered" ? "amber" : status === "cancelled" ? "red" : "neutral";
+}

@@ -382,7 +382,7 @@ export async function saveFormatCosting(_: ActionState, fd: FormData): Promise<A
   return { ok: true, message: t.common.saved };
 }
 
-// ----------------------------------------------------------------- orders
+/// ----------------------------------------------------------------- orders
 export async function createOrderFromOffer(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user } = await getSession();
   let id: string;
@@ -398,6 +398,24 @@ export async function createOrderFromOffer(_: ActionState, fd: FormData): Promis
   }
   revalidatePath("/", "layout");
   redirect(`/orders/${id}`);
+}
+
+export async function addOrderLine(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const [offerId, qty] = (str(fd, "offer_quantity") ?? "|").split("|");
+  try {
+    await q(user.id, "select add_order_line_from_offer($1, $2, $3::int)", [str(fd, "order_id"), offerId || null, Number(qty) || null]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: t.common.saved };
+}
+
+export async function removeOrderLine(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "delete from sales_order_lines where id = $1", [str(fd, "line_id")]);
+  revalidatePath(`/orders/${str(fd, "order_id")}`);
 }
 
 export async function saveOrder(_: ActionState, fd: FormData): Promise<ActionState> {
@@ -429,15 +447,127 @@ export async function setOrderStatus(_: ActionState, fd: FormData): Promise<Acti
   return { ok: true, message: t.common.saved };
 }
 
-export async function reserveOrderMaterials(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { user, t } = await getSession();
+// ------------------------------------------------------------- production
+export async function createProductionFromLine(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
   try {
-    const [r] = await q<{ n: number }>(user.id, "select reserve_order_materials($1) as n", [str(fd, "order_id")]);
-    revalidatePath("/", "layout");
-    return { ok: true, message: fmt(t.orders.detail.reservedN, { n: r.n }) };
+    const [row] = await q<{ id: string }>(
+      user.id,
+      `insert into manufacturing_orders (sales_order_line_id, quantity)
+       select id, quantity from sales_order_line_overview where id = $1 returning id`,
+      [str(fd, "line_id")],
+    );
+    id = row.id;
   } catch (e) {
     return { error: errorText(e) };
   }
+  revalidatePath("/", "layout");
+  redirect(`/production/${id}`);
+}
+
+export async function createSimulation(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    const [row] = await q<{ id: string }>(
+      user.id,
+      `insert into manufacturing_orders (formula_version_id, project_id, quantity, planned_date)
+       values ($1, $2, $3, $4::date) returning id`,
+      [str(fd, "formula_version_id"), str(fd, "project_id"), num(fd, "quantity"), str(fd, "planned_date")],
+    );
+    id = row.id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/production");
+  redirect(`/production/${id}`);
+}
+
+const moPath = (fd: FormData) => `/production/${str(fd, "mo_id")}`;
+
+/** Runs one production function (by name) and reports the result. */
+async function moCall(fd: FormData, sql: string, params: unknown[], message?: (r: Record<string, unknown>) => string): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    const [r] = await q<Record<string, unknown>>(user.id, sql, params);
+    revalidatePath("/", "layout");
+    return { ok: true, message: message ? message(r ?? {}) : t.common.saved };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+}
+
+export async function saveMo(_: ActionState, fd: FormData): Promise<ActionState> {
+  return moCall(fd, "update manufacturing_orders set quantity = coalesce($2, quantity), project_id = $3, notes = $4 where id = $1",
+    [str(fd, "mo_id"), num(fd, "quantity"), str(fd, "project_id"), str(fd, "notes")]);
+}
+
+export async function addMoPackaging(_: ActionState, fd: FormData): Promise<ActionState> {
+  return moCall(fd, `insert into mo_packaging (mo_id, item_id, qty_per_pack) values ($1, $2, coalesce($3, 1))
+                     on conflict (mo_id, item_id) do update set qty_per_pack = excluded.qty_per_pack`,
+    [str(fd, "mo_id"), str(fd, "item_id"), num(fd, "qty_per_pack")]);
+}
+
+export async function removeMoPackaging(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "delete from mo_packaging where id = $1", [str(fd, "packaging_id")]);
+  revalidatePath(moPath(fd));
+}
+
+export async function reserveMo(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { t } = await getSession();
+  return moCall(fd, "select reserve_mo_materials($1) as n", [str(fd, "mo_id")], (r) => fmt(t.production.detail.reservedN, { n: Number(r.n) }));
+}
+
+export async function requestPurchases(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { t } = await getSession();
+  return moCall(fd, "select create_purchase_requests($1) as n", [str(fd, "mo_id")], (r) => fmt(t.production.detail.requestedN, { n: Number(r.n) }));
+}
+
+export async function scheduleMo(_: ActionState, fd: FormData): Promise<ActionState> {
+  return moCall(fd, "select schedule_mo($1, $2::date)", [str(fd, "mo_id"), str(fd, "planned_date")]);
+}
+
+export async function releaseMo(_: ActionState, fd: FormData): Promise<ActionState> {
+  return moCall(fd, "select release_mo($1)", [str(fd, "mo_id")]);
+}
+
+export async function cancelMo(_: ActionState, fd: FormData): Promise<ActionState> {
+  return moCall(fd, "select cancel_mo($1)", [str(fd, "mo_id")]);
+}
+
+export async function startProduction(_: ActionState, fd: FormData): Promise<ActionState> {
+  return moCall(fd, "select start_production($1)", [str(fd, "mo_id")]);
+}
+
+export async function completeProduction(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { t } = await getSession();
+  // One row per material: use_<n> = "lot_id|location_id", qty_<n> = quantity
+  const consumption: { lot_id: string; location_id: string; quantity: number }[] = [];
+  for (const [k, v] of fd.entries()) {
+    if (!k.startsWith("use_") || typeof v !== "string" || !v) continue;
+    const qty = num(fd, "qty_" + k.slice(4));
+    const [lot_id, location_id] = v.split("|");
+    if (lot_id && location_id && qty) consumption.push({ lot_id, location_id, quantity: qty });
+  }
+  const batch = str(fd, "batch_number") ?? "";
+  const qty = num(fd, "produced_quantity");
+  return moCall(fd, "select complete_production($1, $2, $3::int, $4::date, $5::jsonb)",
+    [str(fd, "mo_id"), batch, qty, str(fd, "produced_on"), JSON.stringify(consumption)],
+    () => fmt(t.production.partner.done, { batch, qty: qty ?? 0 }));
+}
+
+export async function addProductionInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
+  return moCall(fd, `insert into production_invoices (mo_id, invoice_number, invoice_date, amount) values ($1, $2, $3::date, $4)`,
+    [str(fd, "mo_id"), str(fd, "invoice_number"), str(fd, "invoice_date"), num(fd, "amount")]);
+}
+
+// ------------------------------------------------------------- purchasing
+export async function setPurchaseRequestStatus(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "update purchase_requests set status = $2::purchase_request_status where id = $1", [str(fd, "request_id"), str(fd, "status")]);
+  revalidatePath("/purchasing");
 }
 
 // -------------------------------------------------------------- inventory

@@ -61,7 +61,8 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
              from offer_cost_breakdown($1, $2)`, [id, breakdownQty])).rows
       : [];
     const orders = (await tx.query<{ id: string; code: string; quantity: number; status: string }>(
-      "select id, code, quantity, status from sales_orders where offer_id = $1 order by code", [id])).rows;
+      `select so.id, so.code, l.quantity, so.status from sales_order_lines l join sales_orders so on so.id = l.order_id
+        where l.offer_id = $1 order by so.code`, [id])).rows;
     const projects = (await tx.query<{ id: string; code: string; name: string }>(
       "select id, code, name from projects where client_id = $1 and status not in ('completed', 'lost') order by code desc", [offer.client_id])).rows;
     return { offer, tiers, packaging, packOptions, canSeeCosts, breakdownQty, breakdown, orders, projects };
