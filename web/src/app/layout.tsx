@@ -11,7 +11,8 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const { locale } = await getSession();
   return (
-    <html lang={locale}>
+    // Browser extensions add attributes to <html> before React loads; ignore those (this element only)
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
