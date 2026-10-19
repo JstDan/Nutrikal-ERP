@@ -256,6 +256,131 @@ export async function removeFormulaClaim(fd: FormData) {
   revalidatePath(`/formulas/${str(fd, "formula_id")}`);
 }
 
+// ----------------------------------------------------------------- offers
+const offerPath = (fd: FormData) => `/offers/${str(fd, "offer_id")}`;
+
+export async function createOffer(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    const [row] = await q<{ id: string }>(
+      user.id,
+      "insert into offers (client_id, project_id, formula_version_id) values ($1, $2, $3) returning id",
+      [str(fd, "client_id"), str(fd, "project_id"), str(fd, "formula_version_id")],
+    );
+    id = row.id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/offers");
+  redirect(`/offers/${id}`);
+}
+
+export async function saveOfferTerms(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(
+      user.id,
+      `update offers set valid_until = $2::date, incoterm = coalesce($3, 'EXW'), deposit_pct = $4,
+              balance_terms = $5::balance_terms, balance_net_days = $6, locale = $7::app_locale, notes = $8, internal_notes = $9
+        where id = $1`,
+      [str(fd, "offer_id"), str(fd, "valid_until"), str(fd, "incoterm"), num(fd, "deposit_pct"), str(fd, "balance_terms"),
+       num(fd, "balance_net_days"), str(fd, "locale"), str(fd, "notes"), str(fd, "internal_notes")],
+    );
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(offerPath(fd));
+  return { ok: true, message: t.common.saved };
+}
+
+export async function addOfferTier(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const price = num(fd, "unit_price");
+  try {
+    await q(
+      user.id,
+      `insert into offer_tiers (offer_id, quantity, margin_pct, unit_price, price_is_manual) values ($1, $2, $3, $4, $5)
+       on conflict (offer_id, quantity) do update
+         set margin_pct = excluded.margin_pct, unit_price = excluded.unit_price, price_is_manual = excluded.price_is_manual`,
+      [str(fd, "offer_id"), num(fd, "quantity"), num(fd, "margin_pct"), price, price != null],
+    );
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(offerPath(fd));
+  return { ok: true, message: t.common.saved };
+}
+
+export async function removeOfferTier(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "delete from offer_tiers where id = $1", [str(fd, "tier_id")]);
+  revalidatePath(offerPath(fd));
+}
+
+export async function addOfferPackaging(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(
+      user.id,
+      `insert into offer_packaging (offer_id, item_id, qty_per_pack) values ($1, $2, coalesce($3, 1))
+       on conflict (offer_id, item_id) do update set qty_per_pack = excluded.qty_per_pack`,
+      [str(fd, "offer_id"), str(fd, "item_id"), num(fd, "qty_per_pack")],
+    );
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(offerPath(fd));
+  return { ok: true, message: t.common.saved };
+}
+
+export async function removeOfferPackaging(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "delete from offer_packaging where id = $1", [str(fd, "packaging_id")]);
+  revalidatePath(offerPath(fd));
+}
+
+export async function setOfferStatus(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, "update offers set status = $2::offer_status where id = $1", [str(fd, "offer_id"), str(fd, "status")]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/offers", "layout");
+  return { ok: true, message: t.common.saved };
+}
+
+export async function recalcOffer(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, "select recalc_offer($1)", [str(fd, "offer_id")]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(offerPath(fd));
+  return { ok: true, message: t.common.saved };
+}
+
+export async function saveFormatCosting(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    const rows = await q(
+      user.id,
+      `update format_costing set fee_per_pack = coalesce($2, 0), fee_per_1000_units = coalesce($3, 0), fee_per_kg = coalesce($4, 0),
+              setup_fee = coalesce($5, 0), loss_pct = coalesce($6, 0), default_margin_pct = coalesce($7, 0), min_order_packs = $8
+        where product_format = $1::product_format returning product_format`,
+      [str(fd, "product_format"), num(fd, "fee_per_pack"), num(fd, "fee_per_1000_units"), num(fd, "fee_per_kg"),
+       num(fd, "setup_fee"), num(fd, "loss_pct"), num(fd, "default_margin_pct"), num(fd, "min_order_packs")],
+    );
+    if (rows.length === 0) return { error: t.offers.costingPage.adminOnly };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/offers/costing");
+  return { ok: true, message: t.common.saved };
+}
+
 // -------------------------------------------------------------- inventory
 export async function receiveGoods(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();

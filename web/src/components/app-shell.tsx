@@ -6,6 +6,7 @@ import { LOCALES } from "@/lib/i18n";
 import { SideNav, type NavGroup } from "./side-nav";
 import { DemoUserSwitch } from "./demo-user-switch";
 import { MobileMenu } from "./mobile-menu";
+import { LogoMark } from "./logo";
 
 export async function AppShell({ children }: { children: ReactNode }) {
   const { user, locale, t } = await getSession();
@@ -28,7 +29,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
             { href: "/", label: t.nav.dashboard },
             { href: "/clients", label: t.nav.clients },
             { href: "/projects", label: t.nav.projects },
-            { label: t.nav.offers, soon: soon(2) },
+            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/offers", label: t.nav.offers }] : []),
             { label: t.nav.orders, soon: soon(3) },
             { label: t.nav.invoices, soon: soon(4) },
           ],
@@ -47,9 +48,10 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-wrap">
-      <aside className="relative flex w-full flex-col gap-6 bg-ink px-4 py-5 text-white lg:w-[248px] lg:shrink-0 lg:py-6">
+      <aside className="relative flex print:hidden w-full flex-col gap-6 bg-ink px-4 py-5 text-white lg:w-[248px] lg:shrink-0 lg:py-6">
         <a href={isPartner ? "/partner" : "/"} className="flex flex-col gap-1 px-2 text-white no-underline">
-          <span className="flex items-baseline gap-2">
+          <span className="flex items-center gap-2.5">
+            <LogoMark size={32} inverted />
             <span className="text-[22px] font-extrabold tracking-[0.6px]">Nutrikal</span>
             <span className="text-[11px] font-semibold tracking-[2px] text-green">{isPartner ? t.nav.productionLabel.toUpperCase() : "ERP"}</span>
           </span>
@@ -61,7 +63,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-[999_1_560px] flex-col">
-        <header className="flex flex-wrap items-center gap-3 border-b border-line bg-white px-4 py-3 sm:px-8">
+        <header className="flex flex-wrap print:hidden items-center gap-3 border-b border-line bg-white px-4 py-3 sm:px-8">
           {!isPartner && (
             <form action="/clients" method="get" role="search" className="flex min-w-0 flex-[1_1_260px]">
               <label htmlFor="global-search" className="sr-only">{t.topbar.search}</label>

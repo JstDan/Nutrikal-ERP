@@ -183,6 +183,26 @@ export async function seedDemo(db: PGlite) {
      values ('Immune Support', 'Имунна подкрепа', 'capsule', 2, 30, $1) returning id`, [caps],
     [[vitc, 200, "mg", 5], [zn, 50, "mg", 0], [mcc, 150, "mg", 0]], null, []);
 
+  // ----------------------------------------------------------- offers
+  await as(ADMIN, `update format_costing set fee_per_pack = 0.18, fee_per_1000_units = 2.4, setup_fee = 350, loss_pct = 3,
+                     default_margin_pct = 35, min_order_packs = 1000 where product_format = 'capsule'`);
+  await as(ADMIN, `update format_costing set fee_per_pack = 0.35, fee_per_kg = 1.6, setup_fee = 250, loss_pct = 2,
+                     default_margin_pct = 32, min_order_packs = 500 where product_format = 'powder'`);
+  const label = await item("PK-LBL", "packaging", "Self-adhesive label", "Самозалепващ етикет", "pcs");
+  const siLabel = await one(INVENTORY, `insert into supplier_items (supplier_id, item_id, is_preferred, lead_time_days) values ($1, $2, true, 10) returning id`, [sup2, label]);
+  await as(INVENTORY, `insert into supplier_prices (supplier_item_id, price) values ($1, 0.035)`, [siLabel]);
+
+  const ofMag = await one(SALES, `insert into offers (client_id, project_id, formula_version_id, notes)
+                                  values ($1, $2, $3, 'Artwork and label text supplied by the client.') returning id`, [acme, pMag, fMag.v]);
+  await as(SALES, `insert into offer_packaging (offer_id, item_id) values ($1, $2), ($1, $3)`, [ofMag, jar, label]);
+  await as(SALES, `insert into offer_tiers (offer_id, quantity) values ($1, 5000), ($1, 10000), ($1, 20000)`, [ofMag]);
+  await as(SALES, `update offers set status = 'sent' where id = $1`, [ofMag]);
+
+  const ofCol = await one(SALES, `insert into offers (client_id, project_id, formula_version_id) values ($1, $2, $3) returning id`, [nordic, pCol, fCol.v]);
+  await as(SALES, `insert into offer_packaging (offer_id, item_id) values ($1, $2), ($1, $3)`, [ofCol, jar, label]);
+  await as(SALES, `insert into offer_tiers (offer_id, quantity) values ($1, 1500), ($1, 3000)`, [ofCol]);
+  await as(SALES, `insert into offer_tiers (offer_id, quantity, unit_price, price_is_manual) values ($1, 5000, 6.90, true)`, [ofCol]);
+
   // Partner reports a spill and asks for a correction
   await as(PARTNER, `select request_stock_adjustment($1, $2, -2, 'Spillage during weighing')`, [lotMg, PF_RM]);
 }

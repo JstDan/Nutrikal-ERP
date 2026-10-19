@@ -42,3 +42,7 @@ export function projectStage(status: string, hasReservations: boolean): number {
 export function formulaTone(status: string): Tone {
   return status === "approved" ? "green" : status === "archived" ? "neutral" : "amber";
 }
+
+export function offerTone(status: string): Tone {
+  return status === "accepted" ? "green" : status === "sent" ? "amber" : status === "rejected" ? "red" : "neutral";
+}

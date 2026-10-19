@@ -340,6 +340,87 @@ await ok('partner sees no formulas, versions, lines, nutrients or claims', async
 });
 await fails('partner cannot create a formula version', () => as('partner', 'select new_formula_version($1)', [formula.id]), 'not allowed');
 
+console.log('\nCosting and offers');
+let offer, client2, jar;
+const tier = async (qty) => one('sales', 'select * from offer_tiers where offer_id = $1 and quantity = $2', [offer.id, qty]);
+await ok('admin sets capsule production costs; sales cannot change them', async () => {
+  await as('admin', `update format_costing set fee_per_pack = 0.10, fee_per_1000_units = 2, setup_fee = 300, loss_pct = 0,
+                       default_margin_pct = 30 where product_format = 'capsule'`);
+  await as('sales', `update format_costing set setup_fee = 1 where product_format = 'capsule'`);
+  eq(Number((await one('admin', `select setup_fee from format_costing where product_format = 'capsule'`)).setup_fee), 300, 'setup fee');
+});
+await ok('inventory prices the ingredients, shells and a jar (with a price break for 100 kg magnesium)', async () => {
+  const s = await one('inventory', `insert into suppliers (name) values ('Second supplier') returning id`);
+  jar = await one('inventory', `insert into items (sku, type, name, base_unit) values ('PK-JAR', 'packaging', 'Jar 150 ml', 'pcs') returning id`);
+  for (const [it, price] of [[mcc.id, 4], [novelPending.id, 100], [caps.id, 0.01], [jar.id, 0.25]]) {
+    const si = await one('inventory', `insert into supplier_items (supplier_id, item_id, is_preferred) values ($1, $2, true) returning id`, [s.id, it]);
+    await as('inventory', 'insert into supplier_prices (supplier_item_id, price) values ($1, $2)', [si.id, price]);
+  }
+  await as('inventory', 'insert into supplier_prices (supplier_item_id, price, min_quantity) values ($1, 16, 100)', [supplierItem.id]);
+});
+await fails('an offer needs an approved formula version', () =>
+  as('sales', 'insert into offers (client_id, formula_version_id) values ($1, $2)', [client.id, v1.id]), 'approved formula version');
+await fails("an offer cannot use another client's formula", async () => {
+  client2 = await one('sales', `insert into clients (legal_name) values ('Other Client Ltd') returning id`);
+  await as('sales', 'insert into offers (client_id, formula_version_id) values ($1, $2)', [client2.id, v2.id]);
+}, 'another client');
+await ok('sales creates an offer: code, language and validity are filled in', async () => {
+  offer = await one('sales', `insert into offers (client_id, project_id, formula_version_id) values ($1, $2, $3)
+                              returning id, code, locale, valid_until = current_date + 30 as valid30`, [client.id, project.id, v2.id]);
+  eq(offer.code, 'OF-00001', 'code'); eq(offer.locale, 'en', 'locale'); eq(offer.valid30, true, 'valid 30 days');
+});
+await ok('tiers are costed per pack: 1000 packs 1.7039, 5000 packs 1.4076 (price break, set-up spread)', async () => {
+  await as('sales', 'insert into offer_tiers (offer_id, quantity) values ($1, 1000), ($1, 5000)', [offer.id]);
+  const a = await tier(1000), b = await tier(5000);
+  eq(a.unit_cost, '1.7039', 'cost 1000'); eq(b.unit_cost, '1.4076', 'cost 5000');
+  eq(a.cost_complete, true, 'all prices known');
+  eq(a.margin_pct, '30.00', 'default margin'); eq(a.unit_price, '2.4300', 'price from 30 % margin');
+});
+await ok('adding a jar recalculates the tiers', async () => {
+  await as('sales', 'insert into offer_packaging (offer_id, item_id) values ($1, $2)', [offer.id, jar.id]);
+  eq((await tier(1000)).unit_cost, '1.9539', 'cost 1000 with jar');
+});
+await fails('only packaging items can be packaging', () =>
+  as('sales', 'insert into offer_packaging (offer_id, item_id) values ($1, $2)', [offer.id, mcc.id]), 'only packaging');
+await ok('a manual price shows the resulting margin', async () => {
+  await as('sales', 'update offer_tiers set unit_price = 2, price_is_manual = true where offer_id = $1 and quantity = 5000', [offer.id]);
+  const b = await tier(5000);
+  eq(b.unit_cost, '1.6576', 'cost'); eq(b.margin_pct, '17.12', 'margin');
+});
+await fails('sales without the price flag cannot see the cost breakdown', () =>
+  as('sales', 'select * from offer_cost_breakdown($1, 1000)', [offer.id]), 'not allowed');
+await ok('admin sees the cost breakdown', async () => {
+  const rows = await as('admin', 'select kind, cost_per_pack from offer_cost_breakdown($1, 1000)', [offer.id]);
+  eq([...new Set(rows.map(r => r.kind))].sort().join(','), 'ingredient,packaging,production,setup,shell', 'kinds');
+  eq(Number(rows.find(r => r.kind === 'production').cost_per_pack).toFixed(2), '0.22', 'production');
+});
+await ok('sending freezes the offer', async () => {
+  await as('sales', `update offers set status = 'sent' where id = $1`, [offer.id]);
+  if (!(await one('sales', 'select sent_at from offers where id = $1', [offer.id])).sent_at) throw new Error('no sent_at');
+  await as('inventory', 'insert into supplier_prices (supplier_item_id, price) values ($1, 30)', [supplierItem.id]);
+  eq((await tier(1000)).unit_cost, '1.9539', 'cost unchanged');
+});
+await fails('a sent offer: tiers are locked', () =>
+  as('sales', 'insert into offer_tiers (offer_id, quantity) values ($1, 2000)', [offer.id]), 'only draft');
+await fails('a sent offer: details are locked', () =>
+  as('sales', `update offers set notes = 'x' where id = $1`, [offer.id]), 'only draft');
+await ok('back to draft: recalculation picks up the new price', async () => {
+  await as('sales', `update offers set status = 'draft' where id = $1`, [offer.id]);
+  await as('sales', 'select recalc_offer($1)', [offer.id]);
+  eq((await tier(1000)).unit_cost, '2.2126', 'cost with 30 €/kg magnesium');
+});
+await ok('inventory and partner see no offers, tiers or production costs', async () => {
+  for (const r of ['inventory', 'partner']) {
+    for (const t of ['offers', 'offer_tiers', 'offer_packaging', 'format_costing']) {
+      eq((await as(r, `select * from ${t}`)).length, 0, `${r} ${t}`);
+    }
+  }
+});
+await fails('partner cannot call the cost breakdown', () =>
+  as('partner', 'select * from offer_cost_breakdown($1, 1000)', [offer.id]), 'not allowed');
+await fails('users cannot call the internal costing function', () =>
+  as('sales', 'select * from offer_cost_lines($1, 1000)', [offer.id]), 'permission denied');
+
 console.log('\nNumbering and audit');
 await fails('partner cannot draw invoice numbers', () => as('partner', `select next_number('invoice')`), 'not allowed');
 await ok('invoice series is a 10-digit sequence', async () => {
