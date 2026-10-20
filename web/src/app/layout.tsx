@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { getSession } from "@/lib/session";
 import { AppShell } from "@/components/app-shell";
-import { THEME_COOKIE, THEME_SCRIPT } from "@/lib/theme";
+import { THEME_COOKIE } from "@/lib/theme";
 import { cookies } from "next/headers";
 
 export const metadata: Metadata = {
@@ -18,7 +18,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     // Browser extensions add attributes to <html> before React loads; ignore those (this element only)
     <html lang={locale} data-theme={theme} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}

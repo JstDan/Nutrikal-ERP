@@ -6,6 +6,7 @@ import { fmt, formatDate, formatNumber, formatPrice, formatQty } from "@/lib/i18
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { moTone } from "@/lib/status";
+import { SearchSelect } from "@/components/search-select";
 import {
   addMoPackaging, cancelMo, orderMoMaterial, releaseMo, removeMoPackaging, requestPurchases, reserveMo, revertMo, saveMo,
   scheduleMo, startProduction,
@@ -269,20 +270,16 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
                   {hidden(mo.id)}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="field sm:col-span-2"><span>{d.material} *</span>
-                      <select name="item_id" required className="input" defaultValue="">
-                        <option value="" disabled>{d.chooseMaterial}</option>
-                        {reqs.map((r) => {
+                      <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+                        options={reqs.map((r) => {
                           const short = Number(r.required) - Number(r.reserved) - Number(r.ordered);
-                          return <option key={r.item_id} value={r.item_id}>{nm(r)} · {r.sku}{short > 0 ? ` (${fmt(d.missing, { qty: formatQty(locale, short, r.base_unit) })})` : ""}</option>;
-                        })}
-                      </select>
+                          return { value: r.item_id, label: `${nm(r)} · ${r.sku}`, keywords: `${r.name} ${r.name_bg ?? ""}`,
+                                   hint: short > 0 ? fmt(d.missing, { qty: formatQty(locale, short, r.base_unit) }) : undefined };
+                        })} />
                     </label>
                     <label className="field"><span>{t.deliveries.quantity} *</span><input name="quantity" type="number" min="0.0001" step="any" required className="input" /></label>
                     <label className="field"><span>{d.supplier}</span>
-                      <select name="supplier_id" className="input" defaultValue="">
-                        <option value="">—</option>
-                        {orderForm.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
+                      <SearchSelect name="supplier_id" emptyLabel="—" placeholder={t.common.typeToSearch} noResults={t.common.noResults} options={orderForm.suppliers.map((s) => ({ value: s.id, label: s.name }))} />
                     </label>
                     <label className="field"><span>{d.unitPrice}</span><input name="unit_price" type="number" min="0" step="any" className="input" /></label>
                     <label className="field"><span>{d.expectedOn}</span><input name="expected_on" type="date" className="input" /></label>
@@ -407,10 +404,8 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
                   {hidden(mo.id)}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
                     <label className="field"><span>{d.item} *</span>
-                      <select name="item_id" required className="input" defaultValue="">
-                        <option value="" disabled>{d.choosePackaging}</option>
-                        {packOptions.map((p) => <option key={p.id} value={p.id}>{nm(p)} · {p.sku}</option>)}
-                      </select>
+                      <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+                        options={packOptions.map((p) => ({ value: p.id, label: `${nm(p)} · ${p.sku}`, keywords: `${p.name} ${p.name_bg ?? ""}` }))} />
                     </label>
                     <label className="field"><span>{d.qtyPerPack}</span><input name="qty_per_pack" type="number" min="0.0001" step="any" defaultValue={1} className="input" /></label>
                   </div>

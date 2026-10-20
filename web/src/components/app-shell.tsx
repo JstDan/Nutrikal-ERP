@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
+import { THEME_COOKIE } from "@/lib/theme";
 import { setLocale } from "@/app/actions";
 import { DEMO_USERS } from "@/lib/db/demo-users";
 import { getSession } from "@/lib/session";
@@ -14,6 +16,7 @@ import { NotificationBell } from "./notification-bell";
 export async function AppShell({ children }: { children: ReactNode }) {
   const { user, developer, locale, t } = await getSession();
   const isProduction = user.role === "production";
+  const savedTheme = (await cookies()).get(THEME_COOKIE)?.value;
   const soon = (n: number) => `${t.common.phase} ${n}`;
 
   const groups: NavGroup[] = isProduction
@@ -103,7 +106,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
               ))}
             </form>
             <NotificationBell userId={user.id} label={t.topbar.notifications} unreadLabel={t.topbar.unread} />
-            <ThemeSwitch toDark={t.topbar.toDark} toLight={t.topbar.toLight} />
+            <ThemeSwitch toDark={t.topbar.toDark} toLight={t.topbar.toLight} saved={savedTheme} />
             <DemoUserSwitch
               current={developer?.id ?? user.id}
               label={t.topbar.viewingAs}

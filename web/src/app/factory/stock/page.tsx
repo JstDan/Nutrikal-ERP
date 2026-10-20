@@ -4,6 +4,7 @@ import { formatDate, formatQty } from "@/lib/i18n";
 import { Card, Chip, Empty, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { countStock } from "@/app/actions";
+import { SearchSelect } from "@/components/search-select";
 import { qcTone } from "@/lib/status";
 
 type Stock = {
@@ -74,14 +75,11 @@ export default async function FactoryStockPage({ searchParams }: PageProps<"/fac
             <p className="m-0 text-sm text-ink-2">{S.correctNote}</p>
             <ActionForm action={countStock} submitLabel={S.submit}>
               <label className="field"><span>{S.lot} *</span>
-                <select name="lot_location" required className="input" defaultValue="">
-                  <option value="" disabled>{S.chooseLot}</option>
-                  {correctable.map((s) => (
-                    <option key={s.lot_id + s.location_id} value={`${s.lot_id}|${s.location_id}`}>
-                      {s.lot_number} · {name(s)} · {s.location} ({formatQty(locale, s.quantity, s.base_unit)})
-                    </option>
-                  ))}
-                </select>
+                <SearchSelect name="lot_location" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+                  options={correctable.map((s) => ({
+                    value: `${s.lot_id}|${s.location_id}`, label: `${s.lot_number} · ${name(s)} · ${s.location}`,
+                    hint: formatQty(locale, s.quantity, s.base_unit), keywords: `${s.item} ${s.item_bg ?? ""} ${s.sku} ${s.supplier_lot ?? ""}`,
+                  }))} />
               </label>
               <label className="field"><span>{S.counted} *</span>
                 <input name="counted" type="number" min={0} step="any" required className="input" />

@@ -7,6 +7,7 @@ import { Chip, Empty, PageHeader, type Tone } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { qcTone } from "@/lib/status";
 import { countStock } from "@/app/actions";
+import { SearchSelect } from "@/components/search-select";
 
 type Item = {
   item_id: string; sku: string; name: string; name_bg: string | null; type: string; base_unit: string; shelf_life_months: number | null;
@@ -210,13 +211,11 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                     <ActionForm action={countStock} submitLabel={t.inventory.count.submit}>
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)]">
                         <label className="field"><span>{t.inventory.count.lot} *</span>
-                          <select name="lot_location" required className="input">
-                            {lots.map((l) => (
-                              <option key={l.lot_id + l.location_id} value={`${l.lot_id}|${l.location_id}`}>
-                                {l.lot_number} · {l.location} · {q(l.quantity, i.base_unit)}
-                              </option>
-                            ))}
-                          </select>
+                          <SearchSelect name="lot_location" required placeholder={t.common.typeToSearch} noResults={t.common.noResults} defaultValue={lots.length === 1 ? `${lots[0].lot_id}|${lots[0].location_id}` : ""}
+                            options={lots.map((l) => ({
+                              value: `${l.lot_id}|${l.location_id}`, label: `${l.lot_number} · ${l.location}`, hint: q(l.quantity, i.base_unit),
+                              keywords: l.supplier_lot ?? "",
+                            }))} />
                         </label>
                         <label className="field"><span>{t.inventory.count.counted} *</span>
                           <input name="counted" type="number" min="0" step="any" required className="input" />

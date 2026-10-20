@@ -35,8 +35,10 @@
   --color-side-strong: #ffffff;
 }
 
-/* Dark theme (screen only; printed documents stay light). The page follows
-   the system setting unless the header switch set data-theme on <html>.
+/* Dark theme (screen only; printed documents stay light). With no choice
+   saved (no data-theme on <html>) the page follows the system setting through
+   CSS alone; the header switch saves "dark" or "light" in a cookie and the
+   server sets data-theme. The token list is the same in both rules.
    "ink" is both text and the strong fill of active pills and primary
    buttons, and "white" both surfaces and the text on those fills, so
    swapping them keeps every pairing readable. */
@@ -68,6 +70,35 @@
     --color-neutral-tint: #262b33;
   }
   :root[data-theme="dark"] .wordmark-auto { filter: brightness(0) invert(1); }
+}
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --color-ink: #e6e9ef;
+    --color-ink-2: #aeb5c1;
+    --color-ink-3: #343b47;
+    --color-ink-strong: #ffffff;
+    --color-white: #1c2027;
+    --color-black: #ffffff;
+    --color-paper: #1c2027;
+    --color-canvas: #13161b;
+    --color-mist: #2a2f38;
+    --color-line: #2e343e;
+    --color-line-strong: #4a5160;
+    --color-side: #0e1014;
+    --color-green-tint: #1f3318;
+    --color-green-ink: #a8dd88;
+    --color-green-line: #3a5a2a;
+    --color-amber-tint: #3a2e10;
+    --color-amber-ink: #f2c75e;
+    --color-amber-line: #5e4a1c;
+    --color-amber-soft: #241f14;
+    --color-red-tint: #3d1b15;
+    --color-red-ink: #ff9a85;
+    --color-red-line: #6b2c20;
+    --color-neutral-tint: #262b33;
+  }
+  :root:not([data-theme]) .wordmark-auto { filter: brightness(0) invert(1); }
 }
 
 

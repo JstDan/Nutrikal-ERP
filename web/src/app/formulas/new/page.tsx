@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
+import { SearchSelect } from "@/components/search-select";
 import { ActionForm } from "@/components/action-form";
 import { Card, PageHeader } from "@/components/ui";
 import { createFormula } from "@/app/actions";
@@ -54,10 +55,8 @@ export default async function NewFormulaPage({ searchParams }: PageProps<"/formu
             </div>
             <label className="field"><span>{f.servingsPerPack}</span><input name="servings_per_pack" type="number" min={1} step={1} className="input" /></label>
             <label className="field"><span>{f.shell}</span>
-              <select name="shell_item_id" className="input" defaultValue="">
-                <option value="">{f.noShell}</option>
-                {shells.map((s) => <option key={s.id} value={s.id}>{locale === "bg" && s.name_bg ? s.name_bg : s.name} · {s.sku}</option>)}
-              </select>
+              <SearchSelect name="shell_item_id" emptyLabel={f.noShell} placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+                options={shells.map((s) => ({ value: s.id, label: `${locale === "bg" && s.name_bg ? s.name_bg : s.name} · ${s.sku}`, keywords: `${s.name} ${s.name_bg ?? ""}` }))} />
             </label>
             <label className="field md:col-span-2"><span>{f.description}</span><textarea name="description" className="input" /></label>
           </div>

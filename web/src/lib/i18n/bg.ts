@@ -18,6 +18,8 @@ export const bg: Dict = {
     demoData: "Демо данни",
     units: "бр.",
     days: "дни",
+    typeToSearch: "Пишете, за да търсите",
+    noResults: "Няма намерени",
   },
   nav: {
     main: "Основно меню",

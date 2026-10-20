@@ -3,13 +3,20 @@
 import { useEffect, useState } from "react";
 import { THEME_COOKIE } from "@/lib/theme";
 
+/** Dark now: chosen with the switch, or (nothing chosen yet) the system setting. */
+function isDark() {
+  const chosen = document.documentElement.dataset.theme;
+  return chosen ? chosen === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
 /** Light / dark switch. The choice is kept in a cookie on this device. */
-export function ThemeSwitch({ toDark, toLight }: { toDark: string; toLight: string }) {
-  const [dark, setDark] = useState(false);
-  useEffect(() => setDark(document.documentElement.dataset.theme === "dark"), []);
+export function ThemeSwitch({ toDark, toLight, saved }: { toDark: string; toLight: string; saved?: string }) {
+  // The saved choice is known on the server, so the right icon shows at once
+  const [dark, setDark] = useState(saved === "dark");
+  useEffect(() => setDark(isDark()), []);
 
   function toggle() {
-    const next = document.documentElement.dataset.theme !== "dark";
+    const next = !isDark();
     document.documentElement.dataset.theme = next ? "dark" : "light";
     document.cookie = `${THEME_COOKIE}=${next ? "dark" : "light"}; path=/; max-age=31536000; samesite=lax`;
     setDark(next);

@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/session";
 import { fmt, formatNumber, formatPrice, formatQty } from "@/lib/i18n";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
+import { SearchSelect } from "@/components/search-select";
 import { offerTone } from "@/lib/status";
 import {
   addOfferPackaging, addOfferTier, createOrderFromOffer, recalcOffer, removeOfferPackaging, removeOfferTier, saveOfferTerms, setOfferStatus,
@@ -180,10 +181,8 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
                 <input type="hidden" name="offer_id" value={o.id} />
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
                   <label className="field"><span>{d.item} *</span>
-                    <select name="item_id" required className="input" defaultValue="">
-                      <option value="" disabled>{d.choosePackaging}</option>
-                      {packOptions.map((p) => <option key={p.id} value={p.id}>{bgName(p)} · {p.sku}</option>)}
-                    </select>
+                    <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+                      options={packOptions.map((p) => ({ value: p.id, label: `${bgName(p)} · ${p.sku}`, keywords: `${p.name} ${p.name_bg ?? ""}` }))} />
                   </label>
                   <label className="field"><span>{d.qtyPerPack}</span><input name="qty_per_pack" type="number" min="0.0001" step="any" defaultValue={1} className="input" /></label>
                 </div>

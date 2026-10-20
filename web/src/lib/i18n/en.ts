@@ -16,6 +16,8 @@ export const en = {
     demoData: "Demo data",
     units: "units",
     days: "days",
+    typeToSearch: "Type to search",
+    noResults: "Nothing found",
   },
   nav: {
     main: "Main",

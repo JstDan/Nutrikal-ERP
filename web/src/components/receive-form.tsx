@@ -3,9 +3,10 @@ import type { SessionUser } from "@/lib/session";
 import type { Dict } from "@/lib/i18n/en";
 import { ActionForm } from "./action-form";
 import { receiveGoods } from "@/app/actions";
+import { SearchSelect } from "./search-select";
 
-/** Receiving form shared by staff (/inventory/receive) and the partner (/partner/receive).
- *  Lists only what the user may see: the partner gets partner locations and no suppliers. */
+/** Receiving form for goods without an expected delivery (/inventory/receive, Admin).
+ *  Lists only what the user may see. */
 export async function ReceiveForm({ user, t }: { user: SessionUser; t: Dict }) {
   const r = t.receive;
   const { items, locations, suppliers } = await withUser(user.id, async (tx) => ({
@@ -23,17 +24,9 @@ export async function ReceiveForm({ user, t }: { user: SessionUser; t: Dict }) {
     <ActionForm action={receiveGoods} submitLabel={r.submit}>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <label className="field md:col-span-2"><span>{r.item} *</span>
-          <select name="item_id" required className="input" defaultValue="">
-            <option value="" disabled>{r.chooseItem}</option>
-            {(["raw_material", "excipient", "packaging", "semi_finished"] as const).map((ty) => {
-              const group = items.filter((i) => i.type === ty);
-              return group.length ? (
-                <optgroup key={ty} label={t.enums.itemType[ty]}>
-                  {group.map((i) => <option key={i.id} value={i.id}>{label(i)}</option>)}
-                </optgroup>
-              ) : null;
-            })}
-          </select>
+          <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+            options={(["raw_material", "excipient", "packaging", "semi_finished"] as const).flatMap((ty) =>
+              items.filter((i) => i.type === ty).map((i) => ({ value: i.id, label: label(i), group: t.enums.itemType[ty], keywords: `${i.name} ${i.name_bg ?? ""}` })))} />
         </label>
         <label className="field"><span>{r.location} *</span>
           <select name="location_id" required className="input">
@@ -43,10 +36,7 @@ export async function ReceiveForm({ user, t }: { user: SessionUser; t: Dict }) {
         <label className="field"><span>{r.quantity} *</span><input name="quantity" type="number" min="0.0001" step="any" required className="input" /></label>
         {suppliers.length > 0 && (
           <label className="field"><span>{r.supplier}</span>
-            <select name="supplier_id" className="input" defaultValue="">
-              <option value="">—</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <SearchSelect name="supplier_id" emptyLabel="—" placeholder={t.common.typeToSearch} noResults={t.common.noResults} options={suppliers.map((s) => ({ value: s.id, label: s.name }))} />
           </label>
         )}
         <label className="field"><span>{r.supplierLot}</span><input name="supplier_lot" className="input" /></label>

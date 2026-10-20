@@ -8,6 +8,7 @@ import { ActionForm } from "@/components/action-form";
 import { DELIVERY_LINES } from "@/lib/deliveries";
 import { cancelDelivery, createDeliveries, receiveDelivery, updateDelivery } from "@/app/actions";
 import { PhotoInput } from "@/components/photo-input";
+import { SearchSelect } from "@/components/search-select";
 import { FileGallery, type DeliveryFile } from "@/components/file-gallery";
 
 type Row = {
@@ -112,10 +113,8 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
 
   const supplierSelect = (r: Row) => (
     <label className="field"><span>{D.supplier}</span>
-      <select name="supplier_id" className="input" defaultValue={r.supplier_id ?? ""}>
-        <option value="">—</option>
-        {data.form?.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-      </select>
+      <SearchSelect name="supplier_id" emptyLabel="—" defaultValue={r.supplier_id ?? ""} placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+        options={(data.form?.suppliers ?? []).map((s) => ({ value: s.id, label: s.name }))} />
     </label>
   );
 
@@ -298,10 +297,7 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
             {form.request && <input type="hidden" name="purchase_request_id" value={form.request.id} />}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <label className="field"><span>{D.supplier}</span>
-                <select name="supplier_id" className="input" defaultValue="">
-                  <option value="">—</option>
-                  {form.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <SearchSelect name="supplier_id" emptyLabel="—" placeholder={t.common.typeToSearch} noResults={t.common.noResults} options={form.suppliers.map((s) => ({ value: s.id, label: s.name }))} />
               </label>
               <label className="field"><span>{D.expectedOn}</span>
                 <input name="expected_on" type="date" defaultValue={form.request?.needed_by ?? ""} className="input" />
@@ -325,17 +321,11 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
                     </div>
                   ) : (
                     <label className="field"><span>{D.item}{i === 0 ? " *" : ""}</span>
-                      <select name={`item_${i}`} required={i === 0} className="input" defaultValue="">
-                        <option value="">{D.chooseItem}</option>
-                        {(["raw_material", "excipient", "packaging", "semi_finished"] as const).map((ty) => {
-                          const g = form.items.filter((x) => x.type === ty);
-                          return g.length ? (
-                            <optgroup key={ty} label={t.enums.itemType[ty]}>
-                              {g.map((x) => <option key={x.id} value={x.id}>{nm(x)} · {x.sku} ({x.base_unit})</option>)}
-                            </optgroup>
-                          ) : null;
-                        })}
-                      </select>
+                      <SearchSelect name={`item_${i}`} required={i === 0} placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+                        options={(["raw_material", "excipient", "packaging", "semi_finished"] as const).flatMap((ty) =>
+                          form.items.filter((x) => x.type === ty).map((x) => ({
+                            value: x.id, label: `${nm(x)} · ${x.sku} (${x.base_unit})`, group: t.enums.itemType[ty], keywords: `${x.name} ${x.name_bg ?? ""}`,
+                          })))} />
                     </label>
                   )}
                   <label className="field"><span>{D.quantity}</span>

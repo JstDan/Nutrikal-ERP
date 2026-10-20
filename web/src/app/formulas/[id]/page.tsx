@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/session";
 import { fmt, formatDate, formatMass, formatNumber, formatQty } from "@/lib/i18n";
 import { Card, Chip, Dot, Empty, Fact, PageHeader, type Tone } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
+import { SearchSelect } from "@/components/search-select";
 import { formulaTone } from "@/lib/status";
 import {
   addFormulaClaim, addFormulaLine, addFormulaPackaging, removeFormulaPackaging, approveFormulaVersion, discardFormulaDraft, newFormulaVersion,
@@ -218,17 +219,11 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                   <input type="hidden" name="formula_id" value={f.id} />
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_100px_minmax(0,1fr)]">
                     <label className="field"><span>{d.item} *</span>
-                      <select name="item_id" required className="input" defaultValue="">
-                        <option value="" disabled>{d.chooseItem}</option>
-                        {(["raw_material", "excipient", "semi_finished"] as const).map((ty) => {
-                          const group = items.filter((i) => i.type === ty);
-                          return group.length ? (
-                            <optgroup key={ty} label={t.enums.itemType[ty]}>
-                              {group.map((i) => <option key={i.id} value={i.id}>{bgName(i)} · {i.sku}</option>)}
-                            </optgroup>
-                          ) : null;
-                        })}
-                      </select>
+                      <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+                        options={(["raw_material", "excipient", "semi_finished"] as const).flatMap((ty) =>
+                          items.filter((i) => i.type === ty).map((i) => ({
+                            value: i.id, label: `${bgName(i)} · ${i.sku}`, group: t.enums.itemType[ty], keywords: `${i.name} ${i.name_bg ?? ""}`,
+                          })))} />
                     </label>
                     <label className="field"><span>{d.amount} *</span><input name="amount" type="number" min="0.0001" step="any" required className="input" /></label>
                     <label className="field"><span>{d.unit}</span>
@@ -268,10 +263,8 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                 <input type="hidden" name="formula_id" value={f.id} />
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
                   <label className="field"><span>{d.item} *</span>
-                    <select name="item_id" required className="input" defaultValue="">
-                      <option value="" disabled>{d.choosePackaging}</option>
-                      {packOptions.map((p) => <option key={p.id} value={p.id}>{bgName(p)} · {p.sku}</option>)}
-                    </select>
+                    <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+                      options={packOptions.map((p) => ({ value: p.id, label: `${bgName(p)} · ${p.sku}`, keywords: `${p.name} ${p.name_bg ?? ""}` }))} />
                   </label>
                   <label className="field"><span>{d.qtyPerPack}</span><input name="qty_per_pack" type="number" min="0.0001" step="any" defaultValue={1} className="input" /></label>
                 </div>
