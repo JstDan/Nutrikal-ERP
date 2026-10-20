@@ -88,9 +88,9 @@ export function RequiredMark() {
 type Tone = "info" | "warning" | "error" | "success";
 const noticeTone: Record<Tone, string> = {
   info: "border-line bg-neutral-tint text-ink",
-  warning: "border-[#f0d9a8] bg-amber-tint text-amber-ink",
-  error: "border-[#f3c3b8] bg-red-tint text-red-ink",
-  success: "border-[#c4e5ae] bg-green-tint text-green-ink",
+  warning: "border-amber-line bg-amber-tint text-amber-ink",
+  error: "border-red-line bg-red-tint text-red-ink",
+  success: "border-green-line bg-green-tint text-green-ink",
 };
 
 export function Notice({ tone = "info", action, children }: { tone?: Tone; action?: ReactNode; children: ReactNode }) {

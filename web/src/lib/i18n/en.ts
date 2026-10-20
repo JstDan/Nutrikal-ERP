@@ -54,6 +54,8 @@ export const en = {
     viewingAs: "Demo: signed in as",
     switchUser: "Switch",
     actAs: "Developer: acting as",
+    toDark: "Switch to dark mode",
+    toLight: "Switch to light mode",
   },
   dashboard: {
     title: "Overview",

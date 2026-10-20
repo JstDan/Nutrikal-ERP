@@ -46,7 +46,7 @@ export function ResultsSection({ form, result: r, valid, busy, onSave, onDownloa
       {!r.complete && <Notice>{t.results.incomplete}</Notice>}
 
       {/* A) Internal breakdown – never goes to the PDF */}
-      <div className="flex flex-col gap-4 rounded-sm border border-[#f0d9a8] bg-[#fffaf0] p-4 sm:p-5">
+      <div className="flex flex-col gap-4 rounded-sm border border-amber-line bg-amber-soft p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="m-0 text-base font-bold">A) {t.results.internalTitle}</h3>
           <Chip tone="amber">🔒 {t.results.internal}</Chip>
@@ -72,13 +72,13 @@ export function ResultsSection({ form, result: r, valid, busy, onSave, onDownloa
           <div className="flex flex-col gap-1">
             <SubHeading>{t.results.requirement}</SubHeading>
             <div role="table" aria-label={t.results.requirement} className="text-sm">
-              <div role="row" className={`row ${GRID} hide-sm border-b border-[#f0d9a8] py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2`}>
+              <div role="row" className={`row ${GRID} hide-sm border-b border-amber-line py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2`}>
                 <span role="columnheader">{t.formula.material}</span>
                 <span role="columnheader" className="text-right">{t.results.requirementKg}</span>
                 <span role="columnheader" className="text-right">{t.results.requirementCost}</span>
               </div>
               {r.requirements.map((line, i) => (
-                <div role="row" key={form.rows[i]?.key ?? i} className={`row ${GRID} border-b border-[#f0d9a8] py-2`}>
+                <div role="row" key={form.rows[i]?.key ?? i} className={`row ${GRID} border-b border-amber-line py-2`}>
                   <span role="cell" className="min-w-0 break-words">{line.name}</span>
                   <span role="cell" className="text-right tabular-nums">
                     {kg(line.totalKg)}

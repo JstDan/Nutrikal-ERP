@@ -16,7 +16,7 @@ export function MobileMenu({ label, closeLabel, children }: { label: string; clo
         aria-expanded={open}
         aria-controls="side-menu"
         onClick={() => setOpen((o) => !o)}
-        className="absolute top-5 right-4 flex min-h-11 items-center gap-2 rounded-sm border border-[#4a5160] px-3 text-xs font-semibold tracking-[2px] text-white uppercase lg:hidden"
+        className="absolute top-5 right-4 flex min-h-11 items-center gap-2 rounded-sm border border-[#4a5160] px-3 text-xs font-semibold tracking-[2px] text-side-strong uppercase lg:hidden"
       >
         <span aria-hidden="true">{open ? "✕" : "☰"}</span>
         {open ? closeLabel : label}

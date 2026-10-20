@@ -9,7 +9,7 @@ export function Wordmark({ height = 20, inverted = false, className = "" }: { he
       width={650}
       height={70}
       style={{ height, width: "auto" }}
-      className={`block max-w-full self-start ${inverted ? "brightness-0 invert" : ""} ${className}`}
+      className={`block max-w-full self-start ${inverted ? "brightness-0 invert" : "wordmark-auto"} ${className}`}
     />
   );
 }

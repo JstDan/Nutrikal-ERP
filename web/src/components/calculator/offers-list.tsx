@@ -110,7 +110,7 @@ function List({ offers, settings, userId, isAdmin }: Props) {
                 <Actions x={x} busy={busy} canDelete={canDelete} onPdf={() => pdf(x)} onDelete={() => setConfirmId(x.id)} />
               </div>
               {confirmId === x.id && (
-                <div role="alertdialog" aria-label={fmt(o.deleteConfirm, { no: x.offer_no })} className="mt-3 flex flex-wrap items-center gap-3 rounded-sm border border-[#f3c3b8] bg-red-tint px-4 py-3">
+                <div role="alertdialog" aria-label={fmt(o.deleteConfirm, { no: x.offer_no })} className="mt-3 flex flex-wrap items-center gap-3 rounded-sm border border-red-line bg-red-tint px-4 py-3">
                   <span className="min-w-0 flex-[1_1_220px] font-semibold text-red-ink">{fmt(o.deleteConfirm, { no: x.offer_no })}</span>
                   <button type="button" onClick={() => setConfirmId(null)} className="btn btn-outline">{t.close}</button>
                   <button type="button" onClick={() => remove(x)} className="btn border-red-ink! bg-red-ink! text-white!">{t.delete}</button>

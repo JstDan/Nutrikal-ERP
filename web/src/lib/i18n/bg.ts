@@ -56,6 +56,8 @@ export const bg: Dict = {
     viewingAs: "Демо: влезли сте като",
     switchUser: "Смени",
     actAs: "Developer: действате като",
+    toDark: "Превключи към тъмен режим",
+    toLight: "Превключи към светъл режим",
   },
   dashboard: {
     title: "Общ преглед",

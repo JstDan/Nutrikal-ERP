@@ -215,7 +215,7 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
         <SubHeading>{s.logo}</SubHeading>
         <p className="m-0 text-[13px] text-ink-2">{s.logoHint}</p>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="grid h-16 w-[180px] place-items-center rounded-sm border border-line bg-white p-2">
+          <div className="grid h-16 w-[180px] place-items-center rounded-sm border border-line bg-[#fff] p-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={draft.logo_data_url ?? "/calculator/logo-nutrikal.png"} alt={draft.logo_data_url ? s.logo : "Nutrikal"} className="max-h-full max-w-full" />
           </div>

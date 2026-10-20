@@ -6,6 +6,7 @@ import { LOCALES } from "@/lib/i18n";
 import { SideNav, type NavGroup } from "./side-nav";
 import { DemoUserSwitch } from "./demo-user-switch";
 import { ActAsSwitch } from "./act-as-switch";
+import { ThemeSwitch } from "./theme-switch";
 import { MobileMenu } from "./mobile-menu";
 import { Wordmark } from "./logo";
 
@@ -61,8 +62,8 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-wrap">
-      <aside className="relative flex print:hidden w-full flex-col gap-6 bg-ink px-4 py-5 text-white lg:w-[248px] lg:shrink-0 lg:py-6">
-        <a href={isPartner ? "/partner" : "/"} className="flex flex-col gap-2 px-2 text-white no-underline">
+      <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 py-5 text-side-strong lg:w-[248px] lg:shrink-0 lg:py-6">
+        <a href={isPartner ? "/partner" : "/"} className="flex flex-col gap-2 px-2 text-side-strong no-underline">
           <Wordmark height={20} inverted />
           <span className="text-[11px] font-semibold tracking-[2px] text-green">{isPartner ? t.nav.productionLabel.toUpperCase() : "ERP"}</span>
           {isPartner && <span className="text-xs text-side-muted">{t.nav.partnerFacility}</span>}
@@ -97,6 +98,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
                 </button>
               ))}
             </form>
+            <ThemeSwitch toDark={t.topbar.toDark} toLight={t.topbar.toLight} />
             <DemoUserSwitch
               current={developer?.id ?? user.id}
               label={t.topbar.viewingAs}

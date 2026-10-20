@@ -196,7 +196,7 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
   );
   const confirm = (className: string) =>
     confirmNew && (
-      <div role="alertdialog" aria-label={t.unsavedConfirm} className={`flex flex-wrap items-center gap-3 rounded-sm border border-[#f0d9a8] bg-amber-tint px-4 py-3 ${className}`}>
+      <div role="alertdialog" aria-label={t.unsavedConfirm} className={`flex flex-wrap items-center gap-3 rounded-sm border border-amber-line bg-amber-tint px-4 py-3 ${className}`}>
         <span className="min-w-0 flex-[1_1_240px] text-sm font-semibold text-amber-ink">{t.unsavedConfirm}</span>
         <button type="button" autoFocus onClick={() => setConfirmNew(false)} className="btn btn-outline">{t.cancel}</button>
         <button type="button" onClick={startNew} className="btn btn-primary">{t.continue}</button>

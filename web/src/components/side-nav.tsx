@@ -24,7 +24,7 @@ export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }
                 aria-current={isActive(it.href) ? "page" : undefined}
                 className={
                   isActive(it.href)
-                    ? "flex min-h-11 items-center gap-2.5 rounded bg-ink-3 px-2 text-sm font-semibold text-white no-underline"
+                    ? "flex min-h-11 items-center gap-2.5 rounded bg-ink-3 px-2 text-sm font-semibold text-side-strong no-underline"
                     : "flex min-h-11 items-center gap-2.5 rounded px-2 text-sm text-side-text no-underline hover:bg-ink-3"
                 }
               >
