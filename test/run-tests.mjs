@@ -731,5 +731,139 @@ await fails('partner cannot run the sheet sync', () =>
 await fails('sync source "scheduled" is reserved for the server job', () =>
   as('sales', `select calc_record_sync('scheduled', '{}', '{}')`), 'invalid sync source');
 
+console.log('\nExpected deliveries and stock counts');
+let edItem, edSupplier, edReq, ed1, ed2, edLot;
+await ok('inventory records an expected delivery with a code', async () => {
+  edItem = await one('inventory', `insert into items (sku, type, name, base_unit, novel_food_status, shelf_life_months)
+                                   values ('RM-ED', 'raw_material', 'Delivery test extract', 'kg', 'not_novel', 24) returning id`);
+  edSupplier = await one('inventory', `insert into suppliers (name) values ('Delivery Supplier Ltd') returning id`);
+  ed1 = await one('inventory', `select create_expected_delivery($1, 50, $2, current_date + 7, 12.5, 'PO-778', $3) as id`,
+                  [edItem.id, edSupplier.id, L['NK-WH']]);
+  const d = await one('inventory', 'select code, status from expected_deliveries where id = $1', [ed1.id]);
+  eq(d.code, 'ED-00001', 'code');
+  eq(d.status, 'open', 'status');
+});
+await ok('incoming and projected stock show on the item summary', async () => {
+  const s = await one('sales', 'select incoming, projected, available from item_stock_summary where item_id = $1', [edItem.id]);
+  eq(Number(s.incoming), 50, 'incoming');
+  eq(Number(s.projected), Number(s.available) + 50, 'projected');
+});
+await ok('sales without the price flag sees incoming totals but not the delivery', async () => {
+  eq((await as('sales', 'select id from expected_deliveries')).length, 0, 'deliveries');
+  eq((await as('sales', 'select id from expected_delivery_overview')).length, 0, 'overview');
+  eq((await as('sales', 'select item_id from item_incoming where item_id = $1', [edItem.id])).length, 1, 'item_incoming');
+});
+await ok('partner sees no deliveries and no incoming totals', async () => {
+  eq((await as('partner', 'select id from expected_deliveries')).length, 0, 'deliveries');
+  eq((await as('partner', 'select item_id from item_incoming')).length, 0, 'item_incoming');
+  eq(Number((await one('partner', 'select incoming from item_stock_summary where item_id = $1', [edItem.id])).incoming), 0, 'summary');
+});
+await fails('sales cannot record a delivery', () =>
+  as('sales', 'select create_expected_delivery($1, 5)', [edItem.id]), 'not allowed');
+await fails('partner cannot record a delivery', () =>
+  as('partner', 'select create_expected_delivery($1, 5)', [edItem.id]), 'not allowed');
+await fails('deliveries cannot be inserted directly', () =>
+  as('inventory', `insert into expected_deliveries (code, item_id, quantity) values ('X', $1, 1)`, [edItem.id]), 'row-level security');
+await fails('status cannot be changed by a plain update', () =>
+  as('inventory', `update expected_deliveries set status = 'received' where id = $1`, [ed1.id]), 'receive_expected_delivery');
+await ok('inventory changes the date of an open delivery', async () => {
+  eq((await as('inventory', `update expected_deliveries set expected_on = current_date - 2 where id = $1 returning id`, [ed1.id])).length, 1, 'updated');
+  eq((await one('inventory', 'select is_overdue from expected_delivery_overview where id = $1', [ed1.id])).is_overdue, true, 'overdue');
+});
+await ok('a partial receipt makes a quarantine lot at the delivery price and keeps it open', async () => {
+  edLot = await one('inventory', `select receive_expected_delivery($1, $2, 20, 'SUP-ED-1') as id`, [ed1.id, L['NK-WH']]);
+  const l = await one('admin', `select l.qc_status, l.expected_delivery_id, c.unit_cost from lots l
+                                  left join lot_costs c on c.lot_id = l.id where l.id = $1`, [edLot.id]);
+  eq(l.qc_status, 'quarantine', 'qc');
+  eq(l.expected_delivery_id, ed1.id, 'linked');
+  eq(Number(l.unit_cost), 12.5, 'cost');
+  const d = await one('inventory', 'select status, received, remaining, is_partial from expected_delivery_overview where id = $1', [ed1.id]);
+  eq(d.status, 'open', 'status');
+  eq(Number(d.received), 20, 'received');
+  eq(Number(d.remaining), 30, 'remaining');
+  eq(d.is_partial, true, 'partial');
+  eq(Number((await one('sales', 'select incoming from item_stock_summary where item_id = $1', [edItem.id])).incoming), 30, 'incoming');
+});
+await ok('receiving the rest closes the delivery', async () => {
+  await as('inventory', 'select receive_expected_delivery($1, $2, 30)', [ed1.id, L['NK-WH']]);
+  eq((await one('inventory', 'select status from expected_deliveries where id = $1', [ed1.id])).status, 'received', 'status');
+  eq(Number((await one('sales', 'select incoming from item_stock_summary where item_id = $1', [edItem.id])).incoming), 0, 'incoming');
+});
+await fails('a closed delivery cannot be received again', () =>
+  as('inventory', 'select receive_expected_delivery($1, $2, 1)', [ed1.id, L['NK-WH']]), 'is received');
+await fails('a closed delivery cannot be edited', () =>
+  as('inventory', 'update expected_deliveries set note = $2 where id = $1', [ed1.id, 'x']), 'cannot be changed');
+await ok('a delivery from a purchase request orders it, and receiving marks it received', async () => {
+  edReq = await one('inventory', `insert into purchase_requests (item_id, quantity) values ($1, 10) returning id`, [edItem.id]);
+  ed2 = await one('inventory', 'select create_expected_delivery(null, null, $2, null, null, null, $3, $1) as id', [edReq.id, edSupplier.id, L['NK-WH']]);
+  eq((await one('inventory', 'select status from purchase_requests where id = $1', [edReq.id])).status, 'ordered', 'ordered');
+  eq(Number((await one('inventory', 'select quantity from expected_deliveries where id = $1', [ed2.id])).quantity), 10, 'quantity from request');
+  await as('inventory', 'select receive_expected_delivery($1, $2, 8, null, null, null, null, true)', [ed2.id, L['NK-WH']]);
+  eq((await one('inventory', 'select status from expected_deliveries where id = $1', [ed2.id])).status, 'received', 'closed short');
+  eq((await one('inventory', 'select status from purchase_requests where id = $1', [edReq.id])).status, 'received', 'request');
+});
+await ok('cancelling the only delivery of a request puts the request back to open', async () => {
+  const r = await one('inventory', `insert into purchase_requests (item_id, quantity) values ($1, 4) returning id`, [edItem.id]);
+  const d = await one('inventory', 'select create_expected_delivery(null, null, null, null, null, null, null, $1) as id', [r.id]);
+  await as('inventory', 'select cancel_expected_delivery($1)', [d.id]);
+  eq((await one('inventory', 'select status from expected_deliveries where id = $1', [d.id])).status, 'cancelled', 'cancelled');
+  eq((await one('inventory', 'select status from purchase_requests where id = $1', [r.id])).status, 'open', 'request open');
+});
+await fails('sales cannot cancel a delivery', () =>
+  as('sales', 'select cancel_expected_delivery($1)', [ed2.id]), 'not allowed');
+
+await ok('inventory counts a lot: the difference is posted as an adjustment', async () => {
+  const diff = await one('inventory', `select count_stock($1, $2, 17.5, 'Shelf count') as d`, [edLot.id, L['NK-WH']]);
+  eq(Number(diff.d), -2.5, 'difference');
+  const m = await one('inventory', `select quantity, reason from stock_movements where lot_id = $1 and type = 'adjustment'`, [edLot.id]);
+  eq(Number(m.quantity), -2.5, 'movement');
+  eq(m.reason, 'Stock count: Shelf count', 'reason');
+  eq(Number((await one('inventory', 'select count_stock($1, $2, 17.5) as d', [edLot.id, L['NK-WH']])).d), 0, 'second count matches');
+});
+await fails('sales cannot count stock', () =>
+  as('sales', 'select count_stock($1, $2, 1)', [edLot.id, L['NK-WH']]), 'not allowed');
+await fails('partner cannot count stock in the Nutrikal warehouse', () =>
+  as('partner', 'select count_stock($1, $2, 1)', [edLot.id, L['NK-WH']]), 'partner locations');
+await ok('a partner count becomes a correction request, not a movement', async () => {
+  const pl = await one('partner', `select receive_lot($1, $2, 10) as id`, [edItem.id, L['PF-QUAR']]);
+  const before = (await one('admin', 'select count(*)::int as n from stock_movements where lot_id = $1', [pl.id])).n;
+  eq(Number((await one('partner', 'select count_stock($1, $2, 9) as d', [pl.id, L['PF-QUAR']])).d), -1, 'difference');
+  eq((await one('admin', 'select count(*)::int as n from stock_movements where lot_id = $1', [pl.id])).n, before, 'no movement');
+  const r = await one('admin', `select quantity, status from stock_adjustment_requests where lot_id = $1`, [pl.id]);
+  eq(Number(r.quantity), -1, 'requested');
+  eq(r.status, 'pending', 'pending');
+});
+await fails('a count below zero is refused', () =>
+  as('inventory', 'select count_stock($1, $2, -1)', [edLot.id, L['NK-WH']]), 'zero or more');
+
+console.log('\nOpening stock import (Nutrikal Inventory)');
+await ok('the import loads every ingredient with its opening stock, price and supplier', async () => {
+  const before = (await db.query('select count(*)::int as n from items')).rows[0].n;
+  await db.exec(readFileSync(join(here, '..', 'supabase', 'import', 'opening_stock.sql'), 'utf8'));
+  eq((await db.query('select count(*)::int as n from items')).rows[0].n - before, 142, 'items');
+  eq((await db.query(`select count(*)::int as n from stock_movements where type = 'opening_balance'`)).rows[0].n, 125, 'opening balances');
+  const mg = (await db.query(`select s.on_hand, s.available, c.unit_cost, sup.name as supplier
+                                from items i join item_stock_summary s on s.item_id = i.id
+                                join lots l on l.item_id = i.id join lot_costs c on c.lot_id = l.id
+                                left join suppliers sup on sup.id = l.supplier_id
+                               where i.name = 'Biotin'`)).rows[0];
+  eq(Number(mg.on_hand), 1.953, 'on hand');
+  eq(Number(mg.available), 1.953, 'released and available');
+  eq(Number(mg.unit_cost), 18.66, 'lot cost = average purchase price');
+  eq(mg.supplier, 'Grherb Biotech Co Ltd', 'supplier');
+  eq((await db.query(`select count(*)::int as n from suppliers where lower(name) like 'astron%'`)).rows[0].n, 1, 'supplier spellings merged');
+  eq((await db.query(`select type from items where name = 'Magnesium Stearate'`)).rows[0].type, 'excipient', 'excipient');
+});
+await ok('running the import twice adds nothing', async () => {
+  const n = (await db.query('select count(*)::int as n from stock_movements')).rows[0].n;
+  await db.exec(readFileSync(join(here, '..', 'supabase', 'import', 'opening_stock.sql'), 'utf8'));
+  eq((await db.query('select count(*)::int as n from stock_movements')).rows[0].n, n, 'movements');
+});
+await ok('partner sees imported items but not their prices or suppliers', async () => {
+  eq((await as('partner', `select id from items where name = 'Biotin'`)).length, 1, 'item');
+  eq((await as('partner', `select * from supplier_prices`)).length, 0, 'prices');
+  eq((await as('partner', `select * from lot_costs`)).length, 0, 'lot costs');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

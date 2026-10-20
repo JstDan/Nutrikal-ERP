@@ -41,7 +41,12 @@ Open http://localhost:3000.
 | Sales orders | One client, several products: each line comes from a sent or accepted offer at one of its quantities (the offer becomes accepted); status from draft to closed; deposit and balance dates; "Plan production" per product. Inventory sees orders without prices |
 | Production | Schedule of manufacturing orders with material status. Simulate a run (from an order line or on its own): materials needed (formula with overage and loss, packaging), reserved, free, at the partner, requested; reserve what is free; raise purchase requests for what is missing; put in the schedule (reserves); send to the partner (only when everything is reserved); cancel (releases reservations) |
 | Costs | Packaging (jars, caps, labels) per formula version, copied into new offers and production orders. Every lot has a cost per unit (current purchase price on receipt, or the actual landed cost entered at receipt). Production orders show the planned cost, and after the batch the actual cost: lots consumed at their cost + partner invoices, total and per pack; the finished-goods lot carries the cost per pack. Visible only to users who may see purchase prices |
-| Purchasing | Purchase requests from production, with status (open, ordered, received, cancelled) |
+| Purchasing | Purchase requests from production, with status (open, ordered, received, cancelled); "Order" turns an open request into an expected delivery |
+| Incoming deliveries | What is ordered from suppliers and when it should arrive: several items at once with supplier, date, order number, arrival location and price; grouped as overdue / next 7 days / later; receive in parts (each part is a new lot in quarantine at the delivery price; more than expected is allowed and reported), close short, change date, quantity or price, cancel. Visible to users who may see purchase prices |
+| Inventory additions (from Nutrikal Inventory) | Incoming and projected (available + incoming) per item; "Short" when stock falls below what is reserved; stock count per lot (the difference is posted as a correction); new item and item editing (names, Novel Food, shelf life, reorder level, allergens, vegan/vegetarian) |
+| Pick list | Printable list of materials for a production order sent to the partner, lots suggested first-expiry-first from released stock at the facility; Admin, Inventory and the partner |
+| Accounting export | Admin and Inventory: movements, production consumption, stock value and open deliveries for a period, on screen and as an Excel workbook in the user's language |
+| Change history | Admin: every change to key records with who and when, filters, CSV download |
 | Production costs | Admin keeps per-format fees (per pack, per 1000 units, per kg), set-up per batch, material loss and default margin |
 | Partner portal | Production orders sent by Nutrikal (by project code), materials needed against stock at the facility; start production; report the batch (lots used, pre-filled first-expiry-first; quantity made; their batch number); finished goods go to quarantine for QC; enter their invoice per batch. Stock at the facility, receive goods, stock correction requests |
 
@@ -69,6 +74,7 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 | `20261019001100_sales_orders.sql` | Sales orders (SO-00001) with lines from offers, status rules, overviews without prices |
 | `20261019001200_manufacturing.sql` | Manufacturing orders (MO-00001), packaging, material requirements, reservations per manufacturing order, purchase requests (PR-00001), partner batch reporting, production invoices, partner view |
 | `20261019001300_costing.sql` | Packaging per formula version, lot costs, consumption linked to the manufacturing order, batch cost functions |
+| `20261021000100_deliveries_counts.sql` | Expected deliveries (ED-00001) with partial receipts linked to lots and purchase requests, incoming and projected stock per item, stock count |
 | `20261019000900_formulation.sql` | Formulas (NK-F-0001), versions, lines, nutrients with NRV (Reg. 1169/2011 Annex XIII), item nutrient content, health claims, checks and access rules |
 
 ## Rules the database enforces
@@ -97,7 +103,7 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 
 ```
 cd test && npm install
-node run-tests.mjs          # 124 database rule checks across the four roles
+node run-tests.mjs          # 162 database rule checks across the four roles
 python3 ui_test.py http://localhost:3000   # 20 browser checks (needs Python Playwright + Chromium)
 ```
 
@@ -107,8 +113,9 @@ The browser tests create a client, contact, project and task, receive and releas
 
 1. Create a Supabase project in a Nutrikal-owned organization (paid plan for daily backups), e.g. `nutrikal-erp`.
 2. `supabase link --project-ref <ref>` and `supabase db push` from this folder.
-3. Invite users in Supabase Auth, then add one `profiles` row per user with their role.
-4. Fill `company_settings` (legal name, VAT, EIK, bank details) and set `number_series.next_number` for invoices.
+3. Users are added in Supabase only (there is no user screen in the app): invite them in Supabase Auth, then add one `profiles` row per user with their role.
+4. Load the opening stock from the old Nutrikal Inventory app once: check `supabase/import/REVIEW.md`, set the location at the top of `supabase/import/opening_stock.sql` (`NK-WH` or `PF-RM`) and run the file in the SQL editor. It is not a migration; running it twice adds nothing.
+5. Fill `company_settings` (legal name, VAT, EIK, bank details) and set `number_series.next_number` for invoices.
 
 ## Points to review
 
@@ -118,8 +125,10 @@ The browser tests create a client, contact, project and task, receive and releas
 - The partner can read item names, including finished goods. If a product name reveals the client's brand, use neutral names.
 - Reservations are per item or per lot. Linking them to manufacturing orders and consuming them automatically comes with production in Phase 3.
 - Logo: the NUTRIKAL wordmark (`web/public/nutrikal-wordmark.webp`) is in the menu and on the offer document. The browser icon (`web/src/app/icon.svg`) is a vector redraw of the "n" icon; replace it with the original artwork if you have it.
-- Reports for the accountant (stock valuation, materials consumed, cost of batches and of goods sold) come as a separate module and build on lot and batch costs.
-- Purchase requests are a list for now; purchase orders to suppliers (and receiving against them) come next.
+- The accounting export covers movements, consumption, stock value and open deliveries. Cost of goods sold comes with invoicing.
+- Expected deliveries stand in for purchase orders to suppliers; there is no purchase order document yet.
+- Imported ingredients (142, codes RM-1001… and EX-…) have Novel Food status "unknown", no shelf life and no Bulgarian name. Complete them on the item page before using them in an approved formula. Items that had no supplier in the old app get a lot cost but no purchase price until a supplier and price are added.
+- The local demo database loads the same opening stock (into the Nutrikal warehouse) next to the demo data.
 - The partner enters its invoice per batch (owner decision, to be reviewed after trying it).
 - Admin can start production before the deposit and dispatch before the balance (override). Remove the override in `sales_orders_guard` if it should be blocked for everyone.
 - Sales users see cost and margin per quantity on offers (not the purchase price of each item). Change `offer_tiers` access if Sales should see prices only.

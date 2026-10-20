@@ -29,7 +29,7 @@ export default async function PurchasingPage({ searchParams }: PageProps<"/purch
       order by pr.needed_by nulls last, pr.code`,
     [tab],
   );
-  const grid = "md:grid-cols-[100px_minmax(0,1.4fr)_130px_minmax(0,1fr)] lg:grid-cols-[100px_minmax(0,1.4fr)_130px_120px_110px_minmax(0,1fr)]";
+  const grid = "md:grid-cols-[100px_minmax(0,1.4fr)_130px_minmax(0,1fr)] xl:grid-cols-[100px_minmax(0,1.4fr)_130px_120px_110px_minmax(0,1fr)]";
 
   return (
     <div className="flex flex-col gap-6">
@@ -51,7 +51,7 @@ export default async function PurchasingPage({ searchParams }: PageProps<"/purch
       <section aria-label={P.title} className="card px-5 pt-2 pb-3">
         <div className={`row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${grid}`}>
           <span>{P.code}</span><span>{P.item}</span><span>{P.quantity}</span>
-          <span className="hide-md">{P.neededBy}</span><span className="hide-md">{P.production}</span><span>{P.status}</span>
+          <span className="hidden xl:block">{P.neededBy}</span><span className="hidden xl:block">{P.production}</span><span>{P.status}</span>
         </div>
         {rows.length === 0 && <div className="py-4"><Empty>{P.empty}</Empty></div>}
         {rows.map((r) => (
@@ -61,8 +61,8 @@ export default async function PurchasingPage({ searchParams }: PageProps<"/purch
               <span className="block min-w-0 break-words md:inline">{locale === "bg" && r.name_bg ? r.name_bg : r.name} <span className="text-ink-2">· {r.sku}</span></span>
             </div>
             <span className="font-semibold">{formatQty(locale, r.quantity, r.base_unit)}</span>
-            <span className="hide-md">{formatDate(locale, r.needed_by)}</span>
-            <span className="hide-md">{r.mo_id ? <Link href={`/production/${r.mo_id}`} className="text-ink">{r.mo_code}</Link> : "—"}</span>
+            <span className="hidden xl:block">{formatDate(locale, r.needed_by)}</span>
+            <span className="hidden xl:block">{r.mo_id ? <Link href={`/production/${r.mo_id}`} className="text-ink">{r.mo_code}</Link> : "—"}</span>
             {canEdit ? (
               <form action={setPurchaseRequestStatus} className="col-span-2 flex flex-wrap gap-2 md:col-span-1">
                 <input type="hidden" name="request_id" value={r.id} />
@@ -71,6 +71,9 @@ export default async function PurchasingPage({ searchParams }: PageProps<"/purch
                   {TABS.map((s) => <option key={s} value={s}>{t.enums.purchaseStatus[s]}</option>)}
                 </select>
                 <button type="submit" className="btn btn-outline">{t.common.save}</button>
+                {r.status === "open" && (
+                  <Link href={`/deliveries?request=${r.id}#new`} title={P.orderHint} className="btn btn-primary">{P.order}</Link>
+                )}
               </form>
             ) : (
               <Chip tone={purchaseTone(r.status)}>{t.enums.purchaseStatus[r.status as "open"]}</Chip>

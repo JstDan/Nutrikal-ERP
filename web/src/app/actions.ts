@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { q, withUser } from "@/lib/db/engine";
 import { DEMO_USERS } from "@/lib/db/demo-users";
 import { getSession, USER_COOKIE } from "@/lib/session";
-import { fmt, isLocale, LOCALE_COOKIE } from "@/lib/i18n";
+import { fmt, formatQty, isLocale, LOCALE_COOKIE } from "@/lib/i18n";
+import { DELIVERY_LINES } from "@/lib/deliveries";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string };
 
@@ -636,4 +637,158 @@ export async function requestAdjustment(_: ActionState, fd: FormData): Promise<A
   }
   revalidatePath("/partner");
   return { ok: true, message: t.partner.sent };
+}
+
+// -------------------------------------------------------- items (master data)
+const itemFields = (fd: FormData) => {
+  const tri = (k: string) => (str(fd, k) === "true" ? true : str(fd, k) === "false" ? false : null);
+  return [
+    str(fd, "name"), str(fd, "name_bg"), str(fd, "latin_name"), str(fd, "novel_food_status"), str(fd, "novel_food_reference"),
+    num(fd, "shelf_life_months"), num(fd, "reorder_level"), str(fd, "storage_conditions"),
+    fd.getAll("allergens").filter((v): v is string => typeof v === "string"), tri("is_vegan"), tri("is_vegetarian"),
+    str(fd, "regulatory_notes"), str(fd, "notes"),
+  ];
+};
+
+export async function createItem(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    const [row] = await q<{ id: string }>(
+      user.id,
+      `insert into items (name, name_bg, latin_name, novel_food_status, novel_food_reference, shelf_life_months, reorder_level,
+         storage_conditions, allergens, is_vegan, is_vegetarian, regulatory_notes, notes, sku, type, base_unit)
+       values ($1, $2, $3, $4::novel_food_status, $5, $6, $7, $8, $9::eu_allergen[], $10, $11, $12, $13, upper($14),
+         $15::item_type, $16::base_unit)
+       returning id`,
+      [...itemFields(fd), str(fd, "sku"), str(fd, "type"), str(fd, "base_unit")],
+    );
+    id = row.id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/inventory");
+  redirect(`/inventory/items/${id}`);
+}
+
+export async function updateItem(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    const rows = await q(
+      user.id,
+      `update items set name = $1, name_bg = $2, latin_name = $3, novel_food_status = $4::novel_food_status,
+         novel_food_reference = $5, shelf_life_months = $6, reorder_level = $7, storage_conditions = $8,
+         allergens = $9::eu_allergen[], is_vegan = $10, is_vegetarian = $11, regulatory_notes = $12, notes = $13,
+         is_active = $15
+       where id = $14 returning id`,
+      [...itemFields(fd), str(fd, "item_id"), fd.get("is_active") === "on"],
+    );
+    if (rows.length === 0) return { error: t.items.readOnly };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: t.items.saved };
+}
+
+// ----------------------------------------------------------- stock count
+export async function countStock(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, locale, t } = await getSession();
+  const [lotId, locationId] = (str(fd, "lot_location") ?? "|").split("|");
+  try {
+    const res = await withUser(user.id, async (tx) => {
+      const diff = (await tx.query<{ diff: string }>("select count_stock($1, $2, $3, $4)::text as diff",
+        [lotId || null, locationId || null, num(fd, "counted"), str(fd, "reason")])).rows[0].diff;
+      // Read after the count, so available includes the correction
+      const s = (await tx.query<{ base_unit: string; available: string }>(
+        "select s.base_unit, s.available::text from lots l join item_stock_summary s on s.item_id = l.item_id where l.id = $1",
+        [lotId])).rows[0];
+      return { diff, base_unit: s?.base_unit ?? "", available: s?.available ?? "0" };
+    });
+    revalidatePath("/", "layout");
+    if (!res || Number(res.diff) === 0) return { ok: true, message: t.inventory.count.match };
+    const diff = `${Number(res.diff) > 0 ? "+" : ""}${formatQty(locale, res.diff, res.base_unit)}`;
+    const msg = fmt(t.inventory.count.done, { diff });
+    return { ok: true, message: Number(res.available) < 0 ? `${msg}. ${t.inventory.count.shortWarning}` : msg };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+}
+
+// ----------------------------------------------------- expected deliveries
+export async function createDeliveries(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const request = str(fd, "purchase_request_id");
+  let n = 0;
+  try {
+    await withUser(user.id, async (tx) => {
+      for (let i = 0; i < DELIVERY_LINES; i++) {
+        const item = str(fd, `item_${i}`);
+        if (!item) continue;
+        await tx.query(
+          "select create_expected_delivery($1, $2, $3, $4::date, $5, $6, $7, $8, $9)",
+          [item, num(fd, `quantity_${i}`), str(fd, "supplier_id"), str(fd, "expected_on"), num(fd, `unit_price_${i}`),
+           str(fd, "po_reference"), str(fd, "location_id"), i === 0 ? request : null, str(fd, "note")],
+        );
+        n++;
+      }
+    });
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  if (n === 0) return { error: t.deliveries.chooseItem };
+  revalidatePath("/", "layout");
+  if (request) redirect("/deliveries");
+  return { ok: true, message: fmt(t.deliveries.created, { n }) };
+}
+
+export async function receiveDelivery(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, locale, t } = await getSession();
+  try {
+    const lot = await withUser(user.id, async (tx) => {
+      const r = await tx.query<{ id: string }>(
+        "select receive_expected_delivery($1, $2, $3, $4, $5::date, $6::date, $7, $8) as id",
+        [str(fd, "delivery_id"), str(fd, "location_id"), num(fd, "quantity"), str(fd, "supplier_lot"),
+         str(fd, "manufactured_on"), str(fd, "expires_on"), str(fd, "reference"), fd.get("close") === "on"],
+      );
+      const l = (await tx.query<{ lot_number: string; over: string; base_unit: string }>(
+        `select l.lot_number, greatest(d.received - d.quantity, 0)::text as over, i.base_unit
+           from lots l join expected_delivery_overview d on d.id = l.expected_delivery_id join items i on i.id = l.item_id
+          where l.id = $1`, [r.rows[0].id])).rows[0];
+      return l;
+    });
+    revalidatePath("/", "layout");
+    const msg = fmt(t.deliveries.receivedOk, { lot: lot?.lot_number ?? "" });
+    return { ok: true, message: lot && Number(lot.over) > 0 ? `${msg}. ${fmt(t.deliveries.overWarning, { qty: formatQty(locale, lot.over, lot.base_unit) })}` : msg };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+}
+
+export async function updateDelivery(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    const rows = await q(
+      user.id,
+      `update expected_deliveries set expected_on = $2::date, quantity = $3, unit_price = $4, po_reference = $5
+        where id = $1 returning id`,
+      [str(fd, "delivery_id"), str(fd, "expected_on"), num(fd, "quantity"), num(fd, "unit_price"), str(fd, "po_reference")],
+    );
+    if (rows.length === 0) return { error: t.deliveries.readOnly };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: t.common.saved };
+}
+
+export async function cancelDelivery(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  try {
+    await q(user.id, "select cancel_expected_delivery($1)", [str(fd, "delivery_id")]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
 }

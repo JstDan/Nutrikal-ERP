@@ -62,7 +62,10 @@ async function init(): Promise<PGlite> {
       await db.exec(fs.readFileSync(path.join(/*turbopackIgnore: true*/ dir, f), "utf8"));
     }
     await seedDemo(db);
-    console.log(`[nutrikal] database created in ${dataDir} with ${files.length} migrations + demo data`);
+    // Real ingredients and opening stock from the old Nutrikal Inventory app
+    const opening = path.join(/*turbopackIgnore: true*/ dir, "..", "import", "opening_stock.sql");
+    if (fs.existsSync(opening)) await db.exec(fs.readFileSync(opening, "utf8"));
+    console.log(`[nutrikal] database created in ${dataDir} with ${files.length} migrations + demo data + opening stock`);
   }
   return db;
 }

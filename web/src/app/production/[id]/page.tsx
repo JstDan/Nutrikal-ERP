@@ -95,6 +95,9 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
             <span>{formatNumber(locale, mo.quantity)} {t.common.units}{mo.planned_date ? ` · ${formatDate(locale, mo.planned_date)}` : ""}</span>
           </span>
         }
+        actions={canPlan && (mo.status === "released" || mo.status === "in_production") && (
+          <Link href={`/production/${mo.id}/pick-list`} className="btn btn-outline">{t.pickList.open}</Link>
+        )}
       />
 
       <div className="grid grid-cols-1 items-start gap-4">

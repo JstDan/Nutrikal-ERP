@@ -227,4 +227,11 @@ export async function seedDemo(db: PGlite) {
 
   // Partner reports a spill and asks for a correction
   await as(PARTNER, `select request_stock_adjustment($1, $2, -2, 'Spillage during weighing')`, [lotMg, PF_RM]);
+
+  // Expected deliveries: one overdue, one partly received, one ordered from a purchase request
+  await as(INVENTORY, `select create_expected_delivery($1, 50, $2, current_date - 3, 9.8, 'EU-55120', $3)`, [vitc, sup, PF_QUAR]);
+  const edCaps = await one(INVENTORY, `select create_expected_delivery($1, 100000, $2, current_date + 5, 0.0058, 'CP-2291', $3) as id`, [caps, sup2, PF_QUAR]);
+  await as(INVENTORY, `select receive_expected_delivery($1, $2, 40000, 'CP-90211', current_date - 30)`, [edCaps, PF_QUAR]);
+  const [pr] = await as<{ id: string }>(INVENTORY, `select id from purchase_requests where manufacturing_order_id = $1 and status = 'open' order by code limit 1`, [moMag]);
+  if (pr) await as(INVENTORY, `select create_expected_delivery(null, null, $2, current_date + 12, null, 'EU-55187', $3, $1)`, [pr.id, sup, PF_QUAR]);
 }

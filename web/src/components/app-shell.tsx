@@ -43,9 +43,19 @@ export async function AppShell({ children }: { children: ReactNode }) {
             { href: "/qc", label: t.nav.qc },
             { href: "/formulas", label: t.nav.formulas },
             { href: "/purchasing", label: t.nav.purchasing },
+            { href: "/deliveries", label: t.nav.deliveries },
             { href: "/production", label: t.nav.production },
           ],
         },
+        ...(user.role === "admin" || user.role === "inventory"
+          ? [{
+              title: t.nav.reports,
+              items: [
+                { href: "/accounting", label: t.nav.accounting },
+                ...(user.role === "admin" ? [{ href: "/history", label: t.nav.history }] : []),
+              ],
+            }]
+          : []),
       ];
 
   return (

@@ -73,6 +73,7 @@ export default async function PartnerProductionOrderPage({ params }: PageProps<"
             <span>{mo.project_code} · {formatNumber(locale, mo.quantity)} {t.common.units}{mo.planned_date ? ` · ${formatDate(locale, mo.planned_date)}` : ""}</span>
           </span>
         }
+        actions={canReport && <Link href={`/production/${mo.id}/pick-list`} className="btn btn-outline">{t.pickList.open}</Link>}
       />
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
