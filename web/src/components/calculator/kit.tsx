@@ -200,7 +200,7 @@ export function RemoveButton({ label, onClick }: { label: string; onClick: () =>
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="grid h-11 w-11 shrink-0 place-items-center rounded-sm border border-line-strong bg-white text-base text-ink-2 hover:border-red hover:text-red-ink"
+      className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-sm border border-line-strong bg-white text-base text-ink-2 hover:border-red hover:text-red-ink"
     >
       <span aria-hidden="true">✕</span>
     </button>
