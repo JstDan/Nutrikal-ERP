@@ -5,11 +5,12 @@ import { getSession } from "@/lib/session";
 import { LOCALES } from "@/lib/i18n";
 import { SideNav, type NavGroup } from "./side-nav";
 import { DemoUserSwitch } from "./demo-user-switch";
+import { ActAsSwitch } from "./act-as-switch";
 import { MobileMenu } from "./mobile-menu";
 import { Wordmark } from "./logo";
 
 export async function AppShell({ children }: { children: ReactNode }) {
-  const { user, locale, t } = await getSession();
+  const { user, developer, locale, t } = await getSession();
   const isPartner = user.role === "partner";
   const soon = (n: number) => `${t.common.phase} ${n}`;
 
@@ -97,10 +98,17 @@ export async function AppShell({ children }: { children: ReactNode }) {
               ))}
             </form>
             <DemoUserSwitch
-              current={user.id}
+              current={developer?.id ?? user.id}
               label={t.topbar.viewingAs}
               options={DEMO_USERS.map((u) => ({ id: u.id, label: t.enums.role[u.role] }))}
             />
+            {developer && (
+              <ActAsSwitch
+                current={user.id}
+                label={t.topbar.actAs}
+                options={developer.targets.map((u) => ({ id: u.id, label: `${u.full_name} · ${t.enums.role[u.role]}` }))}
+              />
+            )}
           </div>
         </header>
         <main className="w-full max-w-[1360px] px-4 py-6 sm:px-8 sm:py-8">{children}</main>

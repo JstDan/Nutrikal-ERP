@@ -22,7 +22,7 @@ npm run dev
 Open http://localhost:3000.
 
 - On first start the app creates a local database in `web/.data/`, runs every migration from `supabase/migrations`, and loads sample data (4 clients, 6 projects, 11 items, lots, reservations, 3 formulas, 2 offers, 1 sales order, 2 manufacturing orders). Delete `web/.data/` to start over.
-- **Demo sign-in.** The selector in the top bar switches between the four roles (Admin, Sales, Inventory, Partner facility), so you can see what each one sees. It is replaced by Supabase Auth when we go live.
+- **Demo sign-in.** The selector in the top bar switches between the roles (Admin, Sales, Inventory, Partner facility, Developer), so you can see what each one sees. It is replaced by Supabase Auth when we go live.
 - **Language.** The БГ / EN switch changes the whole interface. The choice is saved on the user's profile, so it follows them to other devices.
 
 ### What works now
@@ -48,6 +48,7 @@ Open http://localhost:3000.
 | Accounting export | Admin and Inventory: movements, production consumption, stock value and open deliveries for a period, on screen and as an Excel workbook in the user's language |
 | Change history | Admin: every change to key records with who and when, filters, CSV download |
 | Production costs | Admin keeps per-format fees (per pack, per 1000 units, per kg), set-up per batch, material loss and default margin |
+| Developer | A developer has no data rights of their own. A second dropdown in the top bar lists every other active user (name and role); the app then runs every page and action as the chosen user, so that user's role and row-level security apply unchanged. Each switch is logged in `impersonation_log` (readable by Admin and the developer) |
 | Partner portal | Production orders sent by Nutrikal (by project code), materials needed against stock at the facility; start production; report the batch (lots used, pre-filled first-expiry-first; quantity made; their batch number); finished goods go to quarantine for QC; enter their invoice per batch. Stock at the facility, receive goods, stock correction requests |
 
 Invoices, purchasing and production orders are shown in the menu with the phase they arrive in.
@@ -75,6 +76,7 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 | `20261019001200_manufacturing.sql` | Manufacturing orders (MO-00001), packaging, material requirements, reservations per manufacturing order, purchase requests (PR-00001), partner batch reporting, production invoices, partner view |
 | `20261019001300_costing.sql` | Packaging per formula version, lot costs, consumption linked to the manufacturing order, batch cost functions |
 | `20261021000100_deliveries_counts.sql` | Expected deliveries (ED-00001) with partial receipts linked to lots and purchase requests, incoming and projected stock per item, stock count |
+| `20261022000100_developer_role.sql` | Developer role: list of users to act as, logged switching |
 | `20261019000900_formulation.sql` | Formulas (NK-F-0001), versions, lines, nutrients with NRV (Reg. 1169/2011 Annex XIII), item nutrient content, health claims, checks and access rules |
 
 ## Rules the database enforces
@@ -103,7 +105,7 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 
 ```
 cd test && npm install
-node run-tests.mjs          # 162 database rule checks across the four roles
+node run-tests.mjs          # 169 database rule checks across the five roles
 python3 ui_test.py http://localhost:3000   # 20 browser checks (needs Python Playwright + Chromium)
 ```
 
@@ -113,7 +115,7 @@ The browser tests create a client, contact, project and task, receive and releas
 
 1. Create a Supabase project in a Nutrikal-owned organization (paid plan for daily backups), e.g. `nutrikal-erp`.
 2. `supabase link --project-ref <ref>` and `supabase db push` from this folder.
-3. Users are added in Supabase only (there is no user screen in the app): invite them in Supabase Auth, then add one `profiles` row per user with their role.
+3. Users are added in Supabase only (there is no user screen in the app): invite them in Supabase Auth, then add one `profiles` row per user with their role (`admin`, `sales`, `inventory`, `partner` or `developer`). Give `developer` only to people who may see and do everything any user can.
 4. Load the opening stock from the old Nutrikal Inventory app once: check `supabase/import/REVIEW.md`, set the location at the top of `supabase/import/opening_stock.sql` (`NK-WH` or `PF-RM`) and run the file in the SQL editor. It is not a migration; running it twice adds nothing.
 5. Fill `company_settings` (legal name, VAT, EIK, bank details) and set `number_series.next_number` for invoices.
 

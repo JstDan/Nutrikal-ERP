@@ -1,0 +1,32 @@
+"use client";
+
+import { actAs } from "@/app/actions";
+
+type Option = { id: string; label: string };
+
+/** Developer only: pick the user to act as. Every page then runs as that user. */
+export function ActAsSwitch({ current, options, label }: { current: string; options: Option[]; label: string }) {
+  return (
+    <form action={actAs} className="flex min-w-0 max-w-full flex-wrap items-center gap-2 rounded-sm border-2 border-ink px-2 py-1">
+      <label htmlFor="act-as" className="text-xs font-semibold text-ink">
+        {label}
+      </label>
+      <select
+        id="act-as"
+        name="user"
+        defaultValue={current}
+        onChange={(e) => e.currentTarget.form?.requestSubmit()}
+        className="input min-w-0 max-w-[260px]"
+      >
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <noscript>
+        <button type="submit" className="btn btn-outline">OK</button>
+      </noscript>
+    </form>
+  );
+}

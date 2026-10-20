@@ -46,6 +46,7 @@ const U = {
   sales:     '00000000-0000-0000-0000-00000000000b',
   inventory: '00000000-0000-0000-0000-00000000000c',
   partner:   '00000000-0000-0000-0000-00000000000d',
+  developer: '00000000-0000-0000-0000-00000000000e',
 };
 for (const [role, id] of Object.entries(U)) {
   await db.query('insert into auth.users (id) values ($1)', [id]);
@@ -864,6 +865,29 @@ await ok('partner sees imported items but not their prices or suppliers', async 
   eq((await as('partner', `select * from supplier_prices`)).length, 0, 'prices');
   eq((await as('partner', `select * from lot_costs`)).length, 0, 'lot costs');
 });
+
+console.log('\nDeveloper role');
+await ok('developer has no data rights of their own', async () => {
+  eq((await as('developer', 'select * from clients')).length, 0, 'clients');
+  eq((await as('developer', 'select * from suppliers')).length, 0, 'suppliers');
+  eq((await as('developer', 'select * from lot_costs')).length, 0, 'lot costs');
+  eq((await one('developer', 'select public.is_staff() as s')).s, false, 'not staff');
+});
+await ok('developer lists every active user except developers', async () => {
+  const rows = await as('developer', 'select id, role from impersonation_targets()');
+  eq(rows.map(r => r.role).join(','), 'admin,sales,inventory,partner', 'targets');
+});
+await fails('admin cannot list users to act as', () => as('admin', 'select * from impersonation_targets()'), 'Only a developer');
+await fails('partner cannot start acting as another user', () => as('partner', 'select start_impersonation($1)', [U.admin]), 'Only a developer');
+await fails('developer cannot act as another developer', () => as('developer', 'select start_impersonation($1)', [U.developer]), 'cannot be selected');
+await ok('acting as a user is logged; admin and the developer can read the log', async () => {
+  await as('developer', 'select start_impersonation($1)', [U.inventory]);
+  eq((await as('admin', 'select * from impersonation_log where target_id = $1', [U.inventory])).length, 1, 'admin');
+  eq((await as('developer', 'select * from impersonation_log')).length, 1, 'developer');
+  eq((await as('inventory', 'select * from impersonation_log')).length, 0, 'others');
+});
+await fails('nobody writes the impersonation log directly',
+  () => as('admin', 'insert into impersonation_log (developer_id, target_id) values ($1, $2)', [U.developer, U.admin]));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

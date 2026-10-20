@@ -53,6 +53,7 @@ export const en = {
     language: "Language",
     viewingAs: "Demo: signed in as",
     switchUser: "Switch",
+    actAs: "Developer: acting as",
   },
   dashboard: {
     title: "Overview",
@@ -1197,7 +1198,7 @@ export const en = {
     activityType: { note: "Note", call: "Call", email: "Email", meeting: "Meeting", task: "Task" },
     balanceTerms: { before_dispatch: "balance before dispatch", net_days: "balance net {days} days" },
     balanceTermsOption: { before_dispatch: "Before dispatch", net_days: "Net days after invoice" },
-    role: { admin: "Admin", sales: "Sales", inventory: "Inventory", partner: "Partner facility" },
+    role: { admin: "Admin", sales: "Sales", inventory: "Inventory", partner: "Partner facility", developer: "Developer" },
     locale: { bg: "Bulgarian", en: "English" },
     deliveryStatus: { open: "Open", received: "Received", cancelled: "Cancelled" },
     movementType: {

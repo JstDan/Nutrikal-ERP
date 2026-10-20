@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { q, withUser } from "@/lib/db/engine";
 import { DEMO_USERS } from "@/lib/db/demo-users";
-import { getSession, USER_COOKIE } from "@/lib/session";
+import { ACT_AS_COOKIE, getSession, USER_COOKIE } from "@/lib/session";
 import { fmt, formatQty, isLocale, LOCALE_COOKIE } from "@/lib/i18n";
 import { DELIVERY_LINES } from "@/lib/deliveries";
 
@@ -31,9 +31,9 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0]
 export async function setLocale(fd: FormData) {
   const locale = fd.get("locale");
   if (!isLocale(locale)) return;
-  const { user } = await getSession();
+  const { user, developer } = await getSession();
   (await cookies()).set(LOCALE_COOKIE, locale, { path: "/", maxAge: YEAR, sameSite: "lax" });
-  await q(user.id, "select set_my_locale($1)", [locale]);
+  await q(developer?.id ?? user.id, "select set_my_locale($1)", [locale]);
   revalidatePath("/", "layout");
 }
 
@@ -44,7 +44,22 @@ export async function switchDemoUser(fd: FormData) {
   const jar = await cookies();
   jar.set(USER_COOKIE, u.id, { path: "/", maxAge: YEAR, sameSite: "lax" });
   jar.delete(LOCALE_COOKIE); // use that user's saved language
+  jar.delete(ACT_AS_COOKIE);
+  if (u.role === "developer") {
+    // a developer starts as the first user in the list; log it like any switch
+    await q(u.id, "select start_impersonation(id) from impersonation_targets() limit 1");
+  }
   redirect(u.role === "partner" ? "/partner" : "/");
+}
+
+/** Developer: act as another user (checked and logged in the database). */
+export async function actAs(fd: FormData) {
+  const { developer } = await getSession();
+  const target = developer?.targets.find((x) => x.id === fd.get("user"));
+  if (!developer || !target) return;
+  await q(developer.id, "select start_impersonation($1)", [target.id]);
+  (await cookies()).set(ACT_AS_COOKIE, target.id, { path: "/", maxAge: YEAR, sameSite: "lax", httpOnly: true });
+  redirect(target.role === "partner" ? "/partner" : "/");
 }
 
 // -------------------------------------------------------------------- CRM

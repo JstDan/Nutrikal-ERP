@@ -55,6 +55,7 @@ export const bg: Dict = {
     language: "Език",
     viewingAs: "Демо: влезли сте като",
     switchUser: "Смени",
+    actAs: "Developer: действате като",
   },
   dashboard: {
     title: "Общ преглед",
@@ -1199,7 +1200,7 @@ export const bg: Dict = {
     activityType: { note: "Бележка", call: "Обаждане", email: "Имейл", meeting: "Среща", task: "Задача" },
     balanceTerms: { before_dispatch: "остатък преди експедиция", net_days: "остатък до {days} дни" },
     balanceTermsOption: { before_dispatch: "Преди експедиция", net_days: "Дни след фактура" },
-    role: { admin: "Администратор", sales: "Продажби", inventory: "Склад", partner: "Партньорско производство" },
+    role: { admin: "Администратор", sales: "Продажби", inventory: "Склад", partner: "Партньорско производство", developer: "Developer" },
     locale: { bg: "Български", en: "Английски" },
     deliveryStatus: { open: "Отворени", received: "Получени", cancelled: "Отказани" },
     movementType: {
