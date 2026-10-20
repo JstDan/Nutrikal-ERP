@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { reserveOfferNo, saveOffer, syncIfStale } from "@/app/calculator/actions";
 import { calcInputFromForm, calculate } from "@/lib/calculator/calc";
 import type { CrmClient } from "@/lib/calculator/db";
-import { createEmptyForm, DRAFT_KEY, duplicateForm, normalizeForm } from "@/lib/calculator/form";
+import { BASELINE_KEY, createEmptyForm, DRAFT_KEY, duplicateForm, normalizeForm } from "@/lib/calculator/form";
 import { toOfferInput } from "@/lib/calculator/offerRecord";
 import { readStorage, removeStorage, writeStorage } from "@/lib/calculator/storage";
 import type { OfferForm, OfferRecord, RawMaterial, Settings } from "@/lib/calculator/types";
@@ -47,16 +47,21 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
   const [busy, setBusy] = useState(false);
   const { toast, show, clear } = useToast();
   const started = useRef(false);
+  /** The form as last opened, started or saved (JSON); any difference means unsaved changes. */
+  const [baseline, setBaseline] = useState<string | null>(null);
+  const [confirmNew, setConfirmNew] = useState(false);
 
-  /** Replace the form; `fresh` marks a different offer (forgets touched fields). */
+  /** Replace the form; `fresh` marks a different offer (forgets touched fields), `clean` marks it as saved. */
   const loadForm = useCallback(
-    (f: OfferForm, fresh = false) => {
+    (f: OfferForm, fresh = false, clean = fresh) => {
       if (fresh) {
         setTouched(new Set());
         setShowAllErrors(false);
       }
       setNumberError(null);
-      setFormState(normalizeForm(f, settings));
+      const next = normalizeForm(f, settings);
+      setFormState(next);
+      if (clean) setBaseline(JSON.stringify(next));
     },
     [settings],
   );
@@ -65,7 +70,9 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
     removeStorage(DRAFT_KEY);
     const res = await reserveOfferNo();
     setNumberError(res.ok ? null : res.error);
-    setFormState(createEmptyForm(settings, res.ok ? res.data : ""));
+    const next = createEmptyForm(settings, res.ok ? res.data : "");
+    setFormState(next);
+    setBaseline(JSON.stringify(next));
     setTouched(new Set());
     setShowAllErrors(false);
   }, [settings]);
@@ -88,8 +95,10 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
         return;
       }
       const draft = readStorage<OfferForm>(DRAFT_KEY);
-      if (draft) loadForm(draft);
-      else await newOffer();
+      if (draft) {
+        loadForm(draft);
+        setBaseline(readStorage<string>(BASELINE_KEY));
+      } else await newOffer();
     })();
   }, [initial, loadForm, newOffer, settings]);
 
@@ -104,6 +113,11 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
   useEffect(() => {
     if (form) writeStorage(DRAFT_KEY, form);
   }, [form]);
+  useEffect(() => {
+    if (baseline !== null) writeStorage(BASELINE_KEY, baseline);
+  }, [baseline]);
+
+  const dirty = useMemo(() => !!form && JSON.stringify(form) !== baseline, [form, baseline]);
 
   const setForm = useCallback((updater: (f: OfferForm) => OfferForm) => setFormState((f) => (f ? updater(f) : f)), []);
 
@@ -141,7 +155,7 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
       }
       const res = await saveOffer(toOfferInput(current, result, settings.fixed_costs));
       if (!res.ok) throw new Error(res.error);
-      loadForm({ ...res.data.data, id: res.data.id });
+      loadForm({ ...res.data.data, id: res.data.id }, false, true);
       show("success", fmt(t.results.savedOk, { no: res.data.offer_no }));
     } catch (e) {
       show("error", `${t.results.saveFailed}: ${(e as Error).message}`);
@@ -164,6 +178,7 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
   };
 
   const startNew = async () => {
+    setConfirmNew(false);
     await newOffer();
     window.scrollTo({ top: 0 });
   };
@@ -174,11 +189,24 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
         title={t.title}
         subtitle={t.subtitle}
         actions={
-          <button type="button" onClick={startNew} disabled={busy} className="btn btn-primary">
+          <button
+            type="button"
+            onClick={dirty ? () => setConfirmNew(true) : startNew}
+            disabled={busy}
+            aria-expanded={dirty ? confirmNew : undefined}
+            className="btn btn-primary"
+          >
             + {t.newOffer}
           </button>
         }
       />
+      {confirmNew && (
+        <div role="alertdialog" aria-labelledby="new-offer-confirm" className="flex flex-wrap items-center gap-3 rounded-sm border border-[#f0d9a8] bg-amber-tint px-4 py-3">
+          <span id="new-offer-confirm" className="min-w-0 flex-[1_1_240px] text-sm font-semibold text-amber-ink">{t.unsavedConfirm}</span>
+          <button type="button" autoFocus onClick={() => setConfirmNew(false)} className="btn btn-outline">{t.cancel}</button>
+          <button type="button" onClick={startNew} className="btn btn-primary">{t.continue}</button>
+        </div>
+      )}
       {tabs}
     </>
   );

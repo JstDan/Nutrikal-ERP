@@ -4,6 +4,8 @@ import type { OfferForm, Settings } from './types';
 
 /** localStorage key of the unsaved calculator form (survives a page refresh). */
 export const DRAFT_KEY = 'nk.calc.draft';
+/** The draft as last opened, started or saved – tells whether the draft has unsaved changes. */
+export const BASELINE_KEY = 'nk.calc.draftBaseline';
 
 /** Earlier default payment terms – unsaved drafts that still carry one get the current default. */
 const OLD_DEFAULT_TERMS = [
