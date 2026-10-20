@@ -50,7 +50,11 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
          join items i on i.id = s.item_id
          left join lateral (select min(b.expires_on) as next_expiry from stock_balances b where b.item_id = s.item_id and b.quantity > 0) e on true
         where ($1 = '' or s.type::text = $1)
-          and ($2 = '' or s.name ilike '%' || $2 || '%' or i.name_bg ilike '%' || $2 || '%' or s.sku ilike '%' || $2 || '%')
+          and ($2 = '' or s.name ilike '%' || $2 || '%' or i.name_bg ilike '%' || $2 || '%' or s.sku ilike '%' || $2 || '%'
+               -- our lot number or the supplier's batch of a lot in stock
+               or exists (select 1 from stock_balances b join lots lo on lo.id = b.lot_id
+                           where b.item_id = s.item_id and b.quantity > 0
+                             and (lo.lot_number ilike '%' || $2 || '%' or lo.supplier_lot ilike '%' || $2 || '%')))
         order by s.type, s.name`,
       [type, term],
     )).rows;
@@ -73,6 +77,9 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   });
 
   const itemName = (i: Item) => (locale === "bg" && i.name_bg ? i.name_bg : i.name);
+  // A search that matches a lot opens its item and marks the lot
+  const needle = term.toLowerCase();
+  const lotHit = (l: Lot) => needle !== "" && (l.lot_number.toLowerCase().includes(needle) || (l.supplier_lot ?? "").toLowerCase().includes(needle));
   const q = (n: string, u: string, l: Locale = locale) => formatQty(l, n, u);
 
   return (
@@ -125,7 +132,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
           const lots = data.lots.filter((l) => l.item_id === i.item_id);
           const res = data.res.filter((r) => r.item_id === i.item_id);
           return (
-            <details key={i.item_id} className="group border-b border-mist last:border-0">
+            <details key={i.item_id} open={lots.some(lotHit)} className="group border-b border-mist last:border-0">
               <summary className={`row cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] py-3.5 text-sm ${COLS} [&::-webkit-details-marker]:hidden`}>
                 <div className="min-w-0">
                   <div className="font-semibold break-words">
@@ -171,9 +178,10 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                       <span>{t.inventory.qc}</span><span className="hide-md">{t.inventory.expires}</span><span className="hide-md">{t.inventory.supplierLot}{data.lots.some((x) => x.unit_cost) ? ` · ${t.inventory.cost}` : ""}</span>
                     </div>
                     {lots.map((l) => (
-                      <div key={l.lot_id + l.location} className="row grid-cols-[minmax(0,1fr)_auto] text-sm md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_100px_120px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_100px_120px_110px_minmax(0,1fr)]">
+                      <div key={l.lot_id + l.location} className={`row grid-cols-[minmax(0,1fr)_auto] text-sm ${lotHit(l) ? "-mx-2 rounded bg-amber-tint px-2 py-1" : ""} md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_100px_120px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_100px_120px_110px_minmax(0,1fr)]`}>
                         <span className="min-w-0">
                           <span className="font-semibold">{l.lot_number}</span>
+                          {l.supplier_lot && <span className="block text-xs text-ink-2 lg:hidden">{t.inventory.supplierLot}: {l.supplier_lot}</span>}
                           <span className="block text-xs text-ink-2 md:hidden">{l.location} · {t.enums.qcStatus[l.qc_status as "released"]}</span>
                         </span>
                         <span className="hide-sm min-w-0 break-words">{l.location}</span>
