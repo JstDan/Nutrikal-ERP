@@ -183,30 +183,37 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
     window.scrollTo({ top: 0 });
   };
 
+  const newButton = (className: string) => (
+    <button
+      type="button"
+      onClick={dirty ? () => setConfirmNew(true) : startNew}
+      disabled={busy}
+      aria-expanded={dirty ? confirmNew : undefined}
+      className={`btn btn-primary ${className}`}
+    >
+      + {t.newOffer}
+    </button>
+  );
+  const confirm = (className: string) =>
+    confirmNew && (
+      <div role="alertdialog" aria-label={t.unsavedConfirm} className={`flex flex-wrap items-center gap-3 rounded-sm border border-[#f0d9a8] bg-amber-tint px-4 py-3 ${className}`}>
+        <span className="min-w-0 flex-[1_1_240px] text-sm font-semibold text-amber-ink">{t.unsavedConfirm}</span>
+        <button type="button" autoFocus onClick={() => setConfirmNew(false)} className="btn btn-outline">{t.cancel}</button>
+        <button type="button" onClick={startNew} className="btn btn-primary">{t.continue}</button>
+      </div>
+    );
+
   const header = (
     <>
-      <PageHeader
-        title={t.title}
-        subtitle={t.subtitle}
-        actions={
-          <button
-            type="button"
-            onClick={dirty ? () => setConfirmNew(true) : startNew}
-            disabled={busy}
-            aria-expanded={dirty ? confirmNew : undefined}
-            className="btn btn-primary"
-          >
-            + {t.newOffer}
-          </button>
-        }
-      />
-      {confirmNew && (
-        <div role="alertdialog" aria-labelledby="new-offer-confirm" className="flex flex-wrap items-center gap-3 rounded-sm border border-[#f0d9a8] bg-amber-tint px-4 py-3">
-          <span id="new-offer-confirm" className="min-w-0 flex-[1_1_240px] text-sm font-semibold text-amber-ink">{t.unsavedConfirm}</span>
-          <button type="button" autoFocus onClick={() => setConfirmNew(false)} className="btn btn-outline">{t.cancel}</button>
-          <button type="button" onClick={startNew} className="btn btn-primary">{t.continue}</button>
+      {/* Desktop: the New offer button stays at the top right while scrolling (zero-height sticky rail). */}
+      <div className="sticky top-4 z-30 -mb-6 hidden h-0 self-end lg:block">
+        <div className="flex w-[420px] flex-col items-end gap-2">
+          {newButton("shadow-lg")}
+          {confirm("w-full shadow-lg")}
         </div>
-      )}
+      </div>
+      <PageHeader title={t.title} subtitle={t.subtitle} actions={newButton("lg:invisible")} />
+      {confirm("lg:hidden")}
       {tabs}
     </>
   );
