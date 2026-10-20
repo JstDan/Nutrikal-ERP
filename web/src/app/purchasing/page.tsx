@@ -16,7 +16,7 @@ export default async function PurchasingPage({ searchParams }: PageProps<"/purch
   const { user, locale, t } = await requireStaff();
   const sp = await searchParams;
   const tab = typeof sp.status === "string" && (TABS as readonly string[]).includes(sp.status) ? sp.status : "open";
-  const canEdit = user.role === "admin" || user.role === "inventory";
+  const canEdit = user.role === "admin";
   const P = t.purchasing;
 
   const rows = await q<Row>(

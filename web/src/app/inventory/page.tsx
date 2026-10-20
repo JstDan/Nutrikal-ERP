@@ -37,7 +37,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const sp = await searchParams;
   const type = typeof sp.type === "string" && (TYPES as readonly string[]).includes(sp.type) ? sp.type : "";
   const term = typeof sp.q === "string" ? sp.q.trim() : "";
-  const canReceive = user.role === "admin" || user.role === "inventory";
+  const canReceive = user.role === "admin";
 
   const data = await withUser(user.id, async (tx) => {
     const warn = (await tx.query<{ d: number }>("select coalesce((select expiry_warning_days from company_settings limit 1), 90) as d")).rows[0].d;

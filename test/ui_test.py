@@ -10,8 +10,7 @@ SHOTS = sys.argv[2] if len(sys.argv) > 2 else "."
 USERS = {
     "admin": "00000000-0000-4000-8000-00000000000a",
     "sales": "00000000-0000-4000-8000-00000000000b",
-    "inventory": "00000000-0000-4000-8000-00000000000c",
-    "partner": "00000000-0000-4000-8000-00000000000d",
+    "production": "00000000-0000-4000-8000-00000000000d",
 }
 passed, failed = 0, 0
 
@@ -102,26 +101,18 @@ with sync_playwright() as pw:
 
     # ------------------------------------------------------------ inventory
     print("Inventory and QC")
-    inv = page_as("inventory")
+    adm = page_as("admin")
 
     def receive():
-        inv.goto(f"{BASE}/inventory/receive")
-        inv.select_option("select[name=item_id]", label="Vitamin C (L-ascorbic acid) · RM-VITC (kg)")
-        inv.select_option("select[name=location_id]", label="Partner facility – quarantine area")
-        inv.fill("input[name=quantity]", "25")
-        inv.fill("input[name=supplier_lot]", "VC-2001")
-        inv.click("main button[type=submit]")
-        expect(inv.get_by_text(re.compile(r"Received as lot LOT-\d{6} · in quarantine"))).to_be_visible()
-        state["lot"] = re.search(r"LOT-\d{6}", inv.get_by_role("status").inner_text()).group(0)
-    step("inventory receives 25 kg Vitamin C into quarantine", receive)
-
-    def inv_cannot_release():
-        inv.goto(f"{BASE}/qc")
-        expect(inv.get_by_text("Only Admin can release or reject lots.")).to_be_visible()
-        assert inv.locator("button:has-text('Release')").count() == 0
-    step("inventory sees QC but cannot release", inv_cannot_release)
-
-    adm = page_as("admin")
+        adm.goto(f"{BASE}/inventory/receive")
+        adm.select_option("select[name=item_id]", label="Vitamin C (L-ascorbic acid) · RM-VITC (kg)")
+        adm.select_option("select[name=location_id]", label="Production facility – quarantine area")
+        adm.fill("input[name=quantity]", "25")
+        adm.fill("input[name=supplier_lot]", "VC-2001")
+        adm.click("main button[type=submit]")
+        expect(adm.get_by_text(re.compile(r"Received as lot LOT-\d{6} · in quarantine"))).to_be_visible()
+        state["lot"] = re.search(r"LOT-\d{6}", adm.get_by_role("status").inner_text()).group(0)
+    step("admin receives 25 kg Vitamin C into quarantine", receive)
 
     def release():
         adm.goto(f"{BASE}/qc")
@@ -139,46 +130,44 @@ with sync_playwright() as pw:
         expect(adm.locator("summary:has-text('Vitamin C')").get_by_text("OK", exact=True)).to_be_visible()
     step("Vitamin C is no longer below reorder level (33 kg vs 20)", low_flag_cleared)
 
-    # --------------------------------------------------------------- partner
-    print("Partner")
-    par = page_as("partner", "bg")
+    # ------------------------------------------------------------ production
+    print("Production")
+    par = page_as("production", "bg")
 
-    def partner_view():
-        par.goto(f"{BASE}/partner")
+    def production_view():
+        for path in ["/factory", "/factory/orders", "/factory/stock", "/factory/deliveries"]:
+            par.goto(f"{BASE}{path}")
+            body = par.content()
+            for secret in ["Acme", "Nordic", "Vita Market"]:
+                assert secret not in body, f"{path} leaks {secret}"
+        par.goto(f"{BASE}/factory")
         expect(par.locator("h1")).to_have_text("Днес")
-        body = par.content()
-        for secret in ["Acme", "Nordic", "Vita Market", "€", "EuroIngredients"]:
-            assert secret not in body, f"partner page leaks {secret}"
-    step("partner page is in Bulgarian and leaks no client, price or supplier", partner_view)
+    step("production pages are in Bulgarian and show no client", production_view)
 
-    def partner_request():
+    def production_correction():
+        par.goto(f"{BASE}/factory/stock")
         par.select_option("select[name=lot_location]", index=1)
-        par.fill("input[name=quantity]", "-1.5")
+        par.fill("input[name=counted]", "0.5")
         par.fill("input[name=reason]", "Преброяване в края на смяната")
-        par.click("button:has-text('Изпрати заявка')")
-        expect(par.get_by_text("Заявката е изпратена")).to_be_visible()
+        par.click("button:has-text('Запази корекцията')")
+        expect(par.get_by_text(re.compile("Наличността е коригирана"))).to_be_visible()
         expect(par.get_by_text("Преброяване в края на смяната").first).to_be_visible()
-    step("partner sends a stock correction request", partner_request)
+    step("production corrects stock directly", production_correction)
 
-    def partner_db_error():
-        par.select_option("select[name=lot_location]", index=1)
-        par.fill("input[name=quantity]", "0")
-        par.fill("input[name=reason]", "x")
-        par.click("button:has-text('Изпрати заявка')")
-        expect(par.get_by_text(re.compile("check constraint"))).to_be_visible()
-    step("a database rule violation is shown in the form", partner_db_error)
-
-    def partner_blocked():
+    def production_blocked():
         par.goto(f"{BASE}/clients")
-        assert par.url.endswith("/partner"), par.url
-    step("partner is sent back from staff pages", partner_blocked)
+        assert par.url.endswith("/factory"), par.url
+        par.goto(f"{BASE}/qc")
+        assert par.url.endswith("/factory"), par.url
+    step("production is sent back from staff pages (no QC release)", production_blocked)
 
-    def approve():
-        inv.goto(f"{BASE}/qc")
-        row = inv.locator("div:has(> div > div:has-text('Преброяване в края на смяната'))").first
-        row.locator("button:has-text('Approve')").click()
-        expect(inv.locator("div:has(> div > div:has-text('Преброяване в края на смяната'))").first.get_by_text("Approved")).to_be_visible()
-    step("inventory approves the partner's request", approve)
+    def admin_sees_correction():
+        adm.goto(f"{BASE}/inventory/corrections")
+        expect(adm.get_by_text("Преброяване в края на смяната").first).to_be_visible()
+        assert "unread" in (adm.locator("a[href='/notifications']").first.get_attribute("aria-label") or "")
+        adm.goto(f"{BASE}/notifications")
+        expect(adm.get_by_text(re.compile("Stock corrected by production")).first).to_be_visible()
+    step("admin sees the correction in the history and as a notification", admin_sees_correction)
 
     # --------------------------------------------------------------- language
     print("Language")
@@ -209,8 +198,9 @@ with sync_playwright() as pw:
 
     # ----------------------------------------------- no horizontal scrolling
     print("Layout (no sideways scrolling)")
-    pages = {"admin": ["/", "/clients", state.get("client_url", "/clients").replace(BASE, ""), "/projects", "/inventory", "/inventory/receive", "/qc", "/clients/new"],
-             "partner": ["/partner", "/partner/receive"]}
+    pages = {"admin": ["/", "/clients", state.get("client_url", "/clients").replace(BASE, ""), "/projects", "/inventory", "/inventory/receive", "/qc", "/clients/new",
+                       "/deliveries", "/inventory/corrections", "/notifications"],
+             "production": ["/factory", "/factory/orders", "/factory/stock", "/factory/deliveries", "/notifications"]}
     for width in (375, 768, 1024, 1440):
         def no_overflow(width=width):
             bad = []
@@ -232,9 +222,9 @@ with sync_playwright() as pw:
     for name, role, loc, path, w in [
         ("dashboard-bg", "admin", "bg", "/", 1440),
         ("client-en", "sales", "en", state.get("client_url", "/clients").replace(BASE, ""), 1440),
-        ("inventory-bg", "inventory", "bg", "/inventory?type=raw_material", 1440),
-        ("partner-bg", "partner", "bg", "/partner", 1440),
-        ("inventory-phone-bg", "inventory", "bg", "/inventory", 390),
+        ("inventory-bg", "admin", "bg", "/inventory?type=raw_material", 1440),
+        ("production-bg", "production", "bg", "/factory", 1440),
+        ("inventory-phone-bg", "admin", "bg", "/inventory", 390),
     ]:
         pg = page_as(role, loc, width=w, height=900)
         pg.goto(f"{BASE}{path}")

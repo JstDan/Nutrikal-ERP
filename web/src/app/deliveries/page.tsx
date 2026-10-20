@@ -7,14 +7,17 @@ import { Card, Chip, Empty, PageHeader, type Tone } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { DELIVERY_LINES } from "@/lib/deliveries";
 import { cancelDelivery, createDeliveries, receiveDelivery, updateDelivery } from "@/app/actions";
+import { PhotoInput } from "@/components/photo-input";
+import { FileGallery, type DeliveryFile } from "@/components/file-gallery";
 
 type Row = {
   id: string; code: string; status: string; item_id: string; sku: string; name: string; name_bg: string | null; base_unit: string;
-  supplier: string | null; quantity: string; received: string; remaining: string; expected_on: string | null; unit_price: string | null;
+  supplier_id: string | null; supplier: string | null; quantity: string; received: string; remaining: string; expected_on: string | null; unit_price: string | null;
   currency: string; po_reference: string | null; location_id: string | null; location: string | null; request_code: string | null;
   note: string | null; is_overdue: boolean; is_partial: boolean; closed_at: string | null; days: number | null;
 };
 type DLot = { delivery_id: string; lot_number: string; quantity: string; received_on: string };
+type DFile = DeliveryFile & { delivery_id: string };
 type Opt = { id: string; name: string };
 type ItemOpt = { id: string; sku: string; name: string; name_bg: string | null; base_unit: string; type: string };
 type Req = { id: string; code: string; item_id: string; quantity: string; needed_by: string | null };
@@ -41,16 +44,22 @@ function statusChip(r: Row, t: Dict): { tone: Tone; text: string } {
 export default async function DeliveriesPage({ searchParams }: PageProps<"/deliveries">) {
   const { user, locale, t } = await requireStaff();
   const sp = await searchParams;
-  const tab = typeof sp.status === "string" && (TABS as readonly string[]).includes(sp.status) ? sp.status : "open";
+  const openId = typeof sp.open === "string" && /^[0-9a-f-]{36}$/i.test(sp.open) ? sp.open : null;
+  let tab = typeof sp.status === "string" && (TABS as readonly string[]).includes(sp.status) ? sp.status : "open";
   const requestId = typeof sp.request === "string" && /^[0-9a-f-]{36}$/i.test(sp.request) ? sp.request : null;
-  const canEdit = user.role === "admin" || user.role === "inventory";
+  const canEdit = user.role === "admin";
   const D = t.deliveries;
 
   const data = await withUser(user.id, async (tx) => {
-    const canSee = (await tx.query<{ ok: boolean }>("select has_role('admin', 'inventory') or can_see_purchase_prices() as ok")).rows[0]?.ok ?? false;
+    const canSee = (await tx.query<{ ok: boolean }>("select has_role('admin') or can_see_purchase_prices() as ok")).rows[0]?.ok ?? false;
+    // A link to one delivery (e.g. from a notification) opens the tab it is in
+    if (openId && canSee) {
+      const st = (await tx.query<{ status: string }>("select status from expected_deliveries where id = $1", [openId])).rows[0]?.status;
+      if (st) tab = st;
+    }
     const rows = canSee
       ? (await tx.query<Row>(
-          `select d.id, d.code, d.status, d.item_id, i.sku, i.name, i.name_bg, i.base_unit, s.name as supplier,
+          `select d.id, d.code, d.status, d.item_id, i.sku, i.name, i.name_bg, i.base_unit, d.supplier_id, s.name as supplier,
                   d.quantity::text, d.received::text, d.remaining::text, d.expected_on::text, d.unit_price::text, d.currency,
                   d.po_reference, d.location_id, l.name as location, pr.code as request_code, d.note, d.is_overdue, d.is_partial,
                   d.closed_at::text, (d.expected_on - current_date) as days
@@ -73,6 +82,12 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
           [rows.map((r) => r.id)],
         )).rows
       : [];
+    const files = rows.length
+      ? (await tx.query<DFile>(
+          `select id, delivery_id, file_name, content_type, kind, uploaded_at::text from delivery_attachments
+            where delivery_id = any($1::uuid[]) order by uploaded_at`, [rows.map((r) => r.id)])).rows
+      : [];
+    const photoRule = (await tx.query<{ on: boolean }>("select require_waybill_photo as on from company_settings limit 1")).rows[0]?.on ?? true;
     const form = canEdit
       ? {
           items: (await tx.query<ItemOpt>(
@@ -87,7 +102,7 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
             : undefined,
         }
       : undefined;
-    return { canSee, rows, lots, form };
+    return { canSee, rows, lots, files, photoRule, form };
   });
 
   const nm = (o: { name: string; name_bg: string | null }) => (locale === "bg" && o.name_bg ? o.name_bg : o.name);
@@ -95,12 +110,21 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
   const grid = "md:grid-cols-[minmax(0,1.6fr)_110px_minmax(0,1fr)_160px] lg:grid-cols-[minmax(0,1.6fr)_110px_repeat(3,minmax(0,1fr))_160px]";
   const head = `row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${grid}`;
 
+  const supplierSelect = (r: Row) => (
+    <label className="field"><span>{D.supplier}</span>
+      <select name="supplier_id" className="input" defaultValue={r.supplier_id ?? ""}>
+        <option value="">—</option>
+        {data.form?.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+    </label>
+  );
+
   const renderRow = (r: Row) => {
     const chip = statusChip(r, t);
     const lots = data.lots.filter((l) => l.delivery_id === r.id);
     const q = (n: string) => formatQty(locale, n, r.base_unit);
     return (
-      <details key={r.id} className="group border-b border-mist last:border-0">
+      <details key={r.id} id={`d-${r.id}`} open={r.id === openId} className="group border-b border-mist last:border-0">
         <summary className={`row cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] py-3.5 text-sm ${grid} [&::-webkit-details-marker]:hidden`}>
           <div className="min-w-0">
             <div className="font-semibold break-words">
@@ -138,6 +162,26 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
             </div>
           )}
 
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-semibold tracking-[1px] uppercase text-ink-2">{D.files}</span>
+            <FileGallery files={data.files.filter((f) => f.delivery_id === r.id)} locale={locale} empty={D.noFiles} />
+          </div>
+
+          {canEdit && r.status === "received" && data.form && (
+            <div className="flex flex-col gap-2 rounded border border-line bg-white p-4">
+              <h3 className="m-0 text-base font-bold">{D.terms}</h3>
+              <p className="m-0 text-[13px] text-ink-2">{D.termsNote}</p>
+              <ActionForm action={updateDelivery} submitLabel={t.common.save} resetOnSuccess={false}>
+                <input type="hidden" name="delivery_id" value={r.id} />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {supplierSelect(r)}
+                  <label className="field"><span>{D.quantity} *</span><input name="quantity" type="number" min="0.0001" step="any" required defaultValue={Number(r.quantity)} className="input" /></label>
+                  <label className="field"><span>{D.unitPrice}</span><input name="unit_price" type="number" min="0" step="any" defaultValue={r.unit_price != null ? Number(r.unit_price) : undefined} className="input" /></label>
+                </div>
+              </ActionForm>
+            </div>
+          )}
+
           {canEdit && r.status === "open" && data.form && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="flex flex-col gap-2 rounded border border-line bg-white p-4">
@@ -160,6 +204,8 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
                     <label className="field"><span>{D.manufactured}</span><input name="manufactured_on" type="date" className="input" /></label>
                     <label className="field"><span>{D.expires}</span><input name="expires_on" type="date" className="input" /></label>
                   </div>
+                  <PhotoInput name="photos" label={D.photos} hint={D.photosHint} required={data.photoRule}
+                    preparing={t.factory.deliveries.preparing} ready={t.factory.deliveries.ready} error={t.factory.deliveries.photoError} />
                   <label className="flex min-h-11 items-center gap-2 text-sm">
                     <input type="checkbox" name="close" className="h-5 w-5" /> {D.close}
                   </label>
@@ -171,6 +217,7 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
                   <ActionForm action={updateDelivery} submitLabel={t.common.save} resetOnSuccess={false}>
                     <input type="hidden" name="delivery_id" value={r.id} />
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {supplierSelect(r)}
                       <label className="field"><span>{D.expectedOn}</span><input name="expected_on" type="date" defaultValue={r.expected_on ?? ""} className="input" /></label>
                       <label className="field"><span>{D.quantity} *</span><input name="quantity" type="number" min="0.0001" step="any" required defaultValue={Number(r.quantity)} className="input" /></label>
                       <label className="field"><span>{D.unitPrice}</span><input name="unit_price" type="number" min="0" step="any" defaultValue={r.unit_price != null ? Number(r.unit_price) : undefined} className="input" /></label>

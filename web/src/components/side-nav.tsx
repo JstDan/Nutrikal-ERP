@@ -8,8 +8,8 @@ export type NavGroup = { title?: string; items: NavItem[] };
 
 export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }) {
   const path = usePathname();
-  // "/" and "/partner" are home pages: active only on themselves, not on their sub-pages
-  const isActive = (href: string) => (href === "/" || href === "/partner" ? path === href : path === href || path.startsWith(href + "/"));
+  // "/" and "/factory" are home pages: active only on themselves, not on their sub-pages
+  const isActive = (href: string) => (href === "/" || href === "/factory" ? path === href : path === href || path.startsWith(href + "/"));
 
   return (
     <nav aria-label={label} className="flex flex-col gap-6">

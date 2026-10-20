@@ -6,7 +6,7 @@ import { loadAccounting, period } from "@/lib/accounting";
 // movements, production consumption, stock value and open deliveries.
 export async function GET(request: Request) {
   const { user, locale, t } = await getSession();
-  if (user.role !== "admin" && user.role !== "inventory") return new Response("Forbidden", { status: 403 });
+  if (user.role !== "admin") return new Response("Forbidden", { status: 403 });
 
   const sp = Object.fromEntries(new URL(request.url).searchParams);
   const { from, to } = period(sp);

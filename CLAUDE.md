@@ -5,7 +5,7 @@ Read this before every task. README.md has run/test commands and the full rule l
 ## What this is
 One app (app.nutrikal.com) that runs Nutrikal's **contract manufacturing / private label** business: CRM, offers, formulation, inventory, production, QC and invoicing. Own brands (CollagenLab, GutExpert) are OUT of scope — they move to a separate company and separate software later.
 
-Production is outsourced to ONE partner facility but run as if in-house. The partner has one user in this app with restricted access.
+Production is outsourced to ONE partner facility but run as if in-house. The facility has one user in this app with the restricted role `production`.
 
 Talk to the owner in the language they write in (usually Bulgarian).
 
@@ -19,13 +19,13 @@ Talk to the owner in the language they write in (usually Bulgarian).
 - The ERP issues FINAL invoices. Invoice numbers: one 10-digit series shared by invoices, credit and debit notes; editable on a draft before issue with duplicate/gap warnings and audit log; locked after issue; corrections only via credit/debit notes. Design the invoice data to map to EN 16931 (Bulgaria plans mandatory structured e-invoicing from 2028).
 - Shelf life is tracked per formula version and per raw material.
 - Languages: Bulgarian and English only (UI and documents).
-- Roles: admin, sales, inventory, partner. Formulation and QC rights sit with admin for now.
+- Roles: admin, sales, production (+ developer, who acts as another user). Inventory was merged into Admin and Partner renamed Production (Oct 2026). Formulation and QC rights sit with admin for now.
 - Stack: Next.js (web/) + Supabase (Postgres, Auth, Storage). Hosted at app.nutrikal.com.
 
 ## Architecture rules
 - **All data access runs as the signed-in user** through `withUser()` / `q()` in `web/src/lib/db/engine.ts`. Row-level security and role checks live in the database (`supabase/migrations`). Never bypass them and never duplicate permission logic in the UI beyond hiding buttons.
 - **Stock is a ledger** (`stock_movements`): never update stock numbers; write through the SQL functions (`receive_lot`, `transfer_stock`, `post_stock_movement`, `reserve_stock`, …).
-- **Partner must never see** client names, prices, suppliers, offers or invoices. Projects appear to them by code only (`partner_projects`). Any new table or view needs an explicit RLS decision for the partner role, and a test.
+- **Production must never see** client names, sales prices, offers or Nutrikal's invoices. Projects appear to them by code only (`production_projects`). Exception decided by the owner (Oct 2026): supplier, ordered quantity, purchase price and date of the materials of their own orders (`mo_material_sources`, read only), and the supplier of deliveries to their locations. Any new table or view needs an explicit RLS decision for the production role, and a test.
 - **Schema changes** = a NEW migration file in `supabase/migrations` (timestamped name). Once a migration has been applied to Supabase, never edit it.
 - Locally the database is PGlite in `web/.data/` (created from the migrations + `web/src/lib/db/demo-seed.ts`). Delete `web/.data/` after changing migrations or the seed.
 - Next.js 16 with `cacheComponents: false` (every page is per-user and dynamic). Read `web/node_modules/next/dist/docs/` before using unfamiliar Next.js APIs — this version differs from older ones.

@@ -10,19 +10,19 @@ type Mo = { id: string; code: string; project_code: string; product: string; pro
 type Req = { item_id: string; sku: string; name: string; name_bg: string | null; base_unit: string; required: string };
 type Lot = { item_id: string; lot_number: string; location: string; quantity: string; expires_on: string | null };
 
-/** Pick list for a production order sent to the partner: materials with lots
+/** Pick list for a production order sent to production: materials with lots
  *  suggested first-expiry-first from released stock at the facility.
- *  Uses only partner-safe data (project code, no client, no prices). */
+ *  Uses only data Production may see (project code, no client, no prices). */
 export default async function PickListPage({ params }: PageProps<"/production/[id]/pick-list">) {
   const { id } = await params;
-  const { user, locale, t } = await requireRole("admin", "inventory", "partner");
+  const { user, locale, t } = await requireRole("admin", "production");
   const L = t.pickList;
 
   const data = await withUser(user.id, async (tx) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
     const mo = (await tx.query<Mo>(
       `select id, code, project_code, product, product_bg, quantity, planned_date::text, status
-         from partner_manufacturing_orders where id = $1`, [id])).rows[0];
+         from production_manufacturing_orders where id = $1`, [id])).rows[0];
     if (!mo) return null;
     const reqs = (await tx.query<Req>(
       "select item_id, sku, name, name_bg, base_unit, required::text from mo_material_requirements($1)", [id])).rows;
@@ -37,7 +37,7 @@ export default async function PickListPage({ params }: PageProps<"/production/[i
   if (!data) notFound();
   const { mo, reqs, lots } = data;
   const nm = (o: { name: string; name_bg: string | null }) => (locale === "bg" && o.name_bg ? o.name_bg : o.name);
-  const back = user.role === "partner" ? `/partner/production/${mo.id}` : `/production/${mo.id}`;
+  const back = user.role === "production" ? `/factory/orders/${mo.id}` : `/production/${mo.id}`;
 
   // First-expiry-first allocation of the required quantity
   const picks = reqs.map((r) => {

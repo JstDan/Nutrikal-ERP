@@ -11,7 +11,7 @@ type Stock = { on_hand: string; quarantine: string; reserved: string; available:
 export default async function ItemPage({ params }: PageProps<"/inventory/items/[id]">) {
   const { id } = await params;
   const { user, locale, t } = await requireStaff();
-  const canEdit = user.role === "admin" || user.role === "inventory";
+  const canEdit = user.role === "admin";
 
   const data = await withUser(user.id, async (tx) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;

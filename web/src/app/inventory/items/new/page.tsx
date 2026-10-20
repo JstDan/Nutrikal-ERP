@@ -4,7 +4,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { ItemForm } from "@/components/item-form";
 
 export default async function NewItemPage() {
-  const { t } = await requireRole("admin", "inventory");
+  const { t } = await requireRole("admin");
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={t.items.newTitle} subtitle={t.items.subtitle} crumb={<Link href="/inventory" className="text-ink-2">{t.inventory.title}</Link>} />

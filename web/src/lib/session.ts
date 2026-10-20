@@ -54,14 +54,17 @@ function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
 }
 
+/** Start page of a role: Production works in its own portal. */
+export const homeFor = (role: Role) => (role === "production" ? "/factory" : "/");
+
 export async function requireStaff() {
   const s = await getSession();
-  if (s.user.role === "partner") redirect("/partner");
+  if (s.user.role === "production") redirect("/factory");
   return s;
 }
 
 export async function requireRole(...roles: Role[]) {
   const s = await getSession();
-  if (!roles.includes(s.user.role)) redirect(s.user.role === "partner" ? "/partner" : "/");
+  if (!roles.includes(s.user.role)) redirect(homeFor(s.user.role));
   return s;
 }

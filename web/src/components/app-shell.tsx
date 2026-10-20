@@ -9,19 +9,22 @@ import { ActAsSwitch } from "./act-as-switch";
 import { ThemeSwitch } from "./theme-switch";
 import { MobileMenu } from "./mobile-menu";
 import { Wordmark } from "./logo";
+import { NotificationBell } from "./notification-bell";
 
 export async function AppShell({ children }: { children: ReactNode }) {
   const { user, developer, locale, t } = await getSession();
-  const isPartner = user.role === "partner";
+  const isProduction = user.role === "production";
   const soon = (n: number) => `${t.common.phase} ${n}`;
 
-  const groups: NavGroup[] = isPartner
+  const groups: NavGroup[] = isProduction
     ? [
         {
           items: [
-            { href: "/partner", label: t.nav.today },
-            { href: "/partner/production", label: t.nav.production },
-            { href: "/partner/receive", label: t.nav.receiveGoods },
+            { href: "/factory", label: t.nav.today },
+            { href: "/factory/orders", label: t.nav.productionOrders },
+            { href: "/factory/stock", label: t.nav.stock },
+            { href: "/factory/deliveries", label: t.nav.incoming },
+            { href: "/notifications", label: t.nav.notifications },
           ],
         },
       ]
@@ -49,11 +52,12 @@ export async function AppShell({ children }: { children: ReactNode }) {
             { href: "/production", label: t.nav.production },
           ],
         },
-        ...(user.role === "admin" || user.role === "inventory"
+        ...(user.role === "admin"
           ? [{
               title: t.nav.reports,
               items: [
                 { href: "/accounting", label: t.nav.accounting },
+                ...(user.role === "admin" ? [{ href: "/inventory/corrections", label: t.nav.corrections }] : []),
                 ...(user.role === "admin" ? [{ href: "/history", label: t.nav.history }] : []),
               ],
             }]
@@ -63,10 +67,10 @@ export async function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-wrap">
       <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 py-5 text-side-strong lg:w-[248px] lg:shrink-0 lg:py-6">
-        <a href={isPartner ? "/partner" : "/"} className="flex flex-col gap-2 px-2 text-side-strong no-underline">
+        <a href={isProduction ? "/factory" : "/"} className="flex flex-col gap-2 px-2 text-side-strong no-underline">
           <Wordmark height={20} inverted />
-          <span className="text-[11px] font-semibold tracking-[2px] text-green">{isPartner ? t.nav.productionLabel.toUpperCase() : "ERP"}</span>
-          {isPartner && <span className="text-xs text-side-muted">{t.nav.partnerFacility}</span>}
+          <span className="text-[11px] font-semibold tracking-[2px] text-green">{isProduction ? t.nav.productionLabel.toUpperCase() : "ERP"}</span>
+          {isProduction && <span className="text-xs text-side-muted">{t.nav.partnerFacility}</span>}
         </a>
         <MobileMenu label={t.nav.menu} closeLabel={t.nav.close}>
           <SideNav groups={groups} label={t.nav.main} />
@@ -75,13 +79,13 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-[999_1_560px] flex-col">
         <header className="flex flex-wrap print:hidden items-center gap-3 border-b border-line bg-white px-4 py-3 sm:px-8">
-          {!isPartner && (
+          {!isProduction && (
             <form action="/clients" method="get" role="search" className="flex min-w-0 flex-[1_1_260px]">
               <label htmlFor="global-search" className="sr-only">{t.topbar.search}</label>
               <input id="global-search" name="q" type="search" placeholder={t.topbar.searchPlaceholder} className="input" />
             </form>
           )}
-          <div className={`flex flex-wrap items-center gap-3 ${isPartner ? "ml-auto" : ""}`}>
+          <div className={`flex flex-wrap items-center gap-3 ${isProduction ? "ml-auto" : ""}`}>
             <form action={setLocale} role="group" aria-label={t.topbar.language} className="flex overflow-hidden rounded-sm border border-line-strong">
               {LOCALES.map((l) => (
                 <button
@@ -98,6 +102,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
                 </button>
               ))}
             </form>
+            <NotificationBell userId={user.id} label={t.topbar.notifications} unreadLabel={t.topbar.unread} />
             <ThemeSwitch toDark={t.topbar.toDark} toLight={t.topbar.toLight} />
             <DemoUserSwitch
               current={developer?.id ?? user.id}

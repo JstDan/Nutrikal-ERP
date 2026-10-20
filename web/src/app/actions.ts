@@ -5,9 +5,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { q, withUser } from "@/lib/db/engine";
 import { DEMO_USERS } from "@/lib/db/demo-users";
-import { ACT_AS_COOKIE, getSession, USER_COOKIE } from "@/lib/session";
+import { ACT_AS_COOKIE, getSession, homeFor, USER_COOKIE } from "@/lib/session";
 import { fmt, formatQty, isLocale, LOCALE_COOKIE } from "@/lib/i18n";
 import { DELIVERY_LINES } from "@/lib/deliveries";
+import { DELIVERY_BUCKET, MAX_FILE_BYTES, newDeliveryPath, putFile, removeFile } from "@/lib/files";
+import type { Tx } from "@/lib/db/engine";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string };
 
@@ -49,7 +51,7 @@ export async function switchDemoUser(fd: FormData) {
     // a developer starts as the first user in the list; log it like any switch
     await q(u.id, "select start_impersonation(id) from impersonation_targets() limit 1");
   }
-  redirect(u.role === "partner" ? "/partner" : "/");
+  redirect(homeFor(u.role));
 }
 
 /** Developer: act as another user (checked and logged in the database). */
@@ -59,7 +61,7 @@ export async function actAs(fd: FormData) {
   if (!developer || !target) return;
   await q(developer.id, "select start_impersonation($1)", [target.id]);
   (await cookies()).set(ACT_AS_COOKIE, target.id, { path: "/", maxAge: YEAR, sameSite: "lax", httpOnly: true });
-  redirect(target.role === "partner" ? "/partner" : "/");
+  redirect(homeFor(target.role));
 }
 
 // -------------------------------------------------------------------- CRM
@@ -581,19 +583,37 @@ export async function startProduction(_: ActionState, fd: FormData): Promise<Act
 
 export async function completeProduction(_: ActionState, fd: FormData): Promise<ActionState> {
   const { t } = await getSession();
-  // One row per material: use_<n> = "lot_id|location_id", qty_<n> = quantity
-  const consumption: { lot_id: string; location_id: string; quantity: number }[] = [];
+  // One row per lot: use_<n> = "lot_id|location_id", qty_<n> = quantity used;
+  // one reason per material: reason_<item_id>
+  const usage: { lot_id: string; location_id: string; quantity: number }[] = [];
+  const reasons: { item_id: string; reason: string }[] = [];
   for (const [k, v] of fd.entries()) {
-    if (!k.startsWith("use_") || typeof v !== "string" || !v) continue;
+    if (typeof v !== "string" || !v.trim()) continue;
+    if (k.startsWith("reason_")) reasons.push({ item_id: k.slice(7), reason: v.trim() });
+    if (!k.startsWith("use_")) continue;
     const qty = num(fd, "qty_" + k.slice(4));
     const [lot_id, location_id] = v.split("|");
-    if (lot_id && location_id && qty) consumption.push({ lot_id, location_id, quantity: qty });
+    if (lot_id && location_id && qty) usage.push({ lot_id, location_id, quantity: qty });
   }
   const batch = str(fd, "batch_number") ?? "";
   const qty = num(fd, "produced_quantity");
-  return moCall(fd, "select complete_production($1, $2, $3::int, $4::date, $5::jsonb)",
-    [str(fd, "mo_id"), batch, qty, str(fd, "produced_on"), JSON.stringify(consumption)],
-    () => fmt(t.production.partner.done, { batch, qty: qty ?? 0 }));
+  return moCall(fd, "select complete_production($1, $2, $3::int, $4::date, $5::jsonb, $6::jsonb)",
+    [str(fd, "mo_id"), batch, qty, str(fd, "produced_on"), JSON.stringify(usage), JSON.stringify(reasons)],
+    () => fmt(t.factory.order.done, { batch, qty: qty ?? 0 }));
+}
+
+/** Admin: one step back (reason required, kept in the history). */
+export async function revertMo(_: ActionState, fd: FormData): Promise<ActionState> {
+  return moCall(fd, "select revert_mo_status($1, $2)", [str(fd, "mo_id"), str(fd, "reason")]);
+}
+
+/** Admin: order a material of the order from a supplier (request + expected delivery). */
+export async function orderMoMaterial(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { t } = await getSession();
+  return moCall(fd, "select order_mo_material($1, $2, $3, $4, $5, $6::date, $7)",
+    [str(fd, "mo_id"), str(fd, "item_id"), num(fd, "quantity"), str(fd, "supplier_id"), num(fd, "unit_price"),
+     str(fd, "expected_on"), str(fd, "location_id")],
+    () => t.production.detail.orderedOk);
 }
 
 export async function addProductionInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
@@ -642,17 +662,6 @@ export async function decideAdjustment(fd: FormData) {
   revalidatePath("/", "layout");
 }
 
-export async function requestAdjustment(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { user, t } = await getSession();
-  const [lotId, locationId] = (str(fd, "lot_location") ?? "|").split("|");
-  try {
-    await q(user.id, "select request_stock_adjustment($1, $2, $3, $4)", [lotId || null, locationId || null, num(fd, "quantity"), str(fd, "reason")]);
-  } catch (e) {
-    return { error: errorText(e) };
-  }
-  revalidatePath("/partner");
-  return { ok: true, message: t.partner.sent };
-}
 
 // -------------------------------------------------------- items (master data)
 const itemFields = (fd: FormData) => {
@@ -721,9 +730,10 @@ export async function countStock(_: ActionState, fd: FormData): Promise<ActionSt
       return { diff, base_unit: s?.base_unit ?? "", available: s?.available ?? "0" };
     });
     revalidatePath("/", "layout");
-    if (!res || Number(res.diff) === 0) return { ok: true, message: t.inventory.count.match };
+    const C = user.role === "production" ? t.factory.stock : t.inventory.count;
+    if (!res || Number(res.diff) === 0) return { ok: true, message: C.match };
     const diff = `${Number(res.diff) > 0 ? "+" : ""}${formatQty(locale, res.diff, res.base_unit)}`;
-    const msg = fmt(t.inventory.count.done, { diff });
+    const msg = fmt(C.done, { diff });
     return { ok: true, message: Number(res.available) < 0 ? `${msg}. ${t.inventory.count.shortWarning}` : msg };
   } catch (e) {
     return { error: errorText(e) };
@@ -757,10 +767,32 @@ export async function createDeliveries(_: ActionState, fd: FormData): Promise<Ac
   return { ok: true, message: fmt(t.deliveries.created, { n }) };
 }
 
+/**
+ * Saves the uploaded files of a delivery (rows as the user, so row-level
+ * security decides) and returns their storage paths. The caller removes
+ * the files again if its transaction fails.
+ */
+async function saveDeliveryFiles(tx: Tx, deliveryId: string, files: File[], kind: string, written: string[]) {
+  for (const f of files) {
+    const key = newDeliveryPath(deliveryId, f.type);
+    if (!key || f.size > MAX_FILE_BYTES) throw new Error(f.name);
+    await tx.query(
+      "insert into delivery_attachments (delivery_id, storage_path, kind, file_name, content_type, size_bytes) values ($1, $2, $3, $4, $5, $6)",
+      [deliveryId, key, kind, f.name.slice(0, 200), f.type, f.size]);
+    await putFile(DELIVERY_BUCKET, key, Buffer.from(await f.arrayBuffer()));
+    written.push(key);
+  }
+}
+
+const uploads = (fd: FormData, k: string) =>
+  fd.getAll(k).filter((v): v is File => typeof v === "object" && v !== null && "size" in v && (v as File).size > 0);
+
 export async function receiveDelivery(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, locale, t } = await getSession();
+  const written: string[] = [];
   try {
     const lot = await withUser(user.id, async (tx) => {
+      await saveDeliveryFiles(tx, str(fd, "delivery_id") ?? "", uploads(fd, "photos"), "waybill", written);
       const r = await tx.query<{ id: string }>(
         "select receive_expected_delivery($1, $2, $3, $4, $5::date, $6::date, $7, $8) as id",
         [str(fd, "delivery_id"), str(fd, "location_id"), num(fd, "quantity"), str(fd, "supplier_lot"),
@@ -773,22 +805,46 @@ export async function receiveDelivery(_: ActionState, fd: FormData): Promise<Act
       return l;
     });
     revalidatePath("/", "layout");
-    const msg = fmt(t.deliveries.receivedOk, { lot: lot?.lot_number ?? "" });
+    const msg = fmt(user.role === "production" ? t.factory.deliveries.done : t.deliveries.receivedOk, { lot: lot?.lot_number ?? "" });
     return { ok: true, message: lot && Number(lot.over) > 0 ? `${msg}. ${fmt(t.deliveries.overWarning, { qty: formatQty(locale, lot.over, lot.base_unit) })}` : msg };
   } catch (e) {
+    for (const key of written) await removeFile(DELIVERY_BUCKET, key);
     return { error: errorText(e) };
   }
+}
+
+/** Production: delete an own file within 24 hours (the database checks). */
+export async function deleteDeliveryFile(fd: FormData) {
+  const { user } = await getSession();
+  const [row] = await q<{ storage_path: string }>(user.id,
+    "delete from delivery_attachments where id = $1 returning storage_path", [str(fd, "file_id")]);
+  if (row) await removeFile(DELIVERY_BUCKET, row.storage_path);
+  revalidatePath("/", "layout");
+}
+
+// ---------------------------------------------------------- notifications
+export async function markNotificationsRead(fd: FormData) {
+  const { user } = await getSession();
+  const id = num(fd, "id");
+  await q(user.id, "select mark_notifications_read($1::bigint[])", [id == null ? null : [id]]);
+  revalidatePath("/", "layout");
 }
 
 export async function updateDelivery(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   try {
-    const rows = await q(
-      user.id,
-      `update expected_deliveries set expected_on = $2::date, quantity = $3, unit_price = $4, po_reference = $5
-        where id = $1 returning id`,
-      [str(fd, "delivery_id"), str(fd, "expected_on"), num(fd, "quantity"), num(fd, "unit_price"), str(fd, "po_reference")],
-    );
+    const rows = await withUser(user.id, async (tx) => {
+      const id = str(fd, "delivery_id");
+      const d = (await tx.query<{ status: string }>("select status from expected_deliveries where id = $1", [id])).rows[0];
+      if (!d) return [];
+      if (d.status === "open") {
+        await tx.query("update expected_deliveries set expected_on = $2::date, po_reference = $3 where id = $1",
+          [id, str(fd, "expected_on"), str(fd, "po_reference")]);
+      }
+      await tx.query("select update_delivery_terms($1, $2, $3, $4)",
+        [id, str(fd, "supplier_id"), num(fd, "quantity"), num(fd, "unit_price")]);
+      return [id];
+    });
     if (rows.length === 0) return { error: t.deliveries.readOnly };
   } catch (e) {
     return { error: errorText(e) };

@@ -4,7 +4,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { loadAccounting, period } from "@/lib/accounting";
 
 export default async function AccountingPage({ searchParams }: PageProps<"/accounting">) {
-  const { user, locale, t } = await requireRole("admin", "inventory");
+  const { user, locale, t } = await requireRole("admin");
   const A = t.accounting;
   const { from, to } = period(await searchParams);
   const data = await loadAccounting(user.id, from, to);

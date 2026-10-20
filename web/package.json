@@ -10,6 +10,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.5.10",
     "decimal.js": "^10.6.0",
+    "heic2any": "^0.0.4",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "next": "16.4.2",

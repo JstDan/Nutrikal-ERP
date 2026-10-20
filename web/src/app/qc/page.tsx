@@ -4,6 +4,7 @@ import { formatDate, formatQty } from "@/lib/i18n";
 import { Card, Chip, Empty, PageHeader } from "@/components/ui";
 import { decideAdjustment, setLotQc } from "@/app/actions";
 import { requestTone } from "@/lib/status";
+import { FileGallery, type DeliveryFile } from "@/components/file-gallery";
 
 type QLot = { lot_id: string; lot_number: string; item: string; sku: string; base_unit: string; quantity: string; location: string; supplier_lot: string | null; received_on: string; expires_on: string | null };
 type Req = { id: string; lot_number: string; item: string; base_unit: string; location: string; quantity: string; reason: string; status: string; requested_at: string; requested_by: string | null };
@@ -11,7 +12,7 @@ type Req = { id: string; lot_number: string; item: string; base_unit: string; lo
 export default async function QcPage() {
   const { user, locale, t } = await requireStaff();
   const isAdmin = user.role === "admin";
-  const canDecide = user.role === "admin" || user.role === "inventory";
+  const canDecide = user.role === "admin";
 
   const data = await withUser(user.id, async (tx) => ({
     lots: (await tx.query<QLot>(
@@ -27,6 +28,10 @@ export default async function QcPage() {
         order by r.status <> 'pending', r.requested_at desc limit 20`,
       [locale],
     )).rows,
+    // Waybill photos of the deliveries the quarantine lots came from (Admin; others get none by RLS)
+    files: (await tx.query<DeliveryFile & { lot_id: string }>(
+      `select id, lot_id, file_name, content_type, kind, uploaded_at::text from delivery_attachments
+        where lot_id in (select lot_id from stock_balances where qc_status = 'quarantine' and quantity > 0) order by uploaded_at`)).rows,
   }));
 
   return (
@@ -45,6 +50,9 @@ export default async function QcPage() {
             <div className="text-[13px] text-ink-2">
               {l.sku}{l.supplier_lot ? ` · ${t.inventory.supplierLot}: ${l.supplier_lot}` : ""} · {formatDate(locale, l.received_on)} → {t.inventory.expires} {formatDate(locale, l.expires_on)}
             </div>
+            {data.files.some((f) => f.lot_id === l.lot_id) && (
+              <FileGallery files={data.files.filter((f) => f.lot_id === l.lot_id)} locale={locale} empty="" />
+            )}
             {isAdmin && (
               <form action={setLotQc} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="lot_id" value={l.lot_id} />

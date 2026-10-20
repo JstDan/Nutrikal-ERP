@@ -52,7 +52,7 @@ export async function ReceiveForm({ user, t }: { user: SessionUser; t: Dict }) {
         <label className="field"><span>{r.supplierLot}</span><input name="supplier_lot" className="input" /></label>
         <label className="field"><span>{r.manufactured}</span><input name="manufactured_on" type="date" className="input" /></label>
         <label className="field"><span>{r.expires}</span><input name="expires_on" type="date" className="input" aria-describedby="exp-hint" /><small id="exp-hint" className="text-xs text-ink-2">{r.expiresHint}</small></label>
-        {(user.role === "admin" || user.role === "inventory") && (
+        {user.role === "admin" && (
           <label className="field"><span>{r.unitCost}</span>
             <input name="unit_cost" type="number" min={0} step="any" className="input" aria-describedby="cost-hint" />
             <small id="cost-hint" className="text-xs text-ink-2">{r.unitCostHint}</small>
