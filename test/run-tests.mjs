@@ -665,5 +665,71 @@ await ok('audit log records changes; only admin can read it', async () => {
   eq((await as('sales', 'select * from audit_log')).length, 0, 'sales rows');
 });
 
+console.log('\nFormula calculator');
+await ok('price list is seeded and readable by admin and sales', async () => {
+  eq(Number((await one('sales', 'select count(*) from calc_raw_materials')).count), 148, 'sales rows');
+  eq(Number((await one('admin', 'select count(*) from calc_raw_materials')).count), 148, 'admin rows');
+});
+await ok('partner and inventory see nothing of the calculator', async () => {
+  for (const user of ['partner', 'inventory']) {
+    for (const table of ['calc_raw_materials', 'calc_settings', 'calc_offers', 'calc_sync_runs']) {
+      eq((await as(user, `select * from ${table}`)).length, 0, `${user} ${table}`);
+    }
+  }
+});
+await fails('sales cannot change a raw material price', () =>
+  as('sales', `update calc_raw_materials set price_eur_per_kg = 1 where name = 'Zinc Glycinate'`), 'permission denied');
+await fails('sales cannot add raw materials directly', () =>
+  as('sales', `insert into calc_raw_materials (name, price_eur_per_kg) values ('X', 1)`), 'permission denied');
+await ok('only admin edits the regulatory note', async () => {
+  await as('sales', `update calc_raw_materials set regulatory_note = 'sales' where name = 'Zinc Glycinate'`);
+  eq((await one('admin', `select regulatory_note from calc_raw_materials where name = 'Zinc Glycinate'`)).regulatory_note, null, 'after sales');
+  await as('admin', `update calc_raw_materials set regulatory_note = 'checked' where name = 'Zinc Glycinate'`);
+  eq((await one('sales', `select regulatory_note from calc_raw_materials where name = 'Zinc Glycinate'`)).regulatory_note, 'checked', 'after admin');
+});
+await ok('offer numbers run per year: NK-YYYY-0001, 0002', async () => {
+  const y = new Date().getFullYear();
+  eq((await one('sales', 'select calc_next_offer_no() as n')).n, `NK-${y}-0001`, 'first');
+  eq((await one('admin', 'select calc_next_offer_no() as n')).n, `NK-${y}-0002`, 'second');
+});
+await fails('partner cannot draw calculator offer numbers', () => as('partner', 'select calc_next_offer_no()'), 'not allowed');
+await ok('sales saves an offer; admin sees it, partner does not', async () => {
+  await as('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, data, results)
+                     values ('NK-T-1', 'Anna', 'anna@test.com', '{}', '{}')`);
+  eq((await as('admin', `select id from calc_offers where offer_no = 'NK-T-1'`)).length, 1, 'admin');
+  eq((await as('partner', `select id from calc_offers`)).length, 0, 'partner');
+});
+await ok('sales deletes only own offers, admin any', async () => {
+  await as('admin', `insert into calc_offers (offer_no, receiver_name, receiver_email, data, results)
+                     values ('NK-T-2', 'Bob', 'bob@test.com', '{}', '{}')`);
+  eq((await as('sales', `delete from calc_offers where offer_no = 'NK-T-2' returning id`)).length, 0, 'sales on admin offer');
+  eq((await as('sales', `delete from calc_offers where offer_no = 'NK-T-1' returning id`)).length, 1, 'sales on own offer');
+  eq((await as('admin', `delete from calc_offers where offer_no = 'NK-T-2' returning id`)).length, 1, 'admin');
+});
+await ok('only admin changes calculator settings', async () => {
+  eq((await as('sales', `update calc_settings set default_markup = 99 returning id`)).length, 0, 'sales');
+  eq((await as('admin', `update calc_settings set default_markup = 35 returning id`)).length, 1, 'admin');
+  eq(Number((await one('sales', 'select default_markup from calc_settings')).default_markup), 35, 'value');
+});
+await ok('sheet sync upserts, deactivates and logs the run', async () => {
+  const plan = { upserts: [{ name: 'New Extract', price_eur_per_kg: 12.5, active: true }, { name: 'Zinc Glycinate', price_eur_per_kg: 31, active: true }], deactivate: ['Zinc Citrate Trihydrate'] };
+  const run = await one('sales', `select * from calc_record_sync('manual', $1::jsonb, $2::jsonb)`,
+    [JSON.stringify(plan), JSON.stringify({ added: 1, changed: 1, removed: 1 })]);
+  eq(run.status, 'success', 'status');
+  eq(Number((await one('sales', `select price_eur_per_kg from calc_raw_materials where name = 'Zinc Glycinate'`)).price_eur_per_kg), 31, 'price');
+  eq((await one('sales', `select active from calc_raw_materials where name = 'Zinc Citrate Trihydrate'`)).active, false, 'deactivated');
+  eq((await as('sales', `select id from calc_raw_materials where name = 'New Extract'`)).length, 1, 'added');
+  eq((await one('admin', 'select count(*) from calc_sync_runs')).count, 1, 'logged');
+});
+await ok('a failed sync changes nothing and is logged', async () => {
+  const run = await one('admin', `select * from calc_record_sync('auto', '{"upserts":[{"name":"Y","price_eur_per_kg":1}]}', '{}', 'boom')`);
+  eq(run.status, 'error', 'status');
+  eq((await as('admin', `select id from calc_raw_materials where name = 'Y'`)).length, 0, 'not applied');
+});
+await fails('partner cannot run the sheet sync', () =>
+  as('partner', `select calc_record_sync('manual', '{}', '{}')`), 'not allowed');
+await fails('sync source "scheduled" is reserved for the server job', () =>
+  as('sales', `select calc_record_sync('scheduled', '{}', '{}')`), 'invalid sync source');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

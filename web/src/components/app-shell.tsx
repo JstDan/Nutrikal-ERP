@@ -30,6 +30,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
             { href: "/", label: t.nav.dashboard },
             { href: "/clients", label: t.nav.clients },
             { href: "/projects", label: t.nav.projects },
+            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/calculator", label: t.nav.calculator }] : []),
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/offers", label: t.nav.offers }] : []),
             { href: "/orders", label: t.nav.orders },
             { label: t.nav.invoices, soon: soon(4) },

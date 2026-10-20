@@ -7,3 +7,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 /test/screenshots/
+
+# Original standalone calculator app (ported into web/; kept locally for reference)
+/Nutrikal Calculator/

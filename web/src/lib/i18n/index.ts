@@ -23,9 +23,9 @@ export function fmt(template: string, vars: Record<string, string | number> = {}
 
 const intlLocale = (l: Locale) => (l === "bg" ? "bg-BG" : "en-GB");
 
-export function formatNumber(l: Locale, n: number | string | null | undefined, maxFrac = 2): string {
+export function formatNumber(l: Locale, n: number | string | null | undefined, maxFrac = 2, minFrac = 0): string {
   const v = Number(n ?? 0);
-  return new Intl.NumberFormat(intlLocale(l), { maximumFractionDigits: maxFrac }).format(v);
+  return new Intl.NumberFormat(intlLocale(l), { maximumFractionDigits: maxFrac, minimumFractionDigits: minFrac }).format(v);
 }
 
 export function formatQty(l: Locale, n: number | string | null | undefined, unit: string): string {
@@ -41,8 +41,13 @@ export function formatMass(l: Locale, mg: number | string | null | undefined): s
   return `${formatNumber(l, v, 1)} mg`;
 }
 
-export function formatMoney(l: Locale, n: number | string | null | undefined, currency = "EUR"): string {
-  return new Intl.NumberFormat(intlLocale(l), { style: "currency", currency, maximumFractionDigits: 0 }).format(Number(n ?? 0));
+export function formatMoney(l: Locale, n: number | string | null | undefined, currency = "EUR", decimals = 0): string {
+  return new Intl.NumberFormat(intlLocale(l), {
+    style: "currency",
+    currency,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(Number(n ?? 0));
 }
 
 /** Unit prices and costs: always shows `frac` decimals. */
