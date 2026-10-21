@@ -3,9 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { q } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
-import { fmt } from "@/lib/i18n";
-import { loadLastSync, loadMaterials, loadSettings, toOffer } from "@/lib/calculator/db";
-import { buildImportPreview, buildSyncPlan, extractSheetId, sheetExportPath } from "@/lib/calculator/materialImport";
+import { toOffer } from "@/lib/calculator/db";
+import { runSync, syncDue } from "@/lib/calculator/sync";
 import type { OfferInput, OfferRecord, RawMaterial, Settings, SyncRun } from "@/lib/calculator/types";
 
 export type CalcResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -108,67 +107,17 @@ export async function saveRegulatoryNote(id: string, note: string | null): Promi
 }
 
 // ----------------------------------------------- Google Sheet price sync
-/** Price list is pulled from the Google Sheet at least this often; failed runs are retried hourly. */
-const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const RETRY_MS = 60 * 60 * 1000;
-
-const record = (uid: string, source: "manual" | "auto", plan: unknown, stats: Record<string, number>, error: string | null) =>
-  q<SyncRun>(
-    uid,
-    `select id, created_at::text, source, status, added, changed, unchanged, invalid, missing, removed, restored, error
-       from calc_record_sync($1, $2::jsonb, $3::jsonb, $4)`,
-    [source, JSON.stringify(plan), JSON.stringify(stats), error],
-  ).then((rows) => rows[0]);
-
-async function sync(uid: string, source: "manual" | "auto"): Promise<SyncRun> {
-  const { t } = await getSession();
-  const s = t.calc.sync;
-  let plan: ReturnType<typeof buildSyncPlan>;
-  let stats: Record<string, number>;
-  try {
-    const fileId = extractSheetId((await loadSettings(uid)).google_sheet_url);
-    if (!fileId) throw new Error(s.noSheet);
-    const res = await fetch(`https://docs.google.com${sheetExportPath(fileId)}`, { redirect: "follow", cache: "no-store" });
-    if (!res.ok || (res.headers.get("content-type") ?? "").includes("text/html")) {
-      throw new Error(fmt(s.downloadFailed, { status: res.status }));
-    }
-    const XLSX = await import("xlsx");
-    const wb = XLSX.read(new Uint8Array(await res.arrayBuffer()));
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: null });
-    const current = await loadMaterials(uid);
-    const preview = buildImportPreview(rows, current);
-    if (!preview) throw new Error(s.noColumns);
-    if (!preview.added.length && !preview.changed.length && !preview.unchanged.length) throw new Error(s.noRows);
-    plan = buildSyncPlan(preview, current);
-    stats = {
-      added: preview.added.length,
-      changed: preview.changed.length,
-      unchanged: preview.unchanged.length,
-      invalid: preview.invalid.length,
-      missing: preview.missing.length,
-      removed: plan.deactivate.length,
-      restored: plan.reactivate.length,
-    };
-  } catch (e) {
-    return record(uid, source, {}, {}, errorText(e));
-  }
-  return record(uid, source, plan, stats, null);
-}
-
 export async function syncPriceList(): Promise<CalcResult<SyncRun>> {
-  const res = await run((uid) => sync(uid, "manual"));
+  const { t } = await getSession();
+  const res = await run((uid) => runSync(uid, "manual", t.calc.sync));
   revalidatePath("/calculator", "layout");
   return res;
 }
 
-/** Called when the calculator opens: syncs when the last run is older than 24 h (1 h after a failure). */
+/** Called when the calculator opens: catches up when the daily 17:00 sync has not run yet (retried hourly after a failure). */
 export async function syncIfStale(): Promise<CalcResult<SyncRun | null>> {
-  const res = await run(async (uid) => {
-    const last = await loadLastSync(uid);
-    const age = last ? Date.now() - new Date(last.created_at.replace(" ", "T").replace(/([+-]\d\d)$/, "$1:00")).getTime() : Infinity;
-    if (age <= (last?.status === "error" ? RETRY_MS : SYNC_INTERVAL_MS)) return null;
-    return sync(uid, "auto");
-  });
+  const { t } = await getSession();
+  const res = await run(async (uid) => ((await syncDue(uid)) ? runSync(uid, "auto", t.calc.sync) : null));
   if (res.ok && res.data) revalidatePath("/calculator", "layout");
   return res;
 }

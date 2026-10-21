@@ -4,9 +4,10 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { q, withUser } from "@/lib/db/engine";
-import { DEMO_USERS } from "@/lib/db/demo-users";
-import { ACT_AS_COOKIE, getSession, homeFor, USER_COOKIE } from "@/lib/session";
-import { fmt, formatQty, isLocale, LOCALE_COOKIE } from "@/lib/i18n";
+import { ACT_AS_COOKIE, getOptionalSession, getSession, homeFor } from "@/lib/session";
+import { supabaseConfigured, supabaseServer } from "@/lib/supabase/server";
+import { DEFAULT_LOCALE, fmt, formatQty, getDict, isLocale, LOCALE_COOKIE } from "@/lib/i18n";
+import type { Role } from "@/lib/db/demo-users";
 import { DELIVERY_LINES } from "@/lib/deliveries";
 import { DELIVERY_BUCKET, MAX_FILE_BYTES, newDeliveryPath, putFile, removeFile } from "@/lib/files";
 import type { Tx } from "@/lib/db/engine";
@@ -33,25 +34,42 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0]
 export async function setLocale(fd: FormData) {
   const locale = fd.get("locale");
   if (!isLocale(locale)) return;
-  const { user, developer } = await getSession();
   (await cookies()).set(LOCALE_COOKIE, locale, { path: "/", maxAge: YEAR, sameSite: "lax" });
-  await q(developer?.id ?? user.id, "select set_my_locale($1)", [locale]);
+  const s = await getOptionalSession(); // also used on the sign-in page
+  if (s) await q(s.developer?.id ?? s.user.id, "select set_my_locale($1)", [locale]);
   revalidatePath("/", "layout");
 }
 
-export async function switchDemoUser(fd: FormData) {
-  const id = fd.get("user");
-  const u = DEMO_USERS.find((x) => x.id === id);
-  if (!u) return;
+// ---------------------------------------------------------- sign in / out
+/** Email + password through Supabase Auth; then the user's start page. */
+export async function signIn(_: ActionState, fd: FormData): Promise<ActionState> {
   const jar = await cookies();
-  jar.set(USER_COOKIE, u.id, { path: "/", maxAge: YEAR, sameSite: "lax" });
-  jar.delete(LOCALE_COOKIE); // use that user's saved language
-  jar.delete(ACT_AS_COOKIE);
-  if (u.role === "developer") {
-    // a developer starts as the first user in the list; log it like any switch
-    await q(u.id, "select start_impersonation(id) from impersonation_targets() limit 1");
+  const c = jar.get(LOCALE_COOKIE)?.value;
+  const t = getDict(isLocale(c) ? c : DEFAULT_LOCALE);
+  const email = str(fd, "email"), password = fd.get("password");
+  if (!email || typeof password !== "string" || !password) return { error: t.login.failed };
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error || !data.user) return { error: t.login.failed };
+
+  const [profile] = await q<{ role: Role; is_active: boolean }>(data.user.id, "select role, is_active from profiles where id = auth.uid()");
+  if (!profile?.is_active) {
+    await supabase.auth.signOut();
+    return { error: t.login.noAccess };
   }
-  redirect(homeFor(u.role));
+  jar.delete(LOCALE_COOKIE); // use the user's saved language
+  jar.delete(ACT_AS_COOKIE);
+  if (profile.role === "developer") {
+    // a developer starts as the first user in the list; log it like any switch
+    await q(data.user.id, "select start_impersonation(id) from impersonation_targets() limit 1");
+  }
+  redirect(homeFor(profile.role));
+}
+
+export async function signOut() {
+  if (supabaseConfigured()) await (await supabaseServer()).auth.signOut();
+  (await cookies()).delete(ACT_AS_COOKIE);
+  redirect("/login");
 }
 
 /** Developer: act as another user (checked and logged in the database). */
@@ -779,7 +797,7 @@ async function saveDeliveryFiles(tx: Tx, deliveryId: string, files: File[], kind
     await tx.query(
       "insert into delivery_attachments (delivery_id, storage_path, kind, file_name, content_type, size_bytes) values ($1, $2, $3, $4, $5, $6)",
       [deliveryId, key, kind, f.name.slice(0, 200), f.type, f.size]);
-    await putFile(DELIVERY_BUCKET, key, Buffer.from(await f.arrayBuffer()));
+    await putFile(DELIVERY_BUCKET, key, Buffer.from(await f.arrayBuffer()), f.type);
     written.push(key);
   }
 }

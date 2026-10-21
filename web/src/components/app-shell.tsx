@@ -1,12 +1,10 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { THEME_COOKIE } from "@/lib/theme";
-import { setLocale } from "@/app/actions";
-import { DEMO_USERS } from "@/lib/db/demo-users";
+import { setLocale, signOut } from "@/app/actions";
 import { getSession } from "@/lib/session";
 import { LOCALES } from "@/lib/i18n";
 import { SideNav, type NavGroup } from "./side-nav";
-import { DemoUserSwitch } from "./demo-user-switch";
 import { ActAsSwitch } from "./act-as-switch";
 import { ThemeSwitch } from "./theme-switch";
 import { MobileMenu } from "./mobile-menu";
@@ -14,7 +12,7 @@ import { Wordmark } from "./logo";
 import { NotificationBell } from "./notification-bell";
 
 export async function AppShell({ children }: { children: ReactNode }) {
-  const { user, developer, locale, t } = await getSession();
+  const { user, developer, locale, t, local } = await getSession();
   const isProduction = user.role === "production";
   const savedTheme = (await cookies()).get(THEME_COOKIE)?.value;
   const soon = (n: number) => `${t.common.phase} ${n}`;
@@ -107,17 +105,18 @@ export async function AppShell({ children }: { children: ReactNode }) {
             </form>
             <NotificationBell userId={user.id} label={t.topbar.notifications} unreadLabel={t.topbar.unread} />
             <ThemeSwitch toDark={t.topbar.toDark} toLight={t.topbar.toLight} saved={savedTheme} />
-            <DemoUserSwitch
-              current={developer?.id ?? user.id}
-              label={t.topbar.viewingAs}
-              options={DEMO_USERS.map((u) => ({ id: u.id, label: t.enums.role[u.role] }))}
-            />
             {developer && (
               <ActAsSwitch
                 current={user.id}
                 label={t.topbar.actAs}
                 options={developer.targets.map((u) => ({ id: u.id, label: `${u.full_name} · ${t.enums.role[u.role]}` }))}
               />
+            )}
+            {!local && (
+              <form action={signOut} className="flex min-w-0 items-center gap-3">
+                <span className="hidden min-w-0 truncate text-xs font-semibold text-ink-2 lg:block">{developer?.name ?? user.name}</span>
+                <button type="submit" className="btn btn-outline">{t.topbar.signOut}</button>
+              </form>
             )}
           </div>
         </header>

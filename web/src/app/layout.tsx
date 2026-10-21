@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { getSession } from "@/lib/session";
+import { getLocale, getOptionalSession } from "@/lib/session";
 import { AppShell } from "@/components/app-shell";
 import { THEME_COOKIE } from "@/lib/theme";
 import { cookies } from "next/headers";
@@ -11,7 +11,8 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const { locale } = await getSession();
+  const session = await getOptionalSession();
+  const locale = await getLocale();
   const saved = (await cookies()).get(THEME_COOKIE)?.value;
   const theme = saved === "dark" || saved === "light" ? saved : undefined;
   return (
@@ -27,7 +28,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body>
-        <AppShell>{children}</AppShell>
+        {session ? <AppShell>{children}</AppShell> : children}
       </body>
     </html>
   );

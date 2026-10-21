@@ -3,7 +3,7 @@ import { getSession } from "@/lib/session";
 import { DELIVERY_BUCKET, getFile } from "@/lib/files";
 
 // One delivery file, if the signed-in user may see it (row-level security
-// on delivery_attachments decides). On Supabase: a short signed URL instead.
+// on delivery_attachments decides), streamed from Storage or the local folder.
 export async function GET(_req: Request, ctx: RouteContext<"/files/delivery/[id]">) {
   const { id } = await ctx.params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return new Response("Not found", { status: 404 });

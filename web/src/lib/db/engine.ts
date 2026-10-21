@@ -1,20 +1,56 @@
-// Local database engine: an embedded Postgres (PGlite) running the real
-// Supabase migrations from ../supabase/migrations, with Supabase's auth
-// pieces stubbed. Every query runs as the signed-in user, so row-level
-// security and the role checks behave exactly as on Supabase.
+// Database engine. Every query runs as the signed-in user inside a
+// transaction (request.jwt.claim.sub + role authenticated, exactly as
+// Supabase does it), so row-level security and the role checks in
+// ../supabase/migrations decide what each user may read and change.
 //
-// Moving to Supabase later = replace getDb()/withUser() with a pg Pool on
-// the Supabase connection string; withUser keeps the same two settings
-// (request.jwt.claim.sub + role authenticated), and all queries stay as they are.
-import { PGlite, type Transaction } from "@electric-sql/pglite";
-import { citext } from "@electric-sql/pglite/contrib/citext";
-import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
+// * DATABASE_URL set  → the Supabase Postgres (pg Pool on the pooler URL).
+// * DATABASE_URL empty → local development: an embedded Postgres (PGlite)
+//   in web/.data built from the same migrations, with Supabase's auth
+//   pieces stubbed and demo data.
 import fs from "node:fs";
 import path from "node:path";
-import { seedDemo } from "./demo-seed";
+import type { PGlite } from "@electric-sql/pglite";
+import type { Pool, PoolClient } from "pg";
 
-export type Tx = Transaction;
+/** The part of a transaction the app uses (same shape for PGlite and pg). */
+export type Tx = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
 
+export const usesSupabaseDb = () => !!process.env.DATABASE_URL;
+
+// ------------------------------------------------------------- Supabase
+const g = globalThis as unknown as { __nkDb?: Promise<PGlite>; __nkPool?: Pool };
+
+async function getPool(): Promise<Pool> {
+  if (!g.__nkPool) {
+    const pg = (await import("pg")).default;
+    // Same JS values as the local engine: bigint as number, dates as Date
+    pg.types.setTypeParser(20, (v: string) => Number(v));
+    for (const oid of [1082, 1114, 1184]) pg.types.setTypeParser(oid, (v: string) => new Date(v));
+    g.__nkPool = new pg.Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL ?? "") ? undefined : { rejectUnauthorized: false },
+      max: Number(process.env.DATABASE_POOL_SIZE ?? 5),
+    });
+  }
+  return g.__nkPool;
+}
+
+async function pgTransaction<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
+  const client = await (await getPool()).connect();
+  try {
+    await client.query("begin");
+    const out = await fn(client);
+    await client.query("commit");
+    return out;
+  } catch (e) {
+    await client.query("rollback").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------- local
 const SUPABASE_STUBS = `
   create schema if not exists auth;
   create table if not exists auth.users (id uuid primary key);
@@ -32,8 +68,6 @@ const SUPABASE_STUBS = `
   alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 `;
 
-const g = globalThis as unknown as { __nkDb?: Promise<PGlite> };
-
 export function getDb(): Promise<PGlite> {
   if (!g.__nkDb) g.__nkDb = init();
   return g.__nkDb;
@@ -44,6 +78,10 @@ function migrationsDir() {
 }
 
 async function init(): Promise<PGlite> {
+  const { PGlite } = await import("@electric-sql/pglite");
+  const { citext } = await import("@electric-sql/pglite/contrib/citext");
+  const { pgcrypto } = await import("@electric-sql/pglite/contrib/pgcrypto");
+  const { seedDemo } = await import("./demo-seed");
   const dataDir = process.env.NK_DB_DIR ?? path.join(/*turbopackIgnore: true*/ process.cwd(), ".data", "pg");
   fs.mkdirSync(dataDir, { recursive: true });
   const db = await PGlite.create({ dataDir, extensions: { citext, pgcrypto } });
@@ -70,8 +108,19 @@ async function init(): Promise<PGlite> {
   return db;
 }
 
+// ------------------------------------------------------------------ API
 /** Run fn inside a transaction as the given user (RLS applies). */
 export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  if (usesSupabaseDb()) {
+    return pgTransaction(async (c) => {
+      await c.query(
+        "select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claims', $2, true)",
+        [userId, JSON.stringify({ sub: userId, role: "authenticated" })],
+      );
+      await c.query("set local role authenticated");
+      return fn(c as unknown as Tx);
+    });
+  }
   const db = await getDb();
   return db.transaction(async (tx) => {
     await tx.query("select set_config('request.jwt.claim.sub', $1, true)", [userId]);
@@ -83,4 +132,13 @@ export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): P
 /** Convenience: rows of one query as the user. */
 export async function q<T>(userId: string, sql: string, params: unknown[] = []): Promise<T[]> {
   return withUser(userId, async (tx) => (await tx.query<T>(sql, params)).rows);
+}
+
+/**
+ * Jobs without a signed-in user (the scheduled price-list sync): runs as
+ * the database owner. Only for SQL functions that check this themselves.
+ */
+export async function asSystem<T>(sql: string, params: unknown[] = []): Promise<T[]> {
+  if (usesSupabaseDb()) return pgTransaction(async (c) => (await c.query(sql, params)).rows as T[]);
+  return (await (await getDb()).query<T>(sql, params)).rows;
 }

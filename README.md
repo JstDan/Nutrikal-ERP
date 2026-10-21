@@ -22,7 +22,8 @@ npm run dev
 Open http://localhost:3000.
 
 - On first start the app creates a local database in `web/.data/`, runs every migration from `supabase/migrations`, and loads sample data (4 clients, 6 projects, 11 items, lots, reservations, 3 formulas, 2 offers, 1 sales order, 2 manufacturing orders). Delete `web/.data/` to start over.
-- **Demo sign-in.** The selector in the top bar switches between the roles (Admin, Sales, Production, Developer), so you can see what each one sees. It is replaced by Supabase Auth when we go live.
+- **Two modes.** With the Supabase values in `web/.env.local` filled in (see `web/.env.example`), the app uses the Supabase database, Storage and sign-in (email + password). With them empty it runs on the local database for development, signed in as the demo Developer.
+- **Developer: acting as.** Only a developer gets the selector in the top bar; it switches to any active non-developer user (checked and logged in the database).
 - **Language.** The БГ / EN switch changes the whole interface. The choice is saved on the user's profile, so it follows them to other devices.
 
 ### What works now
@@ -59,7 +60,7 @@ Invoices, purchasing and production orders are shown in the menu with the phase 
 
 All reads and writes run **as the signed-in user** (`web/src/lib/db/engine.ts` → `withUser`), so the row-level security and role checks in the migrations decide what each person sees and can do. The app has no separate permission logic to keep in sync.
 
-Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase's `auth.uid()` stubbed. Moving to Supabase means replacing `getDb`/`withUser` with a connection to the Supabase database that sets the same two settings per transaction (`request.jwt.claim.sub` and role `authenticated`); queries stay the same.
+With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database and sets `request.jwt.claim.sub` and role `authenticated`, exactly like Supabase's own API. Without it (local development) the database is PGlite (Postgres compiled to WebAssembly) with Supabase's `auth.uid()` stubbed. Sign-in is Supabase Auth (`web/src/lib/supabase/server.ts`, `web/src/proxy.ts`); the signed-in user's id is the one every query runs as.
 
 ## Migrations
 
@@ -83,6 +84,7 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 | `20261023000200_notifications.sql` | Notifications per user, production settings (usage tolerance, waybill-photo rule) |
 | `20261023000300_production_flow.sql` | Direct stock corrections by production, status steps and admin step back, batch report with reserved vs used, material sources, ordering from the order screen, delivery terms after receipt, delivery attachments, receipts by production |
 | `20261023000400_delivery_docs_storage.sql` | Private bucket `delivery-docs` and its rules (Supabase only) |
+| `20261024000100_calc_scheduled_sync.sql` | Daily 17:00 price-list sync run by the server (`calc_record_scheduled_sync`, not callable by users) |
 | `20261019000900_formulation.sql` | Formulas (NK-F-0001), versions, lines, nutrients with NRV (Reg. 1169/2011 Annex XIII), item nutrient content, health claims, checks and access rules |
 
 ## Rules the database enforces
@@ -111,19 +113,26 @@ Locally the database is PGlite (Postgres compiled to WebAssembly) with Supabase'
 
 ```
 cd test && npm install
-node run-tests.mjs          # 203 database rule checks across the roles
+node run-tests.mjs          # 206 database rule checks across the roles
 python3 ui_test.py http://localhost:3000   # 18 browser checks (needs Python Playwright + Chromium)
 ```
 
 The browser tests create a client, contact, project and task, receive and release a lot, correct stock as production, switch languages, and check every page in both languages at 375, 768, 1024 and 1440 px for sideways scrolling. Run them on a fresh `web/.data`.
 
-## Apply to Supabase (later)
+## Connect to Supabase
 
-1. Create a Supabase project in a Nutrikal-owned organization (paid plan for daily backups), e.g. `nutrikal-erp`.
-2. `supabase link --project-ref <ref>` and `supabase db push` from this folder.
-3. Users are added in Supabase only (there is no user screen in the app): invite them in Supabase Auth, then add one `profiles` row per user with their role (`admin`, `sales`, `production` or `developer`). Give `developer` only to people who may see and do everything any user can.
-4. Load the opening stock from the old Nutrikal Inventory app once: check `supabase/import/REVIEW.md`, set the location at the top of `supabase/import/opening_stock.sql` (`NK-WH` or `PF-RM`) and run the file in the SQL editor. It is not a migration; running it twice adds nothing.
-5. Fill `company_settings` (legal name, VAT, EIK, bank details) and set `number_series.next_number` for invoices.
+1. Create a Supabase project in a Nutrikal-owned organization (paid plan for daily backups).
+2. Fill in `web/.env.local` (`web/.env.example` says where each value is in the Supabase dashboard). Restart the app after changing it.
+3. `cd web && npm run db:migrate` applies every migration to the Supabase database (recorded like `supabase db push`, so the Supabase CLI can be used too). To also load the opening stock from the old Nutrikal Inventory app once: check `supabase/import/REVIEW.md`, set the location at the top of `supabase/import/opening_stock.sql` (`NK-WH` or `PF-RM`), then run `npm run db:migrate -- --with-opening-stock`.
+4. Authentication → Sign In / Providers: keep Email on and turn **off** "Allow new users to sign up" (only the administrator creates accounts).
+5. Users: Authentication → Users → Add user → Create new user (email, password, "Auto Confirm User"). Then give the user a profile and role in the SQL editor — without it they cannot sign in:
+   ```sql
+   insert into profiles (id, full_name, email, role, locale)
+   select id, 'Full Name', email, 'admin', 'bg' from auth.users where email = 'name@nutrikal.com';
+   ```
+   Roles: `admin`, `sales`, `production`, `developer` (sees and does everything any user can, by acting as them). To block a user: `update profiles set is_active = false where email = '…'`. To set a new password: `update auth.users set encrypted_password = extensions.crypt('new password', extensions.gen_salt('bf')) where email = '…';`
+6. Calculator price list: `GOOGLE_SHEET_URL` (shared "Anyone with the link – Viewer"). It syncs every day at 17:00 Sofia time and with the Sync button. On a long-running server (`next start`) a built-in timer does it; on Vercel the cron jobs in `web/vercel.json` call `/api/cron/price-sync` with `CRON_SECRET` (any other scheduler can call it hourly with the header `Authorization: Bearer <CRON_SECRET>`). If 17:00 was missed, it syncs when the calculator is next opened.
+7. Fill `company_settings` (legal name, VAT, EIK, bank details) and set `number_series.next_number` for invoices.
 
 ## Points to review
 

@@ -32,7 +32,7 @@ const toDraft = (s: Settings): Draft => ({
 });
 
 type TextKey = {
-  [K in keyof Draft]: Draft[K] extends string ? K : never;
+  [K in keyof Draft]-?: Draft[K] extends string ? K : never;
 }[keyof Draft];
 
 export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settings; isAdmin: boolean; onSaved: (message: string) => void }) {
@@ -230,9 +230,10 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
       </div>
 
       <div className="flex flex-col gap-4 border-t border-mist pt-5">
-        <Field label={t.sync.sheetUrl} htmlFor="sheet-url" error={sheetIdOk ? undefined : t.sync.sheetUrlInvalid} hint={t.sync.sheetUrlHint}>
+        <Field label={t.sync.sheetUrl} htmlFor="sheet-url" error={sheetIdOk ? undefined : t.sync.sheetUrlInvalid} hint={draft.google_sheet_from_env ? t.sync.sheetUrlFromEnv : t.sync.sheetUrlHint}>
           <input
             id="sheet-url"
+            readOnly={draft.google_sheet_from_env}
             value={draft.google_sheet_url}
             onChange={(e) => set({ google_sheet_url: e.target.value })}
             aria-describedby="sheet-url-msg"

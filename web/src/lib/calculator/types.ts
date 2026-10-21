@@ -55,6 +55,8 @@ export interface Settings {
   terms_text: string;
   /** Google Sheet / Drive .xlsx share link the price list is synced from. */
   google_sheet_url: string;
+  /** True when the link comes from GOOGLE_SHEET_URL on the server (not editable in the app). */
+  google_sheet_from_env?: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

@@ -823,6 +823,16 @@ await fails('production cannot run the sheet sync', () =>
   as('production', `select calc_record_sync('manual', '{}', '{}')`), 'not allowed');
 await fails('sync source "scheduled" is reserved for the server job', () =>
   as('sales', `select calc_record_sync('scheduled', '{}', '{}')`), 'invalid sync source');
+await fails('users cannot call the scheduled sync', () =>
+  as('admin', `select calc_record_scheduled_sync('{}', '{}')`), 'permission denied');
+await fails('users cannot call the sync body directly', () =>
+  as('sales', `select calc_apply_sync('manual', '{}', '{}', null, null)`), 'permission denied');
+await ok('the server job logs a scheduled run', async () => {
+  const run = (await db.query(`select * from calc_record_scheduled_sync('{"upserts":[{"name":"Daily Extract","price_eur_per_kg":7}]}', '{"added":1}')`)).rows[0];
+  eq(run.source, 'scheduled', 'source');
+  eq(run.triggered_by, null, 'no user');
+  eq((await as('sales', `select id from calc_raw_materials where name = 'Daily Extract'`)).length, 1, 'applied');
+});
 
 console.log('\nExpected deliveries and stock counts');
 let edItem, edSupplier, edReq, ed1, ed2, edLot;
