@@ -107,10 +107,10 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
     })();
   }, [initial, loadForm, newOffer, settings]);
 
-  // Daily 17:00 sync missed (e.g. server was off): sync from the Google Sheet in the background, then reload the materials.
+  // Daily 17:00 sync missed (e.g. server was off): sync the price list and the catalog in the background, then reload them.
   useEffect(() => {
     void syncIfStale().then((res) => {
-      if (res.ok && res.data?.status === "success") router.refresh();
+      if (res.ok && res.data) router.refresh();
     });
   }, [router]);
 

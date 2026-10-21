@@ -834,35 +834,62 @@ await ok('the server job logs a scheduled run', async () => {
   eq((await as('sales', `select id from calc_raw_materials where name = 'Daily Extract'`)).length, 1, 'applied');
 });
 
-const catalogPlan = (products) => JSON.stringify({ catalog: products.map(([code, name, price], i) => ({
-  code, name, category: 'Test', tiers: [{ min_qty: 500, price }, { min_qty: 1000, price: price - 0.5 }], sort_order: i })) });
-await ok('the sync fills the catalog; admin and sales read it', async () => {
-  const run = await one('sales', `select * from calc_record_sync('manual', $1::jsonb, '{}')`,
-    [catalogPlan([['NTL-T1', 'Joint Test', 6.2], ['NTL-T2', 'Sleep Test', 5.9]])]);
+const catalogProducts = (products) => JSON.stringify(products.map(([code, name, price], i) => ({
+  code, name, category: 'Test', tiers: [{ min_qty: 500, price }, { min_qty: 1000, price: price - 0.5 }], sort_order: i })));
+await ok('the catalog syncs on its own and logs its own run; admin and sales read it', async () => {
+  const before = Number((await one('admin', 'select count(*) from calc_sync_runs')).count);
+  const run = await one('sales', `select * from calc_record_catalog_sync('manual', $1::jsonb, '{"added":2}')`,
+    [catalogProducts([['NTL-T1', 'Joint Test', 6.2], ['NTL-T2', 'Sleep Test', 5.9]])]);
   eq(run.status, 'success', 'status');
-  eq(run.catalog, 2, 'catalog count');
+  eq(run.added, 2, 'added');
+  eq(Number((await one('admin', 'select count(*) from calc_sync_runs')).count), before, 'price-list log untouched');
   eq((await as('admin', `select code from calc_catalog_products where active order by code`)).map((r) => r.code).join(), 'NTL-T1,NTL-T2', 'admin');
-  const p = await one('sales', `select tiers from calc_catalog_products where code = 'NTL-T1'`);
-  eq(Number(p.tiers[1].price), 5.7, 'tier price');
+  eq(Number((await one('sales', `select tiers from calc_catalog_products where code = 'NTL-T1'`)).tiers[1].price), 5.7, 'tier price');
+  eq((await as('sales', 'select id from calc_catalog_sync_runs')).length, 1, 'logged');
 });
 await ok('a product no longer in the catalog sheet is deactivated, not deleted', async () => {
-  await as('admin', `select calc_record_sync('auto', $1::jsonb, '{}')`, [catalogPlan([['NTL-T1', 'Joint Test v2', 6.4]])]);
+  await as('admin', `select calc_record_catalog_sync('auto', $1::jsonb, '{}')`, [catalogProducts([['NTL-T1', 'Joint Test v2', 6.4]])]);
   eq((await one('sales', `select active from calc_catalog_products where code = 'NTL-T2'`)).active, false, 'deactivated');
   eq((await one('sales', `select name from calc_catalog_products where code = 'NTL-T1'`)).name, 'Joint Test v2', 'updated');
 });
-await ok('a catalog failure keeps the catalog, still applies the price list and is logged as failed', async () => {
-  const run = await one('sales', `select * from calc_record_sync('manual', $1::jsonb, $2::jsonb)`,
-    [JSON.stringify({ upserts: [{ name: 'Catalog Day Extract', price_eur_per_kg: 3 }], deactivate: [] }), JSON.stringify({ catalog_error: 'Catalog: boom' })]);
-  eq(run.status, 'error', 'status');
-  eq(run.catalog_error, 'Catalog: boom', 'reason');
-  eq((await as('sales', `select id from calc_raw_materials where name = 'Catalog Day Extract'`)).length, 1, 'price list applied');
+await ok('a failed or empty catalog sync changes nothing and is logged', async () => {
+  const failed = await one('sales', `select * from calc_record_catalog_sync('manual', $1::jsonb, '{}', 'boom')`, [catalogProducts([['NTL-X', 'X', 1]])]);
+  eq(failed.status, 'error', 'failed status');
+  const empty = await one('sales', `select * from calc_record_catalog_sync('manual', '[]', '{}')`);
+  eq(empty.status, 'error', 'empty status');
+  eq((await as('sales', `select id from calc_catalog_products where code = 'NTL-X'`)).length, 0, 'not applied');
   eq((await one('sales', `select active from calc_catalog_products where code = 'NTL-T1'`)).active, true, 'catalog kept');
 });
+await ok('the price-list sync no longer touches the catalog', async () => {
+  await as('sales', `select calc_record_sync('manual', $1::jsonb, '{}')`,
+    [JSON.stringify({ upserts: [{ name: 'Catalog Day Extract', price_eur_per_kg: 3 }], deactivate: [], catalog: [] })]);
+  eq((await one('sales', `select active from calc_catalog_products where code = 'NTL-T1'`)).active, true, 'catalog kept');
+});
+await ok('the server job logs a scheduled catalog run', async () => {
+  const run = (await db.query(`select * from calc_record_scheduled_catalog_sync($1::jsonb, '{}')`, [catalogProducts([['NTL-T1', 'Joint Test v2', 6.4], ['NTL-T3', 'Daily Test', 4]])])).rows[0];
+  eq(run.source, 'scheduled', 'source');
+  eq(run.triggered_by, null, 'no user');
+  eq((await as('sales', `select id from calc_catalog_products where code = 'NTL-T3'`)).length, 1, 'applied');
+});
+await fails('production cannot run the catalog sync', () =>
+  as('production', `select calc_record_catalog_sync('manual', '[]', '{}')`), 'not allowed');
+await ok('production sees no catalog sync runs', async () => {
+  eq((await as('production', 'select id from calc_catalog_sync_runs')).length, 0, 'production');
+});
+await fails('catalog sync source "scheduled" is reserved for the server job', () =>
+  as('sales', `select calc_record_catalog_sync('scheduled', '[]', '{}')`), 'invalid sync source');
+await fails('users cannot call the scheduled catalog sync', () =>
+  as('admin', `select calc_record_scheduled_catalog_sync('[]', '{}')`), 'permission denied');
+await fails('users cannot call the catalog sync body directly', () =>
+  as('sales', `select calc_apply_catalog_sync('manual', '[]', '{}', null, null)`), 'permission denied');
 await fails('sales cannot add catalog products directly', () =>
   as('sales', `insert into calc_catalog_products (code, name, tiers) values ('X', 'X', '[{"min_qty":1,"price":1}]')`), 'permission denied');
 await fails('admin cannot change catalog prices directly', () =>
   as('admin', `update calc_catalog_products set tiers = '[{"min_qty":1,"price":0}]'`), 'permission denied');
-await ok('the catalog sheet link is a calculator setting', async () => {
+await fails('nobody writes the catalog sync log directly', () =>
+  as('admin', `insert into calc_catalog_sync_runs (source, status) values ('manual', 'success')`), 'permission denied');
+await ok('only admin changes the catalog sheet link', async () => {
+  eq((await as('sales', `update calc_settings set catalog_sheet_url = 'x' returning id`)).length, 0, 'sales');
   eq((await one('sales', 'select catalog_sheet_url from calc_settings')).catalog_sheet_url.includes('1WE7F6aTC3jezBPPC8oEnDS_aCee1Hpd1FPthdpYdPF0'), true, 'default');
 });
 

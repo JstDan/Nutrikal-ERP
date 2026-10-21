@@ -136,7 +136,7 @@ function SyncCard({ settings, lastSync, onDone }: { settings: Settings; lastSync
     if (!res.ok) return onDone(false, `${s.failed}: ${res.error}`);
     const run = res.data;
     if (run.status === "success") onDone(true, fmt(s.okShort, { added: run.added, changed: run.changed, removed: run.removed }));
-    else onDone(false, `${s.failed}: ${[run.error, run.catalog_error].filter(Boolean).join(" · ")}`);
+    else onDone(false, `${s.failed}: ${run.error ?? ""}`);
     router.refresh();
   };
 
@@ -168,15 +168,12 @@ function SyncCard({ settings, lastSync, onDone }: { settings: Settings; lastSync
           {lastSync.invalid > 0 && <><br />{fmt(s.invalidRows, { n: lastSync.invalid })}</>}
           {lastSync.removed > 0 && <><br />{fmt(s.removed, { n: lastSync.removed })}</>}
           {lastSync.restored > 0 && <><br />{fmt(s.restored, { n: lastSync.restored })}</>}
-          {lastSync.catalog > 0 && <><br />{fmt(s.catalogOk, { n: lastSync.catalog })}</>}
         </Notice>
       ) : (
         <Notice tone="error">
           <b>{s.failed}: {when(lastSync.created_at)} ({s[`source_${lastSync.source}`]})</b>
           <br />
           {lastSync.error}
-          {lastSync.error && lastSync.catalog_error && <br />}
-          {lastSync.catalog_error}
         </Notice>
       )}
     </section>

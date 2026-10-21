@@ -227,9 +227,19 @@ export interface SyncRun {
   removed: number;
   /** Inactive materials reactivated because they are back in the sheet. */
   restored: number;
-  /** Catalog products in the catalog sheet at this run. */
-  catalog: number;
-  /** Why the catalog part failed (the price list may still have synced). */
-  catalog_error: string | null;
+  error: string | null;
+}
+
+/** One run of the catalog sync (catalog Google Sheet → catalog products). */
+export interface CatalogSyncRun {
+  id: string;
+  created_at: string;
+  source: 'manual' | 'scheduled' | 'auto';
+  status: 'success' | 'error';
+  added: number;
+  changed: number;
+  unchanged: number;
+  /** Products deactivated because they were removed from the sheet. */
+  removed: number;
   error: string | null;
 }

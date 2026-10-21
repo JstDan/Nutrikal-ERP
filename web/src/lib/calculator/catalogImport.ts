@@ -62,6 +62,23 @@ export function parseCatalogSheet(rows: unknown[][]): CatalogRow[] {
   return [...out.values()];
 }
 
+/** What a sync will change: new codes, changed name/category/prices, unchanged, and active products no longer in the sheet. */
+export function catalogStats(sheet: CatalogRow[], current: { code: string; name: string; category: string | null; tiers: CatalogTier[]; active: boolean }[]) {
+  const byCode = new Map(current.map((p) => [p.code, p]));
+  const inSheet = new Set(sheet.map((p) => p.code));
+  // jsonb reorders keys, so prices are compared by value
+  const steps = (tiers: CatalogTier[]) => tiers.map((x) => `${Number(x.min_qty)}:${Number(x.price)}`).join();
+  let added = 0, changed = 0, unchanged = 0;
+  for (const p of sheet) {
+    const was = byCode.get(p.code);
+    if (!was) added++;
+    else if (!was.active || was.name !== p.name || was.category !== p.category || steps(was.tiers) !== steps(p.tiers)) changed++;
+    else unchanged++;
+  }
+  const removed = current.filter((p) => p.active && !inSheet.has(p.code)).length;
+  return { added, changed, unchanged, removed };
+}
+
 /** Unit price for an order quantity: the largest step at or below it. Null below the smallest step. */
 export function catalogPrice(tiers: CatalogTier[], units: number): CatalogTier | null {
   let hit: CatalogTier | null = null;

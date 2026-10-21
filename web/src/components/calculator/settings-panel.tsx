@@ -70,9 +70,8 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
     markup: parseNum(draft.default_markup),
   };
   const sheetIdOk = !!extractSheetId(draft.google_sheet_url);
-  const catalogSheetOk = !!extractSheetId(draft.catalog_sheet_url);
   const presetsOk = draft.service_presets.every((p) => p.description.trim() && (parseNum(p.price) ?? -1) >= 0);
-  const valid = Object.values(numbers).every((n) => n !== null && n >= 0) && sheetIdOk && catalogSheetOk && presetsOk;
+  const valid = Object.values(numbers).every((n) => n !== null && n >= 0) && sheetIdOk && presetsOk;
 
   const pickLogo = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -240,22 +239,6 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
             aria-describedby="sheet-url-msg"
             aria-invalid={!sheetIdOk || undefined}
             className={inputClass(!sheetIdOk)}
-          />
-        </Field>
-        <Field
-          label={t.sync.catalogSheetUrl}
-          htmlFor="catalog-sheet-url"
-          error={catalogSheetOk ? undefined : t.sync.sheetUrlInvalid}
-          hint={draft.catalog_sheet_from_env ? t.sync.catalogSheetUrlFromEnv : t.sync.catalogSheetUrlHint}
-        >
-          <input
-            id="catalog-sheet-url"
-            readOnly={draft.catalog_sheet_from_env}
-            value={draft.catalog_sheet_url}
-            onChange={(e) => set({ catalog_sheet_url: e.target.value })}
-            aria-describedby="catalog-sheet-url-msg"
-            aria-invalid={!catalogSheetOk || undefined}
-            className={inputClass(!catalogSheetOk)}
           />
         </Field>
         <Field label={s.terms} htmlFor="terms-text">

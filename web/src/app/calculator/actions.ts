@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { q } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import { toOffer } from "@/lib/calculator/db";
-import { runSync, syncDue } from "@/lib/calculator/sync";
-import type { OfferInput, OfferRecord, RawMaterial, Settings, SyncRun } from "@/lib/calculator/types";
+import { extractSheetId } from "@/lib/calculator/materialImport";
+import { catalogSyncDue, runCatalogSync, runSync, syncDue } from "@/lib/calculator/sync";
+import type { CatalogSyncRun, OfferInput, OfferRecord, RawMaterial, Settings, SyncRun } from "@/lib/calculator/types";
 
 export type CalcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -74,13 +75,13 @@ export async function saveSettings(s: Settings): Promise<CalcResult<boolean>> {
          default_markup = $4, default_vat_rate = $5, company_name = $6, company_id = $7, company_vat = $8, company_address = $9,
          company_email = $10, company_phone = $11, bank_iban = $12, bank_name = $13, bank_bic = $14, bank_address = $15,
          default_payment_terms = $16, vat_exemption_text = $17, footer_text = $18, websites = $19, service_presets = $20::jsonb,
-         logo_data_url = $21, terms_text = $22, google_sheet_url = $23, catalog_sheet_url = $24
+         logo_data_url = $21, terms_text = $22, google_sheet_url = $23
        returning id`,
       [
         s.fixed_costs.capsules_glass, s.fixed_costs.capsules_plastic, s.fixed_costs.powder, s.default_markup, s.default_vat_rate,
         s.company_name, s.company_id, s.company_vat, s.company_address, s.company_email, s.company_phone, s.bank_iban, s.bank_name,
         s.bank_bic, s.bank_address, s.default_payment_terms, s.vat_exemption_text, s.footer_text, s.websites,
-        JSON.stringify(s.service_presets), s.logo_data_url, s.terms_text, s.google_sheet_url, s.catalog_sheet_url,
+        JSON.stringify(s.service_presets), s.logo_data_url, s.terms_text, s.google_sheet_url,
       ],
     );
     if (!rows.length) throw new Error("Not allowed");
@@ -114,10 +115,37 @@ export async function syncPriceList(): Promise<CalcResult<SyncRun>> {
   return res;
 }
 
-/** Called when the calculator opens: catches up when the daily 17:00 sync has not run yet (retried hourly after a failure). */
-export async function syncIfStale(): Promise<CalcResult<SyncRun | null>> {
+/**
+ * Called when the calculator opens: catches up the price list and the catalog when their daily
+ * 17:00 sync has not run yet (retried hourly after a failure). True when either synced successfully.
+ */
+export async function syncIfStale(): Promise<CalcResult<boolean>> {
   const { t } = await getSession();
-  const res = await run(async (uid) => ((await syncDue(uid)) ? runSync(uid, "auto", t.calc.sync) : null));
+  const res = await run(async (uid) => {
+    const prices = (await syncDue(uid)) ? await runSync(uid, "auto", t.calc.sync) : null;
+    const catalog = (await catalogSyncDue(uid)) ? await runCatalogSync(uid, "auto", t.calc.sync) : null;
+    return prices?.status === "success" || catalog?.status === "success";
+  });
   if (res.ok && res.data) revalidatePath("/calculator", "layout");
+  return res;
+}
+
+// ------------------------------------------------- catalog sheet sync
+export async function syncCatalog(): Promise<CalcResult<CatalogSyncRun>> {
+  const { t } = await getSession();
+  const res = await run((uid) => runCatalogSync(uid, "manual", t.calc.sync));
+  revalidatePath("/calculator", "layout");
+  return res;
+}
+
+/** Admin: the catalog Google Sheet link (when it is not set on the server). */
+export async function saveCatalogSheetUrl(url: string): Promise<CalcResult<boolean>> {
+  const res = await run(async (uid) => {
+    if (!extractSheetId(url)) throw new Error("Invalid link");
+    const rows = await q<{ id: boolean }>(uid, "update calc_settings set catalog_sheet_url = $1 returning id", [url.trim()]);
+    if (!rows.length) throw new Error("Not allowed");
+    return true;
+  });
+  if (res.ok) revalidatePath("/calculator", "layout");
   return res;
 }
