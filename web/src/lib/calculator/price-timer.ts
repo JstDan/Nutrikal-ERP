@@ -1,20 +1,12 @@
 // On a long-running server (next start, next dev): every 10 minutes, check
-<<<<<<< HEAD
-// whether the daily 17:00 price-list sync is due and run it. On serverless
-// hosting the cron route does this instead (/api/cron/price-sync, called
-// hourly by the Cloudflare cron trigger in worker.ts); both use the same "due" check, so the sheet is synced
-// once a day either way.
+// whether the daily 17:00 price-list and catalog syncs are due and run them.
+// On serverless hosting the cron route does this instead
+// (/api/cron/price-sync, called hourly by the Cloudflare cron trigger in
+// worker.ts); both use the same "due" check, so each sheet is synced once a
+// day either way.
 import { DEFAULT_LOCALE, getDict } from "@/lib/i18n";
 import { onWorkers } from "@/lib/db/engine";
-import { runSync, syncDue } from "./sync";
-=======
-// whether the daily 17:00 price-list and catalog syncs are due and run them. On serverless
-// hosting the cron route does this instead (/api/cron/price-sync, see
-// vercel.json); both use the same "due" check, so the sheet is synced
-// once a day either way.
-import { DEFAULT_LOCALE, getDict } from "@/lib/i18n";
 import { catalogSyncDue, runCatalogSync, runSync, syncDue } from "./sync";
->>>>>>> calculator-create-offer
 
 export function startPriceTimer() {
   // On Cloudflare the Worker's hourly cron trigger calls the cron route instead (worker.ts)
