@@ -1,0 +1,30 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireRole } from "@/lib/session";
+import { loadOffer, loadSettings } from "@/lib/calculator/db";
+import { PageHeader } from "@/components/ui";
+import { OfferSummary } from "@/components/calculator/offer-summary";
+
+export default async function CalculatorOfferPage({ params }: PageProps<"/offers/calc/[id]">) {
+  const { user, locale, t } = await requireRole("admin", "sales");
+  const { id } = await params;
+  const [offer, settings] = await Promise.all([loadOffer(user.id, id), loadSettings(user.id)]);
+  if (!offer) notFound();
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={`${t.calc.client.offerNo} ${offer.offer_no}`}
+        subtitle={[offer.company_name || offer.receiver_name, offer.product_name].filter(Boolean).join(" · ")}
+        crumb={<><Link href="/offers" className="text-ink-2">{t.offers.title}</Link> / {offer.offer_no}</>}
+      />
+      <OfferSummary
+        t={t.calc}
+        locale={locale}
+        offer={offer}
+        settings={settings}
+        canDelete={user.role === "admin" || offer.created_by === user.id}
+      />
+    </div>
+  );
+}

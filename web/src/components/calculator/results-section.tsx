@@ -12,8 +12,8 @@ interface Props {
   result: CalcResult;
   valid: boolean;
   busy: boolean;
-  onSave: () => void;
-  onDownloadPdf: () => void;
+  /** Creates the offer (or saves the changes of an opened one) and opens its summary under Offers. */
+  onCreate: () => void;
   /** Called when a disabled action is clicked: reveal errors and scroll to the first one. */
   onInvalidAttempt: () => void;
 }
@@ -21,25 +21,10 @@ interface Props {
 const GRID = "grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_130px_130px]";
 const LINES_GRID = "grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_90px_100px_110px]";
 
-export function ResultsSection({ form, result: r, valid, busy, onSave, onDownloadPdf, onInvalidAttempt }: Props) {
+export function ResultsSection({ form, result: r, valid, busy, onCreate, onInvalidAttempt }: Props) {
   const { t, eur, num, pct } = useCalcText();
-  const type = form.productType;
-  const units = parseNum(form.numberOfUnits) ?? 0;
   const markup = parseNum(form.markup) ?? 0;
-  const discount = Math.min(100, Math.max(0, parseNum(form.discount) ?? 0));
   const kg = (v: number) => (v > 0 && v < 1 ? `${num(v * 1000, 2)} g` : `${num(v, 3)} kg`);
-
-  const lines = [
-    {
-      key: "product",
-      description: type ? form.offer.productName || t.productType[type] : "–",
-      qty: units,
-      unit: t.results.pcs,
-      price: r.unitPrice,
-      amount: r.productAmount,
-    },
-    ...r.extraLines.map((l, i) => ({ key: `x${i}`, description: l.description, qty: l.qty, unit: l.unit, price: l.price, amount: l.amount })),
-  ];
 
   return (
     <Section title={t.results.section}>
@@ -100,75 +85,92 @@ export function ResultsSection({ form, result: r, valid, busy, onSave, onDownloa
       {/* B) Client offer summary – what the client sees */}
       <div className="flex flex-col gap-4 rounded-sm border-2 border-ink p-4 sm:p-5">
         <h3 className="m-0 text-base font-bold">B) {t.results.client}</h3>
-        <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-          <div>
-            <InfoLine label={t.results.product} value={form.offer.productName || "–"} />
-            <InfoLine label={t.results.type} value={type ? t.productType[type] : "–"} />
-            <InfoLine label={t.results.packaging} value={type ? t.productType[`packaging_${type}`] : "–"} />
-            <InfoLine label={quantityLabel(t, type)} value={form.quantityPerUnit || "–"} />
-            {isCapsule(type) && <InfoLine label={t.formula.capsulesPerDose} value={form.capsulesPerDose || "–"} />}
-            <InfoLine label={`${t.results.quantity} (${unitsLabel(t, type).toLowerCase()})`} value={units ? num(units) : "–"} />
-          </div>
-          <div>
-            <InfoLine label={t.results.unitPrice} value={eur(r.unitPrice)} />
-            {discount > 0 && <InfoLine label={t.results.discount} value={pct(discount, 2)} />}
-            <InfoLine label={t.results.subTotal} value={eur(r.totalPriceExclVat)} strong />
-          </div>
-        </div>
-
-        {r.complete && (
-          <div className="flex flex-col gap-1">
-            <SubHeading>{t.results.offerLines}</SubHeading>
-            <div role="table" aria-label={t.results.offerLines} className="text-sm">
-              <div role="row" className={`row ${LINES_GRID} hide-sm border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2`}>
-                <span role="columnheader">{t.lines.description}</span>
-                <span role="columnheader" className="text-right">{t.lines.qty}</span>
-                <span role="columnheader" className="text-right">{t.lines.price}</span>
-                <span role="columnheader" className="text-right">{t.lines.amount}</span>
-              </div>
-              {lines.map((l) => (
-                <div role="row" key={l.key} className={`row ${LINES_GRID} border-b border-mist py-2 last:border-0`}>
-                  <span role="cell" className="min-w-0 break-words">
-                    {l.description}
-                    <span className="block text-xs text-ink-2 sm:hidden">
-                      {num(l.qty)} {l.unit} × {eur(l.price)}
-                    </span>
-                  </span>
-                  <span role="cell" className="hide-sm text-right tabular-nums">{num(l.qty)} {l.unit}</span>
-                  <span role="cell" className="hide-sm text-right tabular-nums">{eur(l.price)}</span>
-                  <span role="cell" className="text-right font-semibold tabular-nums">{eur(l.amount)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <ClientSummary form={form} result={r} />
       </div>
 
       <div className="flex flex-col gap-3">
         {!valid && <Notice tone="warning">{t.results.fixErrors}</Notice>}
-        {/* While the form is incomplete the buttons stay focusable and clicking them shows what's missing. */}
+        {/* While the form is incomplete the button stays focusable and clicking it shows what's missing. */}
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           <span className="text-xs text-ink-2 sm:mr-auto">{t.results.pdfLanguage}</span>
           <button
             type="button"
-            onClick={valid ? onSave : onInvalidAttempt}
-            disabled={busy}
-            aria-disabled={!valid || undefined}
-            className={`btn btn-outline ${valid ? "" : "opacity-55"}`}
-          >
-            {form.id ? t.results.updateOffer : t.results.saveOffer}
-          </button>
-          <button
-            type="button"
-            onClick={valid ? onDownloadPdf : onInvalidAttempt}
+            onClick={valid ? onCreate : onInvalidAttempt}
             disabled={busy}
             aria-disabled={!valid || undefined}
             className={`btn btn-primary ${valid ? "" : "opacity-55"}`}
           >
-            {t.results.downloadPdf}
+            {form.id ? t.results.updateOffer : t.results.createOffer}
           </button>
         </div>
       </div>
     </Section>
+  );
+}
+
+/** What the client sees: product, quantity, prices and the offer lines (calculator and the offer summary under Offers). */
+export function ClientSummary({ form, result: r }: { form: OfferForm; result: CalcResult }) {
+  const { t, eur, num, pct } = useCalcText();
+  const type = form.productType;
+  const units = parseNum(form.numberOfUnits) ?? 0;
+  const discount = Math.min(100, Math.max(0, parseNum(form.discount) ?? 0));
+
+  const lines = [
+    {
+      key: "product",
+      description: type ? form.offer.productName || t.productType[type] : "–",
+      qty: units,
+      unit: t.results.pcs,
+      price: r.unitPrice,
+      amount: r.productAmount,
+    },
+    ...r.extraLines.map((l, i) => ({ key: `x${i}`, description: l.description, qty: l.qty, unit: l.unit, price: l.price, amount: l.amount })),
+  ];
+
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+        <div>
+          <InfoLine label={t.results.product} value={form.offer.productName || "–"} />
+          <InfoLine label={t.results.type} value={type ? t.productType[type] : "–"} />
+          <InfoLine label={t.results.packaging} value={type ? t.productType[`packaging_${type}`] : "–"} />
+          <InfoLine label={quantityLabel(t, type)} value={form.quantityPerUnit || "–"} />
+          {isCapsule(type) && <InfoLine label={t.formula.capsulesPerDose} value={form.capsulesPerDose || "–"} />}
+          <InfoLine label={`${t.results.quantity} (${unitsLabel(t, type).toLowerCase()})`} value={units ? num(units) : "–"} />
+        </div>
+        <div>
+          <InfoLine label={t.results.unitPrice} value={eur(r.unitPrice)} />
+          {discount > 0 && <InfoLine label={t.results.discount} value={pct(discount, 2)} />}
+          <InfoLine label={t.results.subTotal} value={eur(r.totalPriceExclVat)} strong />
+        </div>
+      </div>
+  
+      {r.complete && (
+        <div className="flex flex-col gap-1">
+          <SubHeading>{t.results.offerLines}</SubHeading>
+          <div role="table" aria-label={t.results.offerLines} className="text-sm">
+            <div role="row" className={`row ${LINES_GRID} hide-sm border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2`}>
+              <span role="columnheader">{t.lines.description}</span>
+              <span role="columnheader" className="text-right">{t.lines.qty}</span>
+              <span role="columnheader" className="text-right">{t.lines.price}</span>
+              <span role="columnheader" className="text-right">{t.lines.amount}</span>
+            </div>
+            {lines.map((l) => (
+              <div role="row" key={l.key} className={`row ${LINES_GRID} border-b border-mist py-2 last:border-0`}>
+                <span role="cell" className="min-w-0 break-words">
+                  {l.description}
+                  <span className="block text-xs text-ink-2 sm:hidden">
+                    {num(l.qty)} {l.unit} × {eur(l.price)}
+                  </span>
+                </span>
+                <span role="cell" className="hide-sm text-right tabular-nums">{num(l.qty)} {l.unit}</span>
+                <span role="cell" className="hide-sm text-right tabular-nums">{eur(l.price)}</span>
+                <span role="cell" className="text-right font-semibold tabular-nums">{eur(l.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

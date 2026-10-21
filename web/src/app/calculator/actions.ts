@@ -51,7 +51,7 @@ export async function saveOffer(input: OfferInput): Promise<CalcResult<OfferReco
     if (!rows[0]) throw new Error("Offer not found");
     return toOffer(rows[0]);
   });
-  if (res.ok) revalidatePath("/calculator/offers");
+  if (res.ok) revalidatePath("/offers", "layout");
   return res;
 }
 
@@ -61,7 +61,7 @@ export async function deleteOffer(id: string): Promise<CalcResult<boolean>> {
     if (!rows.length) throw new Error("Not allowed or not found");
     return true;
   });
-  if (res.ok) revalidatePath("/calculator/offers");
+  if (res.ok) revalidatePath("/offers", "layout");
   return res;
 }
 
