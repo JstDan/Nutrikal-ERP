@@ -10,33 +10,60 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
-import type { Pool, PoolClient } from "pg";
+import type { ClientBase, Pool } from "pg";
 
 /** The part of a transaction the app uses (same shape for PGlite and pg). */
 export type Tx = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
 
 export const usesSupabaseDb = () => !!process.env.DATABASE_URL;
 
+/** Cloudflare Workers: connections cannot be shared between requests there. */
+export const onWorkers = () => typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+
 // ------------------------------------------------------------- Supabase
 const g = globalThis as unknown as { __nkDb?: Promise<PGlite>; __nkPool?: Pool };
 
-async function getPool(): Promise<Pool> {
-  if (!g.__nkPool) {
-    const pg = (await import("pg")).default;
-    // Same JS values as the local engine: bigint as number, dates as Date
-    pg.types.setTypeParser(20, (v: string) => Number(v));
-    for (const oid of [1082, 1114, 1184]) pg.types.setTypeParser(oid, (v: string) => new Date(v));
-    g.__nkPool = new pg.Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL ?? "") ? undefined : { rejectUnauthorized: false },
-      max: Number(process.env.DATABASE_POOL_SIZE ?? 5),
-    });
-  }
-  return g.__nkPool;
+async function pgModule() {
+  const pg = (await import("pg")).default;
+  // Same JS values as the local engine: bigint as number, dates as Date
+  pg.types.setTypeParser(20, (v: string) => Number(v));
+  for (const oid of [1082, 1114, 1184]) pg.types.setTypeParser(oid, (v: string) => new Date(v));
+  return pg;
 }
 
-async function pgTransaction<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
-  const client = await (await getPool()).connect();
+const connection = () => ({
+  connectionString: process.env.DATABASE_URL,
+  ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL ?? "") ? undefined : { rejectUnauthorized: false },
+});
+
+/**
+ * On Workers the database is reached through Cloudflare Hyperdrive (binding
+ * HYPERDRIVE in wrangler.jsonc): it pools the connections to Supabase and
+ * handles Supabase's TLS certificate, which Workers sockets do not accept.
+ */
+function hyperdriveUrl(): string | undefined {
+  const ctx = (globalThis as Record<symbol, { env?: { HYPERDRIVE?: { connectionString: string } } } | undefined>)[
+    Symbol.for("__cloudflare-context__")
+  ];
+  return ctx?.env?.HYPERDRIVE?.connectionString;
+}
+
+/** A connection for one transaction: from the pool on a Node server, a fresh one on Workers. */
+async function connect(): Promise<{ client: ClientBase; done: () => void }> {
+  const pg = await pgModule();
+  if (onWorkers()) {
+    const url = hyperdriveUrl();
+    const client = new pg.Client(url ? { connectionString: url } : connection());
+    await client.connect();
+    return { client, done: () => void client.end().catch(() => {}) };
+  }
+  g.__nkPool ??= new pg.Pool({ ...connection(), max: Number(process.env.DATABASE_POOL_SIZE ?? 5) });
+  const client = await g.__nkPool.connect();
+  return { client, done: () => client.release() };
+}
+
+async function pgTransaction<T>(fn: (c: ClientBase) => Promise<T>): Promise<T> {
+  const { client, done } = await connect();
   try {
     await client.query("begin");
     const out = await fn(client);
@@ -46,7 +73,7 @@ async function pgTransaction<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
     await client.query("rollback").catch(() => {});
     throw e;
   } finally {
-    client.release();
+    done();
   }
 }
 

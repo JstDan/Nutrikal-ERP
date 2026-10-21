@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "db:migrate": "node --env-file=.env.local scripts/db-migrate.mjs"
+    "db:migrate": "node --env-file=.env.local scripts/db-migrate.mjs",
+    "cf:build": "cross-env NK_TARGET=cloudflare NODE_OPTIONS=--require=./scripts/win-symlink.cjs opennextjs-cloudflare build && node scripts/cf-strip-env.mjs",
+    "cf:preview": "npm run cf:build && node --env-file=.env.local scripts/cf-wrangler.mjs dev",
+    "cf:deploy": "npm run cf:build && node --env-file=.env.local scripts/cf-wrangler.mjs deploy",
+    "cf:secrets": "node --env-file=.env.local scripts/cf-secrets.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.10",
@@ -23,12 +27,20 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.12",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^10.1.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.151.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261019.1": true,
+    "core-js": false
   }
 }

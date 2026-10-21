@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-// Keeps the Supabase sign-in fresh and sends signed-out visitors to /login.
+// Edge middleware (not proxy.ts: Cloudflare runs edge middleware natively;
+// Node proxies are experimental there). Keeps the Supabase sign-in fresh and sends signed-out visitors to /login.
 // The real checks are in getSession() and in the database; this is the
 // early, optimistic one. Without Supabase settings (local development) it does nothing.
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   if (!url || !key) return NextResponse.next();
