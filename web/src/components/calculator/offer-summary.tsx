@@ -4,8 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { deleteOffer } from "@/app/calculator/actions";
-import { calcInputFromForm, calculate } from "@/lib/calculator/calc";
-import { normalizeForm } from "@/lib/calculator/form";
+import { fromOfferRecord } from "@/lib/calculator/offerRecord";
 import type { OfferRecord, Settings } from "@/lib/calculator/types";
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import { CalcTextProvider, InfoLine, Toast, useCalcText, useToast, type CalcDict } from "./kit";
@@ -37,9 +36,7 @@ function Summary({ offer: x, settings, canDelete }: Props) {
   const o = t.offers;
   const c = t.client;
 
-  // Recalculated from the stored snapshot (prices + fixed costs at the time of saving), as the PDF is.
-  const form = useMemo(() => normalizeForm({ ...x.data, offer: { ...x.data.offer, offerNo: x.offer_no } }, settings), [x, settings]);
-  const result = useMemo(() => calculate(calcInputFromForm(form, form.fixedCosts ?? settings.fixed_costs)), [form, settings]);
+  const { form, result } = useMemo(() => fromOfferRecord(x, settings), [x, settings]);
 
   const pdf = async () => {
     setBusy(true);

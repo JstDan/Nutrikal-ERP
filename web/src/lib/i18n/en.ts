@@ -1164,6 +1164,7 @@ export const en = {
       vat: "VAT",
       totalInclVat: "Total incl. VAT",
       deleteConfirm: "Delete offer {no} permanently?",
+      deleted: "Offer {no} deleted",
       empty: "No offers from the calculator yet.",
       noMatch: "No offers match your search.",
     },
