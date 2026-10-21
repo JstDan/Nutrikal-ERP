@@ -56,7 +56,8 @@ export function normalizeForm(f: OfferForm, settings: Settings): OfferForm {
     mode: f.mode === 'catalog' ? 'catalog' : 'custom',
     catalog: f.catalog ?? null,
     clientId: f.clientId ?? null,
-    extraItems: f.extraItems ?? [],
+    // Extra services are added to the order now, not to the offer: unsaved drafts drop them (saved offers keep theirs).
+    extraItems: f.id ? (f.extraItems ?? []) : [],
     // Tiers from before the markup field existed come back with an empty markup.
     priceTiers: (f.priceTiers ?? []).map((x) => ({ key: x.key, qty: x.qty ?? '', markup: x.markup ?? '' })),
     discount: f.discount ?? '0',

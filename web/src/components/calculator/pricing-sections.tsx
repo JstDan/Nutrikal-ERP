@@ -163,78 +163,13 @@ export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6
   );
 }
 
-/** Step 7: extra offer lines (certificates, design…), payment terms and the PDF note. */
-export function OfferLinesSection({ form, setForm, errorFor, presets, step = 7 }: SectionProps & { presets: ServicePreset[]; step?: number }) {
-  const { t, eur } = useCalcText();
-  const error = errorFor("extraItems");
-
-  const addItem = (item: Omit<ExtraItem, "key">) =>
-    setForm((f) => ({ ...f, extraItems: [...f.extraItems, { key: crypto.randomUUID(), ...item }] }));
-  const updateItem = (key: string, patch: Partial<ExtraItem>) =>
-    setForm((f) => ({ ...f, extraItems: f.extraItems.map((x) => (x.key === key ? { ...x, ...patch } : x)) }));
-  const removeItem = (key: string) => setForm((f) => ({ ...f, extraItems: f.extraItems.filter((x) => x.key !== key) }));
+/** Step 7: payment terms and the PDF note. Extra services are added to the order (Orders), not to the offer. */
+export function OfferLinesSection({ form, setForm, step = 7 }: SectionProps & { step?: number }) {
+  const { t } = useCalcText();
 
   return (
-    <Section step={step} title={t.lines.section} id={fieldId("extraItems")}>
-      <div className="flex flex-col gap-3">
-        <SubHeading>{t.lines.extraItems}</SubHeading>
-        <p className="m-0 text-[13px] text-ink-2">{t.lines.extraHint}</p>
-        <div className="flex flex-wrap gap-2">
-          {presets.map((p) => (
-            <button
-              key={p.description}
-              type="button"
-              onClick={() => addItem({ description: p.description, qty: "1", unit: p.unit, price: String(p.price) })}
-              className="btn btn-outline h-auto! py-2! text-left whitespace-normal!"
-            >
-              + {p.description} · {eur(p.price)}
-            </button>
-          ))}
-          <button type="button" onClick={() => addItem({ description: "", qty: "1", unit: "pcs.", price: "" })} className="btn btn-outline">
-            + {t.lines.customItem}
-          </button>
-        </div>
-
-        {form.extraItems.map((item) => {
-          const qty = parseNum(item.qty);
-          const price = parseNum(item.price);
-          const amount = qty && price !== null ? qty * price : 0;
-          return (
-            <div
-              key={item.key}
-              className="grid items-end gap-3 rounded-sm border border-line p-3 [grid-template-areas:'desc_desc_remove'_'qty_unit_unit'_'price_amount_amount'] grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:[grid-template-areas:'desc_qty_unit_price_amount_remove'] md:grid-cols-[minmax(0,1fr)_80px_88px_120px_100px_44px]"
-            >
-              <Field label={t.lines.description} htmlFor={`item-desc-${item.key}`} className="[grid-area:desc]">
-                <input
-                  id={`item-desc-${item.key}`}
-                  value={item.description}
-                  onChange={(e) => updateItem(item.key, { description: e.target.value })}
-                  className={inputClass(!!error && !item.description.trim())}
-                />
-              </Field>
-              <Field label={t.lines.qty} htmlFor={`item-qty-${item.key}`} className="[grid-area:qty]">
-                <NumberField id={`item-qty-${item.key}`} value={item.qty} onChange={(v) => updateItem(item.key, { qty: v })} invalid={!!error && !(qty && qty > 0)} />
-              </Field>
-              <Field label={t.lines.unit} htmlFor={`item-unit-${item.key}`} className="[grid-area:unit]">
-                <input id={`item-unit-${item.key}`} value={item.unit} onChange={(e) => updateItem(item.key, { unit: e.target.value })} className="input" />
-              </Field>
-              <Field label={t.lines.price} htmlFor={`item-price-${item.key}`} className="[grid-area:price]">
-                <NumberField id={`item-price-${item.key}`} value={item.price} onChange={(v) => updateItem(item.key, { price: v })} invalid={!!error && price === null} suffix="€" />
-              </Field>
-              <div className="flex min-h-11 flex-col justify-center text-right [grid-area:amount]">
-                <div className="text-xs text-ink-2">{t.lines.amount}</div>
-                <div className="text-sm font-semibold tabular-nums">{eur(amount)}</div>
-              </div>
-              <div className="justify-self-end [grid-area:remove]">
-                <RemoveButton label={`${t.remove} ${item.description}`} onClick={() => removeItem(item.key)} />
-              </div>
-            </div>
-          );
-        })}
-        {error && <p className="m-0 text-xs font-semibold text-red-ink">{error}</p>}
-      </div>
-
-      <div className="flex flex-col gap-4 border-t border-mist pt-5">
+    <Section step={step} title={t.lines.termsSection}>
+      <div className="flex flex-col gap-4">
         <Field label={t.lines.paymentTerms} htmlFor="payment-terms">
           <input id="payment-terms" value={form.paymentTerms} onChange={(e) => setForm((f) => ({ ...f, paymentTerms: e.target.value }))} className="input" />
         </Field>
