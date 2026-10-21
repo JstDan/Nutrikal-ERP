@@ -765,7 +765,7 @@ await ok('price list is seeded and readable by admin and sales', async () => {
 });
 await ok('production and admin see nothing of the calculator', async () => {
   for (const user of ['production']) {
-    for (const table of ['calc_raw_materials', 'calc_settings', 'calc_offers', 'calc_sync_runs']) {
+    for (const table of ['calc_raw_materials', 'calc_settings', 'calc_offers', 'calc_sync_runs', 'calc_catalog_products']) {
       eq((await as(user, `select * from ${table}`)).length, 0, `${user} ${table}`);
     }
   }
@@ -832,6 +832,38 @@ await ok('the server job logs a scheduled run', async () => {
   eq(run.source, 'scheduled', 'source');
   eq(run.triggered_by, null, 'no user');
   eq((await as('sales', `select id from calc_raw_materials where name = 'Daily Extract'`)).length, 1, 'applied');
+});
+
+const catalogPlan = (products) => JSON.stringify({ catalog: products.map(([code, name, price], i) => ({
+  code, name, category: 'Test', tiers: [{ min_qty: 500, price }, { min_qty: 1000, price: price - 0.5 }], sort_order: i })) });
+await ok('the sync fills the catalog; admin and sales read it', async () => {
+  const run = await one('sales', `select * from calc_record_sync('manual', $1::jsonb, '{}')`,
+    [catalogPlan([['NTL-T1', 'Joint Test', 6.2], ['NTL-T2', 'Sleep Test', 5.9]])]);
+  eq(run.status, 'success', 'status');
+  eq(run.catalog, 2, 'catalog count');
+  eq((await as('admin', `select code from calc_catalog_products where active order by code`)).map((r) => r.code).join(), 'NTL-T1,NTL-T2', 'admin');
+  const p = await one('sales', `select tiers from calc_catalog_products where code = 'NTL-T1'`);
+  eq(Number(p.tiers[1].price), 5.7, 'tier price');
+});
+await ok('a product no longer in the catalog sheet is deactivated, not deleted', async () => {
+  await as('admin', `select calc_record_sync('auto', $1::jsonb, '{}')`, [catalogPlan([['NTL-T1', 'Joint Test v2', 6.4]])]);
+  eq((await one('sales', `select active from calc_catalog_products where code = 'NTL-T2'`)).active, false, 'deactivated');
+  eq((await one('sales', `select name from calc_catalog_products where code = 'NTL-T1'`)).name, 'Joint Test v2', 'updated');
+});
+await ok('a catalog failure keeps the catalog, still applies the price list and is logged as failed', async () => {
+  const run = await one('sales', `select * from calc_record_sync('manual', $1::jsonb, $2::jsonb)`,
+    [JSON.stringify({ upserts: [{ name: 'Catalog Day Extract', price_eur_per_kg: 3 }], deactivate: [] }), JSON.stringify({ catalog_error: 'Catalog: boom' })]);
+  eq(run.status, 'error', 'status');
+  eq(run.catalog_error, 'Catalog: boom', 'reason');
+  eq((await as('sales', `select id from calc_raw_materials where name = 'Catalog Day Extract'`)).length, 1, 'price list applied');
+  eq((await one('sales', `select active from calc_catalog_products where code = 'NTL-T1'`)).active, true, 'catalog kept');
+});
+await fails('sales cannot add catalog products directly', () =>
+  as('sales', `insert into calc_catalog_products (code, name, tiers) values ('X', 'X', '[{"min_qty":1,"price":1}]')`), 'permission denied');
+await fails('admin cannot change catalog prices directly', () =>
+  as('admin', `update calc_catalog_products set tiers = '[{"min_qty":1,"price":0}]'`), 'permission denied');
+await ok('the catalog sheet link is a calculator setting', async () => {
+  eq((await one('sales', 'select catalog_sheet_url from calc_settings')).catalog_sheet_url.includes('1WE7F6aTC3jezBPPC8oEnDS_aCee1Hpd1FPthdpYdPF0'), true, 'default');
 });
 
 console.log('\nExpected deliveries and stock counts');

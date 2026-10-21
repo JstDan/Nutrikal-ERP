@@ -2,7 +2,10 @@
 
 import type { CalcResult } from "@/lib/calculator/calc";
 import { parseNum } from "@/lib/calculator/numbers";
+import { catalogPrice } from "@/lib/calculator/catalogImport";
+import { productName } from "@/lib/calculator/offerRecord";
 import { isCapsule, type OfferForm } from "@/lib/calculator/types";
+import { fmt } from "@/lib/i18n";
 import { Chip } from "@/components/ui";
 import { InfoLine, Notice, Section, SubHeading, useCalcText } from "./kit";
 import { quantityLabel, unitsLabel } from "./pricing-sections";
@@ -24,14 +27,15 @@ const LINES_GRID = "grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_9
 export function ResultsSection({ form, result: r, valid, busy, onCreate, onInvalidAttempt }: Props) {
   const { t, eur, num, pct } = useCalcText();
   const markup = parseNum(form.markup) ?? 0;
+  const catalog = form.mode === "catalog";
   const kg = (v: number) => (v > 0 && v < 1 ? `${num(v * 1000, 2)} g` : `${num(v, 3)} kg`);
 
   return (
     <Section title={t.results.section}>
       {!r.complete && <Notice>{t.results.incomplete}</Notice>}
 
-      {/* A) Internal breakdown – never goes to the PDF */}
-      <div className="flex flex-col gap-4 rounded-sm border border-amber-line bg-amber-soft p-4 sm:p-5">
+      {/* A) Internal breakdown – never goes to the PDF (a catalog product has no cost breakdown) */}
+      {!catalog && <div className="flex flex-col gap-4 rounded-sm border border-amber-line bg-amber-soft p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="m-0 text-base font-bold">A) {t.results.internalTitle}</h3>
           <Chip tone="amber">🔒 {t.results.internal}</Chip>
@@ -80,11 +84,11 @@ export function ResultsSection({ form, result: r, valid, busy, onCreate, onInval
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* B) Client offer summary – what the client sees */}
       <div className="flex flex-col gap-4 rounded-sm border-2 border-ink p-4 sm:p-5">
-        <h3 className="m-0 text-base font-bold">B) {t.results.client}</h3>
+        <h3 className="m-0 text-base font-bold">{catalog ? "" : "B) "}{t.results.client}</h3>
         <ClientSummary form={form} result={r} />
       </div>
 
@@ -114,11 +118,13 @@ export function ClientSummary({ form, result: r }: { form: OfferForm; result: Ca
   const type = form.productType;
   const units = parseNum(form.numberOfUnits) ?? 0;
   const discount = Math.min(100, Math.max(0, parseNum(form.discount) ?? 0));
+  const catalog = form.mode === "catalog" ? form.catalog : null;
+  const step = catalog && units ? catalogPrice(catalog.tiers, units) : null;
 
   const lines = [
     {
       key: "product",
-      description: type ? form.offer.productName || t.productType[type] : "–",
+      description: catalog ? productName(form) : type ? form.offer.productName || t.productType[type] : "–",
       qty: units,
       unit: t.results.pcs,
       price: r.unitPrice,
@@ -130,14 +136,23 @@ export function ClientSummary({ form, result: r }: { form: OfferForm; result: Ca
   return (
     <>
       <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-        <div>
-          <InfoLine label={t.results.product} value={form.offer.productName || "–"} />
-          <InfoLine label={t.results.type} value={type ? t.productType[type] : "–"} />
-          <InfoLine label={t.results.packaging} value={type ? t.productType[`packaging_${type}`] : "–"} />
-          <InfoLine label={quantityLabel(t, type)} value={form.quantityPerUnit || "–"} />
-          {isCapsule(type) && <InfoLine label={t.formula.capsulesPerDose} value={form.capsulesPerDose || "–"} />}
-          <InfoLine label={`${t.results.quantity} (${unitsLabel(t, type).toLowerCase()})`} value={units ? num(units) : "–"} />
-        </div>
+        {form.mode === "catalog" ? (
+          <div>
+            <InfoLine label={t.results.product} value={<span className="break-words">{productName(form) || "–"}</span>} />
+            <InfoLine label={t.catalog.code} value={catalog?.code ?? "–"} />
+            <InfoLine label={t.results.quantity} value={units ? num(units) : "–"} />
+            <InfoLine label={t.catalog.step} value={step ? fmt(t.catalog.fromQty, { n: num(step.min_qty) }) : "–"} />
+          </div>
+        ) : (
+          <div>
+            <InfoLine label={t.results.product} value={form.offer.productName || "–"} />
+            <InfoLine label={t.results.type} value={type ? t.productType[type] : "–"} />
+            <InfoLine label={t.results.packaging} value={type ? t.productType[`packaging_${type}`] : "–"} />
+            <InfoLine label={quantityLabel(t, type)} value={form.quantityPerUnit || "–"} />
+            {isCapsule(type) && <InfoLine label={t.formula.capsulesPerDose} value={form.capsulesPerDose || "–"} />}
+            <InfoLine label={`${t.results.quantity} (${unitsLabel(t, type).toLowerCase()})`} value={units ? num(units) : "–"} />
+          </div>
+        )}
         <div>
           <InfoLine label={t.results.unitPrice} value={eur(r.unitPrice)} />
           {discount > 0 && <InfoLine label={t.results.discount} value={pct(discount, 2)} />}

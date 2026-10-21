@@ -1,9 +1,11 @@
+import { catalogMinQty } from './catalogImport';
 import { parseNum, parsePositiveInt } from './numbers';
 import { isCapsule, type OfferForm } from './types';
 
 export type FieldKey =
   | 'receiver.fullName'
   | 'receiver.email'
+  | 'catalogProduct'
   | 'productType'
   | 'rows'
   | 'capsulesPerDose'
@@ -13,12 +15,14 @@ export type FieldKey =
   | 'extraItems';
 
 /** Message keys in the calc.validation dictionary. */
-export type ValidationCode = 'required' | 'email' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems';
+export type ValidationCode =
+  | 'required' | 'email' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq';
 
 /** Field order = order on the page, used to scroll to the first error. */
 export const FIELD_ORDER: FieldKey[] = [
   'receiver.fullName',
   'receiver.email',
+  'catalogProduct',
   'productType',
   'rows',
   'capsulesPerDose',
@@ -43,11 +47,19 @@ export function validateOffer(form: OfferForm): ValidationErrors {
   if (!form.receiver.fullName.trim()) errors['receiver.fullName'] = 'required';
   if (!form.receiver.email.trim()) errors['receiver.email'] = 'required';
   else if (!isValidEmail(form.receiver.email)) errors['receiver.email'] = 'email';
-  if (!form.productType) errors.productType = 'productType';
-  if (!form.rows.some((r) => (parseNum(r.amount) ?? 0) > 0)) errors.rows = 'materials';
-  if (isCapsule(form.productType) && !parsePositiveInt(form.capsulesPerDose)) errors.capsulesPerDose = 'positiveInt';
-  if (!parsePositiveInt(form.quantityPerUnit)) errors.quantityPerUnit = 'positiveInt';
-  if (!parsePositiveInt(form.numberOfUnits)) errors.numberOfUnits = 'positiveInt';
+  const units = parsePositiveInt(form.numberOfUnits);
+  if (form.mode === 'catalog') {
+    // Catalog product: no formula or packaging; the quantity must reach the product's smallest price step.
+    if (!form.catalog) errors.catalogProduct = 'catalogProduct';
+    if (!units) errors.numberOfUnits = 'positiveInt';
+    else if (form.catalog && units < catalogMinQty(form.catalog.tiers)) errors.numberOfUnits = 'belowMoq';
+  } else {
+    if (!form.productType) errors.productType = 'productType';
+    if (!form.rows.some((r) => (parseNum(r.amount) ?? 0) > 0)) errors.rows = 'materials';
+    if (isCapsule(form.productType) && !parsePositiveInt(form.capsulesPerDose)) errors.capsulesPerDose = 'positiveInt';
+    if (!parsePositiveInt(form.quantityPerUnit)) errors.quantityPerUnit = 'positiveInt';
+    if (!units) errors.numberOfUnits = 'positiveInt';
+  }
   const discount = parseNum(form.discount || '0');
   if (discount === null || discount < 0 || discount > 100) errors.discount = 'discount';
   const badItem = form.extraItems.some((x) => {

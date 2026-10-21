@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { fmt } from '@/lib/i18n';
 import { unitPriceFor, type CalcResult, type OfferLine } from './calc';
 import { formatDate, formatNumber, parseNum } from './numbers';
+import { productName } from './offerRecord';
 import { CAPSULE_SIZES, isCapsule, type OfferForm, type ProductType, type Settings } from './types';
 
 // Client-facing offer, laid out after Nutrikal's offer template (Poppins, two brand marks, customer /
@@ -117,17 +118,21 @@ export function toPdfModel(
   settings: Settings,
   images: { customLogo: PdfImage | null; brandLogo: PdfImage | null },
 ): OfferPdfModel {
-  if (!form.productType) throw new Error('Product type is required');
-  const type = form.productType;
+  const catalog = form.mode === 'catalog' ? form.catalog : null;
+  if (form.mode === 'catalog' && !catalog) throw new Error('Catalog product is required');
+  if (!catalog && !form.productType) throw new Error('Product type is required');
+  const type = form.productType ?? 'powder';
   const capsule = isCapsule(type);
   const units = parseNum(form.numberOfUnits) ?? 0;
   const perUnit = form.quantityPerUnit;
-  const name = form.offer.productName.trim() || 'Custom formula';
+  const name = productName(form) || 'Custom formula';
 
   const productLine: OfferLine = {
-    description: capsule
-      ? `${name} - ${perUnit} capsules with ${packagingPlural[type]}`
-      : `${name} - ${perUnit} doses in ${packagingPlural[type]}`,
+    description: catalog
+      ? name
+      : capsule
+        ? `${name} - ${perUnit} capsules with ${packagingPlural[type]}`
+        : `${name} - ${perUnit} doses in ${packagingPlural[type]}`,
     qty: units,
     unit: 'pcs',
     price: result.unitPrice,
@@ -140,7 +145,9 @@ export function toPdfModel(
   const doseG = result.doseWeightMg / 1000;
   const caps = parseNum(form.capsulesPerDose) ?? 1;
   const servings = result.dosesPerUnit !== null ? formatNumber(result.dosesPerUnit, 2) : '–';
-  if (capsule) {
+  if (catalog) {
+    packaging.push(`Product code: ${catalog.code}`, ...(catalog.category ? [catalog.category] : []));
+  } else if (capsule) {
     const size = (Object.keys(CAPSULE_SIZES) as (keyof typeof CAPSULE_SIZES)[]).includes(form.capsuleSize)
       ? `, capsule size ${form.capsuleSize.replace('size', '')}`
       : '';
@@ -158,7 +165,7 @@ export function toPdfModel(
     );
   }
   const dosePortion = capsule ? `${caps} ${caps === 1 ? 'capsule' : 'capsules'}` : `${formatNumber(doseG, 2)} g`;
-  const doseRows = form.includeComposition
+  const doseRows = !catalog && form.includeComposition
     ? form.rows
         .filter((r) => (parseNum(r.amount) ?? 0) > 0)
         .map((r) => ({ name: r.name, amount: `${formatNumber(parseNum(r.amount) ?? 0, 4)} ${r.unit}` }))
@@ -166,11 +173,14 @@ export function toPdfModel(
   const noteLines = form.notes.split('\n').map((l) => l.trim()).filter(Boolean);
 
   // Sales prices table: the offer quantity plus any price tiers; one column per quantity, no totals.
-  const tierPrices = (form.priceTiers ?? []).flatMap((tier) => {
-    const qty = parseNum(tier.qty);
-    const markup = parseNum(tier.markup);
-    return qty && qty > 0 && markup !== null ? [{ units: qty, price: unitPriceFor(result.unitCost, markup) }] : [];
-  });
+  // A catalog product shows its own price steps instead of tiers built from a markup.
+  const tierPrices = catalog
+    ? catalog.tiers.map((x) => ({ units: x.min_qty, price: x.price }))
+    : (form.priceTiers ?? []).flatMap((tier) => {
+        const qty = parseNum(tier.qty);
+        const markup = parseNum(tier.markup);
+        return qty && qty > 0 && markup !== null ? [{ units: qty, price: unitPriceFor(result.unitCost, markup) }] : [];
+      });
   const allPrices = [...(units > 0 && result.complete ? [{ units, price: result.unitPrice }] : []), ...tierPrices]
     .filter((p, i, all) => all.findIndex((q) => q.units === p.units) === i)
     .sort((a, b) => a.units - b.units);

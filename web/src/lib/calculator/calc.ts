@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
-import { isCapsule, type DoseUnit, type FixedCosts, type OfferForm, type ProductType } from './types';
+import { catalogPrice } from './catalogImport';
+import { isCapsule, type CatalogTier, type DoseUnit, type FixedCosts, type OfferForm, type ProductType } from './types';
 import { parseNum, parsePositiveInt } from './numbers';
 
 const UNIT_TO_KG: Record<DoseUnit, Decimal> = {
@@ -28,6 +29,8 @@ export interface CalcInput {
   discountPct: number | null;
   extraItems: ExtraItemInput[];
   fixedCosts: FixedCosts;
+  /** Catalog product: unit price per quantity step instead of cost + markup (no formula, no fixed cost). */
+  catalogTiers?: CatalogTier[] | null;
 }
 
 export interface ExtraItemInput {
@@ -110,13 +113,16 @@ export function calculate(input: CalcInput): CalcResult {
 
   const units = input.numberOfUnits && input.numberOfUnits > 0 ? input.numberOfUnits : null;
   const hasMaterial = rowKg.some((kg) => kg.gt(0));
-  const complete = !!input.productType && !!dosesPerUnit && !!units && hasMaterial;
+  const catalogStep = input.catalogTiers && units ? catalogPrice(input.catalogTiers, units) : null;
+  const complete = input.catalogTiers ? !!catalogStep : !!input.productType && !!dosesPerUnit && !!units && hasMaterial;
 
   const fixedCostPerUnit = input.productType ? new Decimal(input.fixedCosts[input.productType] ?? 0) : ZERO;
   const rawCostPerUnit = dosesPerUnit ? costPerDose.mul(dosesPerUnit) : ZERO;
   const unitCost = rawCostPerUnit.add(fixedCostPerUnit);
   const markup = new Decimal(input.markupPct ?? 0);
-  const unitPrice = unitCost.mul(markup.div(100).add(1)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  const unitPrice = catalogStep
+    ? new Decimal(catalogStep.price).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    : unitCost.mul(markup.div(100).add(1)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
   const round2 = (d: Decimal) => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
   const discount = Decimal.max(0, Decimal.min(100, new Decimal(input.discountPct ?? 0)));
@@ -195,9 +201,12 @@ export function marginFromMarkup(markupPct: number): number {
 }
 
 export function calcInputFromForm(form: OfferForm, fixedCosts: FixedCosts): CalcInput {
+  // A catalog product has no formula, packaging or fixed cost: its price comes from the catalog steps.
+  const catalog = form.mode === 'catalog';
   return {
-    productType: form.productType,
-    rows: form.rows.map((r) => ({ name: r.name, amount: parseNum(r.amount), unit: r.unit, pricePerKg: r.pricePerKg })),
+    productType: catalog ? null : form.productType,
+    rows: catalog ? [] : form.rows.map((r) => ({ name: r.name, amount: parseNum(r.amount), unit: r.unit, pricePerKg: r.pricePerKg })),
+    catalogTiers: catalog ? (form.catalog?.tiers ?? []) : null,
     capsulesPerDose: parsePositiveInt(form.capsulesPerDose),
     quantityPerUnit: parsePositiveInt(form.quantityPerUnit),
     numberOfUnits: parsePositiveInt(form.numberOfUnits),

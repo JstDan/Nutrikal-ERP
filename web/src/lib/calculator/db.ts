@@ -1,8 +1,8 @@
 // Calculator reads, always as the signed-in user (row-level security decides what comes back).
 import { q } from "@/lib/db/engine";
 import { countryName } from "./countries";
-import { envSheetUrl } from "./sync";
-import { DEFAULT_SETTINGS, type OfferRecord, type RawMaterial, type ServicePreset, type Settings, type SyncRun } from "./types";
+import { envCatalogSheetUrl, envSheetUrl } from "./sync";
+import { DEFAULT_SETTINGS, type CatalogProduct, type OfferRecord, type RawMaterial, type ServicePreset, type Settings, type SyncRun } from "./types";
 
 // Postgres numeric columns arrive as strings.
 const num = (v: number | string | null | undefined) => Number(v ?? 0);
@@ -40,7 +40,21 @@ export async function loadSettings(userId: string): Promise<Settings> {
   const [row] = await q<SettingsRow>(userId, "select * from calc_settings");
   const s = row ? settingsFromRow(row) : DEFAULT_SETTINGS;
   const env = envSheetUrl();
-  return env ? { ...s, google_sheet_url: env, google_sheet_from_env: true } : s;
+  const catalogEnv = envCatalogSheetUrl();
+  return {
+    ...s,
+    ...(env && { google_sheet_url: env, google_sheet_from_env: true }),
+    ...(catalogEnv && { catalog_sheet_url: catalogEnv, catalog_sheet_from_env: true }),
+  };
+}
+
+/** Active catalog products in the order of the catalog sheet. */
+export async function loadCatalog(userId: string): Promise<CatalogProduct[]> {
+  const rows = await q<CatalogProduct>(
+    userId,
+    "select id, code, name, category, tiers, active from calc_catalog_products where active order by sort_order, code",
+  );
+  return rows.map((p) => ({ ...p, tiers: p.tiers.map((x) => ({ min_qty: Number(x.min_qty), price: Number(x.price) })) }));
 }
 
 export async function loadMaterials(userId: string): Promise<RawMaterial[]> {
@@ -74,7 +88,7 @@ export async function loadOffer(userId: string, id: string): Promise<OfferRecord
 export async function loadLastSync(userId: string): Promise<SyncRun | null> {
   const [row] = await q<SyncRun>(
     userId,
-    `select id, created_at::text, source, status, added, changed, unchanged, invalid, missing, removed, restored, error
+    `select id, created_at::text, source, status, added, changed, unchanged, invalid, missing, removed, restored, catalog, catalog_error, error
        from calc_sync_runs order by created_at desc limit 1`,
   );
   return row ?? null;

@@ -16,6 +16,8 @@ const OLD_DEFAULT_TERMS = [
 export function createEmptyForm(settings: Settings, offerNo: string): OfferForm {
   return {
     id: null,
+    mode: 'custom',
+    catalog: null,
     contact: { name: '', phone: '' },
     receiver: { fullName: '', address: '', city: '', zip: '', country: DEFAULT_COUNTRY, phone: '', email: '' },
     invoice: { companyName: '', identificationNo: '', registrationAddress: '', vatNumber: '' },
@@ -50,6 +52,8 @@ export function normalizeForm(f: OfferForm, settings: Settings): OfferForm {
     receiver: { ...empty.receiver, ...f.receiver },
     invoice: { ...empty.invoice, ...f.invoice },
     offer: { ...empty.offer, ...f.offer },
+    mode: f.mode === 'catalog' ? 'catalog' : 'custom',
+    catalog: f.catalog ?? null,
     extraItems: f.extraItems ?? [],
     // Tiers from before the markup field existed come back with an empty markup.
     priceTiers: (f.priceTiers ?? []).map((x) => ({ key: x.key, qty: x.qty ?? '', markup: x.markup ?? '' })),

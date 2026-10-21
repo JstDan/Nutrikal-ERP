@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/session";
-import { loadCrmClients, loadMaterials, loadOffer, loadSettings } from "@/lib/calculator/db";
+import { loadCatalog, loadCrmClients, loadMaterials, loadOffer, loadSettings } from "@/lib/calculator/db";
 import { CalculatorApp } from "@/components/calculator/calculator-app";
 import { CalcTabs } from "@/components/calculator/calc-tabs";
 
@@ -8,8 +8,9 @@ export default async function CalculatorPage({ searchParams }: PageProps<"/calcu
   const sp = await searchParams;
   const openId = typeof sp.open === "string" ? sp.open : typeof sp.copy === "string" ? sp.copy : null;
 
-  const [materials, settings, clients, offer] = await Promise.all([
+  const [materials, catalog, settings, clients, offer] = await Promise.all([
     loadMaterials(user.id),
+    loadCatalog(user.id),
     loadSettings(user.id),
     loadCrmClients(user.id),
     openId ? loadOffer(user.id, openId) : null,
@@ -20,6 +21,7 @@ export default async function CalculatorPage({ searchParams }: PageProps<"/calcu
       t={t.calc}
       locale={locale}
       materials={materials}
+      catalog={catalog}
       settings={settings}
       clients={clients}
       initial={offer ? { mode: typeof sp.open === "string" ? "open" : "copy", offer } : null}

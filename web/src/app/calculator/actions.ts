@@ -74,13 +74,13 @@ export async function saveSettings(s: Settings): Promise<CalcResult<boolean>> {
          default_markup = $4, default_vat_rate = $5, company_name = $6, company_id = $7, company_vat = $8, company_address = $9,
          company_email = $10, company_phone = $11, bank_iban = $12, bank_name = $13, bank_bic = $14, bank_address = $15,
          default_payment_terms = $16, vat_exemption_text = $17, footer_text = $18, websites = $19, service_presets = $20::jsonb,
-         logo_data_url = $21, terms_text = $22, google_sheet_url = $23
+         logo_data_url = $21, terms_text = $22, google_sheet_url = $23, catalog_sheet_url = $24
        returning id`,
       [
         s.fixed_costs.capsules_glass, s.fixed_costs.capsules_plastic, s.fixed_costs.powder, s.default_markup, s.default_vat_rate,
         s.company_name, s.company_id, s.company_vat, s.company_address, s.company_email, s.company_phone, s.bank_iban, s.bank_name,
         s.bank_bic, s.bank_address, s.default_payment_terms, s.vat_exemption_text, s.footer_text, s.websites,
-        JSON.stringify(s.service_presets), s.logo_data_url, s.terms_text, s.google_sheet_url,
+        JSON.stringify(s.service_presets), s.logo_data_url, s.terms_text, s.google_sheet_url, s.catalog_sheet_url,
       ],
     );
     if (!rows.length) throw new Error("Not allowed");
