@@ -85,6 +85,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 | `20261023000300_production_flow.sql` | Direct stock corrections by production, status steps and admin step back, batch report with reserved vs used, material sources, ordering from the order screen, delivery terms after receipt, delivery attachments, receipts by production |
 | `20261023000400_delivery_docs_storage.sql` | Private bucket `delivery-docs` and its rules (Supabase only) |
 | `20261024000100_calc_scheduled_sync.sql` | Daily 17:00 price-list sync run by the server (`calc_record_scheduled_sync`, not callable by users) |
+| `20261024000200_views_read_only.sql` | Users can only read views (no writes through a view past row-level security) |
 | `20261019000900_formulation.sql` | Formulas (NK-F-0001), versions, lines, nutrients with NRV (Reg. 1169/2011 Annex XIII), item nutrient content, health claims, checks and access rules |
 
 ## Rules the database enforces
@@ -113,7 +114,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 
 ```
 cd test && npm install
-node run-tests.mjs          # 206 database rule checks across the roles
+node run-tests.mjs          # 208 database rule checks across the roles
 python3 ui_test.py http://localhost:3000   # 18 browser checks (needs Python Playwright + Chromium)
 ```
 

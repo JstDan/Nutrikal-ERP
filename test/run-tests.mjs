@@ -1052,6 +1052,22 @@ await ok('production sees imported items but not their prices or suppliers', asy
   eq((await as('production', `select * from lot_costs`)).length, 0, 'lot costs');
 });
 
+console.log('\nRead-only views');
+await ok('production cannot change a project through production_projects', async () => {
+  const before = (await db.query('select id, status from projects limit 1')).rows[0];
+  let blocked = false;
+  try { await as('production', `update production_projects set status = 'lost' where id = $1`, [before.id]); }
+  catch (e) { blocked = /permission denied/i.test(e.message); }
+  eq((await db.query('select status from projects where id = $1', [before.id])).rows[0].status, before.status, 'status unchanged');
+  eq(blocked, true, 'permission denied');
+});
+await ok('no view in public can be written by users', async () => {
+  const w = (await db.query(`select g.table_name, g.privilege_type from information_schema.role_table_grants g
+      join pg_views v on v.schemaname = g.table_schema and v.viewname = g.table_name
+     where g.table_schema = 'public' and g.grantee in ('anon', 'authenticated') and g.privilege_type <> 'SELECT'`)).rows;
+  eq(w.map(r => r.table_name + ':' + r.privilege_type).join(','), '', 'write grants on views');
+});
+
 console.log('\nDeveloper role');
 await ok('developer has no data rights of their own', async () => {
   eq((await as('developer', 'select * from clients')).length, 0, 'clients');
