@@ -4,8 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { deleteOffer } from "@/app/calculator/actions";
-import { calcInputFromForm, calculate } from "@/lib/calculator/calc";
-import { normalizeForm } from "@/lib/calculator/form";
+import { fromOfferRecord } from "@/lib/calculator/offerRecord";
 import { matchesQuery } from "@/lib/calculator/search";
 import type { OfferRecord, Settings } from "@/lib/calculator/types";
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
@@ -21,6 +20,7 @@ type Props = {
   isAdmin: boolean;
 };
 
+/** Offers created in the calculator, listed under Offers: open the summary, edit in the calculator, download the PDF, delete. */
 export function OffersList(props: Props) {
   return (
     <CalcTextProvider t={props.t} locale={props.locale}>
@@ -53,9 +53,8 @@ function List({ offers, settings, userId, isAdmin }: Props) {
     setBusyId(x.id);
     try {
       const { downloadOfferPdf } = await import("@/lib/calculator/pdf");
-      const data = normalizeForm({ ...x.data, offer: { ...x.data.offer, offerNo: x.offer_no } }, settings);
-      // Recalculate from the stored snapshot (prices + fixed costs at the time of saving).
-      await downloadOfferPdf(data, calculate(calcInputFromForm(data, data.fixedCosts ?? settings.fixed_costs)), settings);
+      const { form, result } = fromOfferRecord(x, settings);
+      await downloadOfferPdf(form, result, settings);
     } catch (e) {
       show("error", `${t.results.pdfFailed}: ${(e as Error).message}`);
     } finally {
@@ -74,13 +73,17 @@ function List({ offers, settings, userId, isAdmin }: Props) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <section aria-labelledby="calc-offers-title" className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 id="calc-offers-title" className="m-0 text-lg font-bold">{o.title}</h2>
+        <p className="m-0 text-sm text-ink-2">{o.subtitle}</p>
+      </div>
       <div className="flex max-w-[560px] flex-col gap-1.5">
         <label htmlFor="offer-search" className="sr-only">{o.search}</label>
         <input id="offer-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={o.searchPlaceholder} className="input" />
       </div>
 
-      <section aria-label={o.title} className="card px-5 pt-2 pb-3">
+      <div className="card px-5 pt-2 pb-3">
         <div className={`row hide-sm ${GRID} border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2`}>
           <span>{o.offerNo}</span>
           <span className="hide-md">{o.date}</span>
@@ -90,13 +93,13 @@ function List({ offers, settings, userId, isAdmin }: Props) {
         </div>
         {filtered.length === 0 && <div className="py-4"><Empty>{offers.length ? o.noMatch : o.empty}</Empty></div>}
         {filtered.map((x) => {
-          const canDelete = isAdmin || x.created_by === userId;
           const busy = busyId === x.id;
+          const small = "btn btn-outline px-3!";
           return (
             <div key={x.id} className="border-b border-mist py-3.5 text-sm last:border-0">
               <div className={`row ${GRID}`}>
                 <div className="min-w-0 md:contents">
-                  <span className="font-semibold">{x.offer_no}</span>
+                  <Link href={`/offers/calc/${x.id}`} className="font-semibold text-ink">{x.offer_no}</Link>
                   <span className="hide-md">{formatDate(locale, x.data.offer?.offerDate || x.created_at)}</span>
                   <span className="block min-w-0 break-words md:inline">
                     {x.receiver_name}
@@ -106,39 +109,29 @@ function List({ offers, settings, userId, isAdmin }: Props) {
                 </div>
                 <span className="text-right font-semibold tabular-nums">{eur(x.total_incl_vat || x.total_excl_vat)}</span>
               </div>
-              <div role="group" aria-label={o.actions} className="mt-3 flex flex-wrap gap-2">
-                <Actions x={x} busy={busy} canDelete={canDelete} onPdf={() => pdf(x)} onDelete={() => setConfirmId(x.id)} />
+              <div role="group" aria-label={`${o.actions} ${x.offer_no}`} className="mt-3 flex flex-wrap gap-2">
+                <Link href={`/calculator?open=${x.id}`} className={small} aria-label={`${o.edit} ${x.offer_no}`}>{o.edit}</Link>
+                <button type="button" onClick={() => pdf(x)} disabled={busy} className={small} aria-label={`${t.results.downloadPdf} ${x.offer_no}`}>
+                  {busy ? "…" : t.results.downloadPdf}
+                </button>
+                {(isAdmin || x.created_by === userId) && (
+                  <button type="button" onClick={() => setConfirmId(x.id)} disabled={busy} aria-expanded={confirmId === x.id} className={`${small} text-red-ink!`} aria-label={`${t.delete} ${x.offer_no}`}>
+                    {t.delete}
+                  </button>
+                )}
               </div>
               {confirmId === x.id && (
                 <div role="alertdialog" aria-label={fmt(o.deleteConfirm, { no: x.offer_no })} className="mt-3 flex flex-wrap items-center gap-3 rounded-sm border border-red-line bg-red-tint px-4 py-3">
                   <span className="min-w-0 flex-[1_1_220px] font-semibold text-red-ink">{fmt(o.deleteConfirm, { no: x.offer_no })}</span>
-                  <button type="button" onClick={() => setConfirmId(null)} className="btn btn-outline">{t.close}</button>
+                  <button type="button" autoFocus onClick={() => setConfirmId(null)} className="btn btn-outline">{t.close}</button>
                   <button type="button" onClick={() => remove(x)} className="btn border-red-ink! bg-red-ink! text-white!">{t.delete}</button>
                 </div>
               )}
             </div>
           );
         })}
-      </section>
+      </div>
       <Toast toast={toast} onClose={clear} closeLabel={t.close} />
-    </div>
-  );
-}
-
-function Actions({ x, busy, canDelete, onPdf, onDelete }: { x: OfferRecord; busy: boolean; canDelete: boolean; onPdf: () => void; onDelete: () => void }) {
-  const { t } = useCalcText();
-  const o = t.offers;
-  const small = "btn btn-outline px-3!";
-  return (
-    <>
-      <Link href={`/calculator?open=${x.id}`} className={small} aria-label={`${o.open} ${x.offer_no}`}>{o.open}</Link>
-      <Link href={`/calculator?copy=${x.id}`} className={small} aria-label={`${o.duplicate} ${x.offer_no}`}>{o.duplicate}</Link>
-      <button type="button" onClick={onPdf} disabled={busy} className={small} aria-label={`${o.pdf} ${x.offer_no}`}>{busy ? "…" : o.pdf}</button>
-      {canDelete && (
-        <button type="button" onClick={onDelete} disabled={busy} className={`${small} text-red-ink!`} aria-label={`${t.delete} ${x.offer_no}`}>
-          {t.delete}
-        </button>
-      )}
-    </>
+    </section>
   );
 }

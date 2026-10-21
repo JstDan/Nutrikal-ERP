@@ -1,6 +1,7 @@
 "use client";
 
 import { marginFromMarkup, unitPriceFor, type CalcResult } from "@/lib/calculator/calc";
+import { catalogMinQty } from "@/lib/calculator/catalogImport";
 import { parseNum } from "@/lib/calculator/numbers";
 import { isCapsule, type ExtraItem, type PriceTier, type ServicePreset } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
@@ -55,15 +56,18 @@ export function QuantitySection({ form, setForm, errorFor, touch, result }: Sect
   );
 }
 
-/** Step 6: number of units, markup, discount and optional price tiers. Prices are excl. VAT. */
-export function MarkupSection({ form, setForm, errorFor, touch, result }: SectionProps & { result: CalcResult }) {
-  const { t, eur, pct } = useCalcText();
+/** Step 6: number of units, markup, discount and optional price tiers. Prices are excl. VAT.
+ *  Catalog product: number of units and discount only (the unit price comes from its price steps). */
+export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6 }: SectionProps & { result: CalcResult; step?: number }) {
+  const { t, eur, num, pct } = useCalcText();
   const markup = parseNum(form.markup) ?? 0;
   const discount = parseNum(form.discount);
   const discountInvalid = form.discount.trim() !== "" && (discount === null || discount < 0 || discount > 100);
   const unitsError = errorFor("numberOfUnits");
   const unitCost = result.unitCost;
   const costKnown = !!form.productType && unitCost > 0;
+  const catalog = form.mode === "catalog";
+  const minQty = catalog && form.catalog ? catalogMinQty(form.catalog.tiers) : null;
 
   const addTier = () => setForm((f) => ({ ...f, priceTiers: [...f.priceTiers, { key: crypto.randomUUID(), qty: "", markup: "" }] }));
   const updateTier = (key: string, patch: Partial<PriceTier>) =>
@@ -71,9 +75,15 @@ export function MarkupSection({ form, setForm, errorFor, touch, result }: Sectio
   const removeTier = (key: string) => setForm((f) => ({ ...f, priceTiers: f.priceTiers.filter((x) => x.key !== key) }));
 
   return (
-    <Section step={6} title={t.markup.section}>
+    <Section step={step} title={catalog ? t.markup.sectionCatalog : t.markup.section}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Field label={unitsLabel(t, form.productType)} htmlFor={fieldId("numberOfUnits")} required error={unitsError}>
+        <Field
+          label={catalog ? t.units.units : unitsLabel(t, form.productType)}
+          htmlFor={fieldId("numberOfUnits")}
+          required
+          error={unitsError}
+          hint={minQty ? fmt(t.catalog.minQty, { n: num(minQty) }) : undefined}
+        >
           <NumberField
             id={fieldId("numberOfUnits")}
             integer
@@ -83,13 +93,20 @@ export function MarkupSection({ form, setForm, errorFor, touch, result }: Sectio
             invalid={!!unitsError}
           />
         </Field>
-        <Field
-          label={t.markup.markup}
-          htmlFor="markup"
-          hint={<>{t.markup.margin}: <b className="text-ink">{pct(marginFromMarkup(markup))}</b> · {t.markup.markupHint}</>}
-        >
-          <NumberField id="markup" value={form.markup} onChange={(v) => setForm((f) => ({ ...f, markup: v }))} suffix="%" />
-        </Field>
+        {catalog ? (
+          <div className="flex min-w-0 flex-col gap-1 text-sm">
+            <span className="label">{t.catalog.unitPrice}</span>
+            <span className="flex min-h-11 items-center font-bold tabular-nums">{result.complete ? eur(result.unitPrice) : "–"}</span>
+          </div>
+        ) : (
+          <Field
+            label={t.markup.markup}
+            htmlFor="markup"
+            hint={<>{t.markup.margin}: <b className="text-ink">{pct(marginFromMarkup(markup))}</b> · {t.markup.markupHint}</>}
+          >
+            <NumberField id="markup" value={form.markup} onChange={(v) => setForm((f) => ({ ...f, markup: v }))} suffix="%" />
+          </Field>
+        )}
         <Field
           label={t.markup.discount}
           htmlFor={fieldId("discount")}
@@ -106,6 +123,7 @@ export function MarkupSection({ form, setForm, errorFor, touch, result }: Sectio
         </Field>
       </div>
 
+      {!catalog && (
       <div className="flex flex-col gap-3 border-t border-mist pt-5">
         <SubHeading>{t.markup.tiers}</SubHeading>
         <p className="m-0 text-[13px] text-ink-2">{t.markup.tiersHint}</p>
@@ -140,12 +158,13 @@ export function MarkupSection({ form, setForm, errorFor, touch, result }: Sectio
           <button type="button" onClick={addTier} className="btn btn-outline">+ {t.markup.addTier}</button>
         </div>
       </div>
+      )}
     </Section>
   );
 }
 
 /** Step 7: extra offer lines (certificates, design…), payment terms and the PDF note. */
-export function OfferLinesSection({ form, setForm, errorFor, presets }: SectionProps & { presets: ServicePreset[] }) {
+export function OfferLinesSection({ form, setForm, errorFor, presets, step = 7 }: SectionProps & { presets: ServicePreset[]; step?: number }) {
   const { t, eur } = useCalcText();
   const error = errorFor("extraItems");
 
@@ -156,7 +175,7 @@ export function OfferLinesSection({ form, setForm, errorFor, presets }: SectionP
   const removeItem = (key: string) => setForm((f) => ({ ...f, extraItems: f.extraItems.filter((x) => x.key !== key) }));
 
   return (
-    <Section step={7} title={t.lines.section} id={fieldId("extraItems")}>
+    <Section step={step} title={t.lines.section} id={fieldId("extraItems")}>
       <div className="flex flex-col gap-3">
         <SubHeading>{t.lines.extraItems}</SubHeading>
         <p className="m-0 text-[13px] text-ink-2">{t.lines.extraHint}</p>
@@ -229,9 +248,9 @@ export function OfferLinesSection({ form, setForm, errorFor, presets }: SectionP
             className="input"
           />
         </Field>
-        <Toggle checked={form.includeComposition} onChange={(v) => setForm((f) => ({ ...f, includeComposition: v }))}>
+        {form.mode !== "catalog" && <Toggle checked={form.includeComposition} onChange={(v) => setForm((f) => ({ ...f, includeComposition: v }))}>
           {t.markup.includeComposition}
-        </Toggle>
+        </Toggle>}
       </div>
     </Section>
   );

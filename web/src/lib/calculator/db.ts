@@ -1,8 +1,8 @@
 // Calculator reads, always as the signed-in user (row-level security decides what comes back).
 import { q } from "@/lib/db/engine";
 import { countryName } from "./countries";
-import { envSheetUrl } from "./sync";
-import { DEFAULT_SETTINGS, type OfferRecord, type RawMaterial, type ServicePreset, type Settings, type SyncRun } from "./types";
+import { CATALOG_RUN_COLUMNS, envCatalogSheetUrl, envSheetUrl } from "./sync";
+import { DEFAULT_SETTINGS, type CatalogProduct, type CatalogSyncRun, type OfferRecord, type RawMaterial, type ServicePreset, type Settings, type SyncRun } from "./types";
 
 // Postgres numeric columns arrive as strings.
 const num = (v: number | string | null | undefined) => Number(v ?? 0);
@@ -40,7 +40,23 @@ export async function loadSettings(userId: string): Promise<Settings> {
   const [row] = await q<SettingsRow>(userId, "select * from calc_settings");
   const s = row ? settingsFromRow(row) : DEFAULT_SETTINGS;
   const env = envSheetUrl();
-  return env ? { ...s, google_sheet_url: env, google_sheet_from_env: true } : s;
+  const catalogEnv = envCatalogSheetUrl();
+  return {
+    ...s,
+    ...(env && { google_sheet_url: env, google_sheet_from_env: true }),
+    ...(catalogEnv && { catalog_sheet_url: catalogEnv, catalog_sheet_from_env: true }),
+  };
+}
+
+/** Catalog products in the order of the catalog sheet (active only, unless includeInactive). */
+export async function loadCatalog(userId: string, { includeInactive = false } = {}): Promise<CatalogProduct[]> {
+  const rows = await q<CatalogProduct>(
+    userId,
+    `select id, code, name, category, tiers, active from calc_catalog_products
+      where active or $1 order by active desc, sort_order, code`,
+    [includeInactive],
+  );
+  return rows.map((p) => ({ ...p, tiers: p.tiers.map((x) => ({ min_qty: Number(x.min_qty), price: Number(x.price) })) }));
 }
 
 export async function loadMaterials(userId: string): Promise<RawMaterial[]> {
@@ -77,6 +93,11 @@ export async function loadLastSync(userId: string): Promise<SyncRun | null> {
     `select id, created_at::text, source, status, added, changed, unchanged, invalid, missing, removed, restored, error
        from calc_sync_runs order by created_at desc limit 1`,
   );
+  return row ?? null;
+}
+
+export async function loadLastCatalogSync(userId: string): Promise<CatalogSyncRun | null> {
+  const [row] = await q<CatalogSyncRun>(userId, `select ${CATALOG_RUN_COLUMNS} from calc_catalog_sync_runs order by created_at desc limit 1`);
   return row ?? null;
 }
 

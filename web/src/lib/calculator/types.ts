@@ -22,6 +22,26 @@ export interface RawMaterial {
 
 export type FixedCosts = Record<ProductType, number>;
 
+/** One quantity step of a catalog product: unit price (EUR, EXW, excl. VAT) from min_qty units up. */
+export interface CatalogTier {
+  min_qty: number;
+  price: number;
+}
+
+/** A catalog product from the catalog Google Sheet. */
+export interface CatalogProduct {
+  id: string;
+  code: string;
+  name: string;
+  category: string | null;
+  /** Smallest step first. */
+  tiers: CatalogTier[];
+  active: boolean;
+}
+
+/** Custom formula (raw materials, packaging, markup) or a catalog product (price from the catalog). */
+export type FormulaMode = 'custom' | 'catalog';
+
 /** A ready-made extra line for offers (certificates, design services…). */
 export interface ServicePreset {
   description: string;
@@ -57,6 +77,10 @@ export interface Settings {
   google_sheet_url: string;
   /** True when the link comes from GOOGLE_SHEET_URL on the server (not editable in the app). */
   google_sheet_from_env?: boolean;
+  /** Google Sheet share link the catalog products are synced from. */
+  catalog_sheet_url: string;
+  /** True when the link comes from GOOGLE_CATALOG_SHEET_URL on the server (not editable in the app). */
+  catalog_sheet_from_env?: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -84,6 +108,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ],
   logo_data_url: null,
   google_sheet_url: 'https://docs.google.com/spreadsheets/d/1dfylFe0D-xWlQ1PXcVUAGtNrPNS4bGJK/edit?usp=sharing',
+  catalog_sheet_url: 'https://docs.google.com/spreadsheets/d/1WE7F6aTC3jezBPPC8oEnDS_aCee1Hpd1FPthdpYdPF0/edit?gid=0#gid=0',
   terms_text:
     'The prices are EUR/EXW excl. VAT, for the finished, ready-to-sell products and include raw materials, primary packaging materials, mixing, quality assurance, encapsulation where applicable, filling, sealing, capping where applicable, label and foil printing with basic effects, label application and shipment preparation. Lead time and MOQ to be confirmed upon order. This offer is valid for 14 business days.',
 };
@@ -118,6 +143,10 @@ export interface FormulaRow {
 /** Everything the calculator form holds. Numeric inputs are kept as strings so "1,5" can be typed. */
 export interface OfferForm {
   id: string | null;
+  /** Older offers have no mode: custom. */
+  mode: FormulaMode;
+  /** Catalog mode: the chosen product – a snapshot of its code, name and prices when it was picked. */
+  catalog: Omit<CatalogProduct, 'active'> | null;
   /** Nutrikal contact person printed on the offer (the sales email comes from Settings). */
   contact: { name: string; phone: string };
   receiver: {
@@ -198,5 +227,19 @@ export interface SyncRun {
   removed: number;
   /** Inactive materials reactivated because they are back in the sheet. */
   restored: number;
+  error: string | null;
+}
+
+/** One run of the catalog sync (catalog Google Sheet → catalog products). */
+export interface CatalogSyncRun {
+  id: string;
+  created_at: string;
+  source: 'manual' | 'scheduled' | 'auto';
+  status: 'success' | 'error';
+  added: number;
+  changed: number;
+  unchanged: number;
+  /** Products deactivated because they were removed from the sheet. */
+  removed: number;
   error: string | null;
 }

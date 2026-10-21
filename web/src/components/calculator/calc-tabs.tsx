@@ -3,11 +3,11 @@ import type { Dict } from "@/lib/i18n/en";
 
 const TABS = [
   { key: "calculator", href: "/calculator" },
-  { key: "offers", href: "/calculator/offers" },
   { key: "materials", href: "/calculator/materials" },
+  { key: "catalog", href: "/calculator/catalog" },
 ] as const;
 
-/** Sub-navigation between the calculator, saved offers and the raw material price list. */
+/** Sub-navigation: the calculator, the raw material price list and the catalog formulas (offers are under Offers). */
 export function CalcTabs({ t, active }: { t: Dict["calc"]; active: (typeof TABS)[number]["key"] }) {
   return (
     <nav aria-label={t.tabs.label} className="flex flex-wrap gap-1">

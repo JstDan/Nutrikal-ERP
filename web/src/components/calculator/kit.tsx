@@ -72,7 +72,8 @@ export function InfoLine({ label, value, strong }: { label: ReactNode; value: Re
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-mist py-2 text-sm last:border-0">
       <span className="min-w-0 break-words text-ink-2">{label}</span>
-      <span className={`shrink-0 text-right tabular-nums ${strong ? "font-bold" : "font-medium"}`}>{value}</span>
+      {/* Long values (product names) wrap instead of widening the page */}
+      <span className={`min-w-0 text-right break-words tabular-nums ${strong ? "font-bold" : "font-medium"}`}>{value}</span>
     </div>
   );
 }

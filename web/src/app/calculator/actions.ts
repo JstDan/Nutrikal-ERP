@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { q } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import { toOffer } from "@/lib/calculator/db";
-import { runSync, syncDue } from "@/lib/calculator/sync";
-import type { OfferInput, OfferRecord, RawMaterial, Settings, SyncRun } from "@/lib/calculator/types";
+import { extractSheetId } from "@/lib/calculator/materialImport";
+import { catalogSyncDue, runCatalogSync, runSync, syncDue } from "@/lib/calculator/sync";
+import type { CatalogSyncRun, OfferInput, OfferRecord, RawMaterial, Settings, SyncRun } from "@/lib/calculator/types";
 
 export type CalcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -51,7 +52,7 @@ export async function saveOffer(input: OfferInput): Promise<CalcResult<OfferReco
     if (!rows[0]) throw new Error("Offer not found");
     return toOffer(rows[0]);
   });
-  if (res.ok) revalidatePath("/calculator/offers");
+  if (res.ok) revalidatePath("/offers", "layout");
   return res;
 }
 
@@ -61,7 +62,7 @@ export async function deleteOffer(id: string): Promise<CalcResult<boolean>> {
     if (!rows.length) throw new Error("Not allowed or not found");
     return true;
   });
-  if (res.ok) revalidatePath("/calculator/offers");
+  if (res.ok) revalidatePath("/offers", "layout");
   return res;
 }
 
@@ -114,10 +115,37 @@ export async function syncPriceList(): Promise<CalcResult<SyncRun>> {
   return res;
 }
 
-/** Called when the calculator opens: catches up when the daily 17:00 sync has not run yet (retried hourly after a failure). */
-export async function syncIfStale(): Promise<CalcResult<SyncRun | null>> {
+/**
+ * Called when the calculator opens: catches up the price list and the catalog when their daily
+ * 17:00 sync has not run yet (retried hourly after a failure). True when either synced successfully.
+ */
+export async function syncIfStale(): Promise<CalcResult<boolean>> {
   const { t } = await getSession();
-  const res = await run(async (uid) => ((await syncDue(uid)) ? runSync(uid, "auto", t.calc.sync) : null));
+  const res = await run(async (uid) => {
+    const prices = (await syncDue(uid)) ? await runSync(uid, "auto", t.calc.sync) : null;
+    const catalog = (await catalogSyncDue(uid)) ? await runCatalogSync(uid, "auto", t.calc.sync) : null;
+    return prices?.status === "success" || catalog?.status === "success";
+  });
   if (res.ok && res.data) revalidatePath("/calculator", "layout");
+  return res;
+}
+
+// ------------------------------------------------- catalog sheet sync
+export async function syncCatalog(): Promise<CalcResult<CatalogSyncRun>> {
+  const { t } = await getSession();
+  const res = await run((uid) => runCatalogSync(uid, "manual", t.calc.sync));
+  revalidatePath("/calculator", "layout");
+  return res;
+}
+
+/** Admin: the catalog Google Sheet link (when it is not set on the server). */
+export async function saveCatalogSheetUrl(url: string): Promise<CalcResult<boolean>> {
+  const res = await run(async (uid) => {
+    if (!extractSheetId(url)) throw new Error("Invalid link");
+    const rows = await q<{ id: boolean }>(uid, "update calc_settings set catalog_sheet_url = $1 returning id", [url.trim()]);
+    if (!rows.length) throw new Error("Not allowed");
+    return true;
+  });
+  if (res.ok) revalidatePath("/calculator", "layout");
   return res;
 }

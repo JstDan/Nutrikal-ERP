@@ -8,10 +8,11 @@ import type { CrmClient } from "@/lib/calculator/db";
 import { BASELINE_KEY, createEmptyForm, DRAFT_KEY, duplicateForm, normalizeForm } from "@/lib/calculator/form";
 import { toOfferInput } from "@/lib/calculator/offerRecord";
 import { readStorage, removeStorage, writeStorage } from "@/lib/calculator/storage";
-import type { OfferForm, OfferRecord, RawMaterial, Settings } from "@/lib/calculator/types";
+import type { CatalogProduct, OfferForm, OfferRecord, RawMaterial, Settings } from "@/lib/calculator/types";
 import { fieldId, firstError, validateOffer, type FieldKey } from "@/lib/calculator/validation";
-import { fmt, type Locale } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n";
 import { PageHeader } from "@/components/ui";
+import { CatalogProductSection, FormulaModeSwitch } from "./catalog-section";
 import { ClientSection, ContactSection, ProductTypeSection, type SectionProps } from "./client-sections";
 import { FormulaSection } from "./formula-section";
 import { CalcTextProvider, Notice, Toast, useCalcText, useToast, type CalcDict } from "./kit";
@@ -22,6 +23,8 @@ type Props = {
   t: CalcDict;
   locale: Locale;
   materials: RawMaterial[];
+  /** Active catalog products (catalog formula mode). */
+  catalog: CatalogProduct[];
   settings: Settings;
   clients: CrmClient[];
   /** A saved offer to open (or copy as a new one), from /calculator?open=… or ?copy=… */
@@ -37,7 +40,7 @@ export function CalculatorApp(props: Props) {
   );
 }
 
-function Calculator({ materials, settings, clients, initial, tabs }: Props) {
+function Calculator({ materials, catalog, settings, clients, initial, tabs }: Props) {
   const { t } = useCalcText();
   const router = useRouter();
   const [form, setFormState] = useState<OfferForm | null>(null);
@@ -47,6 +50,8 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
   const [busy, setBusy] = useState(false);
   const { toast, show, clear } = useToast();
   const started = useRef(false);
+  /** Set once the offer is created: the draft is cleared and must not be stored again. */
+  const leaving = useRef(false);
   /** The form as last opened, started or saved (JSON); any difference means unsaved changes. */
   const [baseline, setBaseline] = useState<string | null>(null);
   const [confirmNew, setConfirmNew] = useState(false);
@@ -102,19 +107,19 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
     })();
   }, [initial, loadForm, newOffer, settings]);
 
-  // Daily 17:00 sync missed (e.g. server was off): sync from the Google Sheet in the background, then reload the materials.
+  // Daily 17:00 sync missed (e.g. server was off): sync the price list and the catalog in the background, then reload them.
   useEffect(() => {
     void syncIfStale().then((res) => {
-      if (res.ok && res.data?.status === "success") router.refresh();
+      if (res.ok && res.data) router.refresh();
     });
   }, [router]);
 
-  // Keep the unsaved form so a page refresh doesn't lose work.
+  // Keep the unsaved form so a page refresh doesn't lose work (not once the offer is created and the page is left).
   useEffect(() => {
-    if (form) writeStorage(DRAFT_KEY, form);
+    if (form && !leaving.current) writeStorage(DRAFT_KEY, form);
   }, [form]);
   useEffect(() => {
-    if (baseline !== null) writeStorage(BASELINE_KEY, baseline);
+    if (baseline !== null && !leaving.current) writeStorage(BASELINE_KEY, baseline);
   }, [baseline]);
 
   const dirty = useMemo(() => !!form && JSON.stringify(form) !== baseline, [form, baseline]);
@@ -143,7 +148,8 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
     if (el instanceof HTMLInputElement) el.focus({ preventScroll: true });
   };
 
-  const save = async () => {
+  /** Saves the offer under Offers and opens its summary (where the PDF is downloaded); the calculator starts fresh next time. */
+  const create = async () => {
     if (!form || !result || !valid) return revealErrors();
     setBusy(true);
     try {
@@ -155,24 +161,12 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
       }
       const res = await saveOffer(toOfferInput(current, result, settings.fixed_costs));
       if (!res.ok) throw new Error(res.error);
-      loadForm({ ...res.data.data, id: res.data.id }, false, true);
-      show("success", fmt(t.results.savedOk, { no: res.data.offer_no }));
+      leaving.current = true;
+      removeStorage(DRAFT_KEY);
+      removeStorage(BASELINE_KEY);
+      router.push(`/offers/calc/${res.data.id}`);
     } catch (e) {
       show("error", `${t.results.saveFailed}: ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const downloadPdf = async () => {
-    if (!form || !result || !valid) return revealErrors();
-    setBusy(true);
-    try {
-      const { downloadOfferPdf } = await import("@/lib/calculator/pdf");
-      await downloadOfferPdf(form, result, settings);
-    } catch (e) {
-      show("error", `${t.results.pdfFailed}: ${(e as Error).message}`);
-    } finally {
       setBusy(false);
     }
   };
@@ -235,20 +229,31 @@ function Calculator({ materials, settings, clients, initial, tabs }: Props) {
       <div className="flex max-w-[960px] flex-col gap-5">
         {numberError && <Notice tone="error">{numberError}</Notice>}
         <p className="m-0 text-[13px] font-semibold text-red-ink">{t.requiredLegend}</p>
+        <FormulaModeSwitch form={form} setForm={setForm} />
         <ContactSection {...sectionProps} email={settings.company_email} />
         <ClientSection {...sectionProps} clients={clients} />
-        <ProductTypeSection {...sectionProps} fixedCosts={form.fixedCosts ?? settings.fixed_costs} />
-        <FormulaSection {...sectionProps} materials={materials} result={result} />
-        <QuantitySection {...sectionProps} result={result} />
-        <MarkupSection {...sectionProps} result={result} />
-        <OfferLinesSection {...sectionProps} presets={settings.service_presets} />
+        {form.mode === "catalog" ? (
+          <>
+            {/* Catalog product: product instead of type, formula and quantity per pack; numbered 1–5 */}
+            <CatalogProductSection {...sectionProps} catalog={catalog} />
+            <MarkupSection {...sectionProps} result={result} step={4} />
+            <OfferLinesSection {...sectionProps} presets={settings.service_presets} step={5} />
+          </>
+        ) : (
+          <>
+            <ProductTypeSection {...sectionProps} fixedCosts={form.fixedCosts ?? settings.fixed_costs} />
+            <FormulaSection {...sectionProps} materials={materials} result={result} />
+            <QuantitySection {...sectionProps} result={result} />
+            <MarkupSection {...sectionProps} result={result} />
+            <OfferLinesSection {...sectionProps} presets={settings.service_presets} />
+          </>
+        )}
         <ResultsSection
           form={form}
           result={result}
           valid={valid}
           busy={busy}
-          onSave={save}
-          onDownloadPdf={downloadPdf}
+          onCreate={create}
           onInvalidAttempt={revealErrors}
         />
       </div>

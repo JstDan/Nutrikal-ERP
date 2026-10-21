@@ -1,108 +1,43 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { CalcResult } from "@/lib/calculator/calc";
 import { defaultUnitFor } from "@/lib/calculator/form";
 import { parseNum } from "@/lib/calculator/numbers";
-import { matchesQuery } from "@/lib/calculator/search";
 import { CAPSULE_SIZES, DOSE_UNITS, isCapsule, type CapsuleSize, type FormulaRow, type RawMaterial } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
 import { Chip } from "@/components/ui";
 import type { SectionProps } from "./client-sections";
 import { Field, InfoLine, Notice, NumberField, RemoveButton, Section, SummaryBox, useCalcText } from "./kit";
+import { SearchCombobox } from "./search-combobox";
 
-const MAX_OPTIONS = 60;
+const materialText = (m: RawMaterial) => m.name;
+const materialKey = (m: RawMaterial) => m.id;
 
-/** Search-as-you-type list of active raw materials (combobox pattern, keyboard friendly). */
+/** Search-as-you-type list of active raw materials. */
 function MaterialSearch({ materials, inFormula, onPick }: { materials: RawMaterial[]; inFormula: Set<string>; onPick: (m: RawMaterial) => void }) {
   const { t, eur } = useCalcText();
-  const listId = useId();
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-
-  const options = useMemo(
-    () => (query.trim() ? materials.filter((m) => matchesQuery(m.name, query)) : materials).slice(0, MAX_OPTIONS),
-    [materials, query],
-  );
-
-  const pick = (m: RawMaterial) => {
-    onPick(m);
-    setQuery("");
-    setOpen(false);
-    setActive(0);
-  };
-
   return (
-    <div className="relative">
-      <input
-        id="material-search"
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        aria-activedescendant={open && options[active] ? `${listId}-${active}` : undefined}
-        aria-describedby="material-search-msg"
-        autoComplete="off"
-        placeholder={t.formula.searchPlaceholder}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-          setActive(0);
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown") {
-            e.preventDefault();
-            setOpen(true);
-            setActive((a) => Math.min(a + 1, options.length - 1));
-          } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            setActive((a) => Math.max(a - 1, 0));
-          } else if (e.key === "Enter" && open && options[active]) {
-            e.preventDefault();
-            pick(options[active]);
-          } else if (e.key === "Escape") {
-            setOpen(false);
-          }
-        }}
-        className="input pl-10!"
-      />
-      <span aria-hidden="true" className="pointer-events-none absolute top-0 left-3 flex h-11 items-center text-ink-2">⌕</span>
-      {open && (
-        <ul
-          id={listId}
-          role="listbox"
-          aria-label={t.formula.search}
-          className="absolute inset-x-0 top-12 z-20 m-0 max-h-80 list-none overflow-y-auto rounded-sm border border-line-strong bg-white p-1 shadow-lg"
-        >
-          {options.length === 0 && <li className="px-3 py-3 text-sm text-ink-2">{t.formula.noResults}</li>}
-          {options.map((m, i) => (
-            <li
-              key={m.id}
-              id={`${listId}-${i}`}
-              role="option"
-              aria-selected={i === active}
-              onMouseDown={(e) => {
-                e.preventDefault(); // keep focus in the input
-                pick(m);
-              }}
-              onMouseEnter={() => setActive(i)}
-              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-sm px-3 py-2 text-sm ${i === active ? "bg-canvas" : ""}`}
-            >
-              <span className="min-w-0 flex-1 break-words">
-                {m.name}
-                {inFormula.has(m.id) && <span className="ml-2 text-xs font-semibold text-amber-ink">({t.formula.duplicate})</span>}
-              </span>
-              {m.regulatory_note && <span title={t.formula.regulatory} aria-label={t.formula.regulatory} className="text-amber">⚠</span>}
-              <span className="shrink-0 text-ink-2 tabular-nums">{eur(m.price_eur_per_kg)}/kg</span>
-            </li>
-          ))}
-        </ul>
+    <SearchCombobox
+      id="material-search"
+      items={materials}
+      searchText={materialText}
+      optionKey={materialKey}
+      onPick={onPick}
+      placeholder={t.formula.searchPlaceholder}
+      listLabel={t.formula.search}
+      noResults={t.formula.noResults}
+      renderOption={(m) => (
+        <>
+          <span className="min-w-0 flex-1 break-words">
+            {m.name}
+            {inFormula.has(m.id) && <span className="ml-2 text-xs font-semibold text-amber-ink">({t.formula.duplicate})</span>}
+          </span>
+          {m.regulatory_note && <span title={t.formula.regulatory} aria-label={t.formula.regulatory} className="text-amber">⚠</span>}
+          <span className="shrink-0 text-ink-2 tabular-nums">{eur(m.price_eur_per_kg)}/kg</span>
+        </>
       )}
-    </div>
+    />
   );
 }
 

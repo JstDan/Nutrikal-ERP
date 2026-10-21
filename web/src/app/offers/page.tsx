@@ -4,6 +4,8 @@ import { requireRole } from "@/lib/session";
 import { formatDate, formatNumber } from "@/lib/i18n";
 import { Chip, Empty, PageHeader } from "@/components/ui";
 import { offerTone } from "@/lib/status";
+import { loadOffers, loadSettings } from "@/lib/calculator/db";
+import { OffersList } from "@/components/calculator/offers-list";
 
 type Row = {
   id: string; code: string; status: string; valid_until: string | null; client: string; client_id: string;
@@ -16,6 +18,7 @@ export default async function OffersPage({ searchParams }: PageProps<"/offers">)
   const sp = await searchParams;
   const status = typeof sp.status === "string" && (STATUSES as readonly string[]).includes(sp.status) ? sp.status : "";
 
+  const [calcOffers, settings] = await Promise.all([loadOffers(user.id), loadSettings(user.id)]);
   const rows = await q<Row>(
     user.id,
     `select o.id, o.code, o.status, o.valid_until::text, c.legal_name as client, c.id as client_id,
@@ -37,13 +40,12 @@ export default async function OffersPage({ searchParams }: PageProps<"/offers">)
       <PageHeader
         title={t.offers.title}
         subtitle={t.offers.subtitle}
-        actions={
-          <>
-            <Link href="/offers/costing" className="btn btn-outline">{t.offers.costing}</Link>
-            <Link href="/offers/new" className="btn btn-primary">{t.offers.new}</Link>
-          </>
-        }
+        actions={<Link href="/offers/costing" className="btn btn-outline">{t.offers.costing}</Link>}
       />
+      {/* Offers are created in the calculator (Create offer), not here */}
+      <OffersList t={t.calc} locale={locale} offers={calcOffers} settings={settings} userId={user.id} isAdmin={user.role === "admin"} />
+
+      <h2 className="m-0 text-lg font-bold">{t.offers.formulaOffers}</h2>
       <nav aria-label={t.offers.status} className="flex flex-wrap gap-1">
         {(["", ...STATUSES] as const).map((s) => (
           <Link
