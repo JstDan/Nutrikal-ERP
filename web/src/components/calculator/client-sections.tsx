@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import Link from "next/link";
 import type { CrmClient } from "@/lib/calculator/db";
-import { countryOptions } from "@/lib/calculator/countries";
 import { SALES_PERSONS } from "@/lib/calculator/salesPersons";
 import { PRODUCT_TYPES, isCapsule, type FixedCosts, type OfferForm, type ProductType } from "@/lib/calculator/types";
 import { fieldId, type FieldKey } from "@/lib/calculator/validation";
 import { Field, Section, SubHeading, inputClass, useCalcText } from "./kit";
+import { SearchCombobox } from "./search-combobox";
 
 export interface SectionProps {
   form: OfferForm;
@@ -53,29 +53,29 @@ export function ContactSection({ form, setForm, email }: SectionProps & { email:
   );
 }
 
-/** Step 2: receiver, invoice details and offer number / dates. */
+const clientText = (c: CrmClient) => `${c.name} ${c.contactName} ${c.email} ${c.contactEmail} ${c.vatNumber}`;
+const clientKey = (c: CrmClient) => c.id;
+
+/**
+ * Step 2: the client (from CRM, searchable) and the offer number / dates. The client's details are
+ * kept in Clients; picking the client copies them into the offer (snapshot for the PDF).
+ */
 export function ClientSection({ form, setForm, errorFor, touch, clients }: SectionProps & { clients: CrmClient[] }) {
-  const { t, locale } = useCalcText();
-  const countries = useMemo(() => countryOptions(locale), [locale]);
-  const setReceiver = (patch: Partial<OfferForm["receiver"]>) => setForm((f) => ({ ...f, receiver: { ...f.receiver, ...patch } }));
-  const setInvoice = (patch: Partial<OfferForm["invoice"]>) => setForm((f) => ({ ...f, invoice: { ...f.invoice, ...patch } }));
+  const { t } = useCalcText();
   const setOffer = (patch: Partial<OfferForm["offer"]>) => setForm((f) => ({ ...f, offer: { ...f.offer, ...patch } }));
-
+  const error = errorFor("client");
+  const picked = form.clientId ? clients.find((c) => c.id === form.clientId) : undefined;
   const r = form.receiver;
-  const nameError = errorFor("receiver.fullName");
-  const emailError = errorFor("receiver.email");
-  const known = countries.some((c) => c.name === r.country);
+  const inv = form.invoice;
 
-  const fillFromClient = (id: string) => {
-    const c = clients.find((x) => x.id === id);
-    if (!c) return;
+  const pick = (c: CrmClient) => {
     setForm((f) => ({
       ...f,
+      clientId: c.id,
       receiver: {
-        ...f.receiver,
-        fullName: c.contactName || f.receiver.fullName,
-        email: c.contactEmail || c.email || f.receiver.email,
-        phone: c.contactPhone || c.phone || f.receiver.phone,
+        fullName: c.contactName,
+        email: c.contactEmail || c.email,
+        phone: c.contactPhone || c.phone,
         address: c.address,
         city: c.city,
         zip: c.zip,
@@ -85,105 +85,61 @@ export function ClientSection({ form, setForm, errorFor, touch, clients }: Secti
         companyName: c.companyName,
         identificationNo: c.identificationNo,
         vatNumber: c.vatNumber,
-        registrationAddress: [c.address, [c.zip, c.city].filter(Boolean).join(" ")].filter(Boolean).join(", "),
+        registrationAddress: c.registrationAddress || [c.address, [c.zip, c.city].filter(Boolean).join(" ")].filter(Boolean).join(", "),
       },
     }));
+    touch("client");
   };
 
   return (
-    <Section step={2} title={t.client.section}>
-      {clients.length > 0 && (
-        <Field label={t.client.fromCrm} htmlFor="crm-client" hint={t.client.fromCrmHint}>
-          <select
-            id="crm-client"
-            value=""
-            onChange={(e) => fillFromClient(e.target.value)}
-            aria-describedby="crm-client-msg"
-            className="input"
-          >
-            <option value="">{t.client.fromCrmNone}</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </Field>
+    <Section step={2} title={t.client.section} id={fieldId("client")} required>
+      <Field
+        label={t.client.pick}
+        htmlFor="crm-client"
+        required
+        error={error}
+        hint={<>{clients.length ? t.client.pickHint : t.client.noClients} <Link href="/clients/new" className="font-semibold text-ink">+ {t.client.newClient}</Link></>}
+      >
+        <SearchCombobox
+          id="crm-client"
+          items={clients}
+          searchText={clientText}
+          optionKey={clientKey}
+          onPick={pick}
+          placeholder={t.client.pickPlaceholder}
+          listLabel={t.client.pick}
+          noResults={t.client.noResults}
+          invalid={!!error}
+          renderOption={(c) => (
+            <span className="min-w-0 flex-1 break-words">
+              {c.name}
+              {(c.contactName || c.country) && <span className="block text-xs text-ink-2">{[c.contactName, c.country].filter(Boolean).join(" · ")}</span>}
+            </span>
+          )}
+        />
+      </Field>
+
+      {form.clientId && (
+        <div className="flex flex-col gap-2 rounded-sm border-2 border-ink p-4 text-sm">
+          <div className="flex flex-wrap items-start gap-2">
+            <div className="min-w-0 flex-[1_1_240px]">
+              <div className="text-base font-bold break-words">{inv.companyName || r.fullName}</div>
+              <div className="text-ink-2 break-words">
+                {[inv.registrationAddress || [r.address, [r.zip, r.city].filter(Boolean).join(" ")].filter(Boolean).join(", "), r.country].filter(Boolean).join(" · ")}
+              </div>
+            </div>
+            <Link href={`/clients/${form.clientId}`} className="btn btn-outline">{t.client.editInClients}</Link>
+          </div>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+            <div className="min-w-0 break-words"><span className="text-ink-2">{t.client.contactPerson}: </span>{r.fullName || "–"}</div>
+            <div className="min-w-0 break-all"><span className="text-ink-2">{t.client.email}: </span>{r.email || "–"}</div>
+            <div className="min-w-0 break-words"><span className="text-ink-2">{t.client.phone}: </span>{r.phone || "–"}</div>
+            <div className="min-w-0 break-words"><span className="text-ink-2">{t.client.vatNumber}: </span>{inv.vatNumber || "–"}</div>
+            <div className="min-w-0 break-words"><span className="text-ink-2">{t.client.identificationNo}: </span>{inv.identificationNo || "–"}</div>
+          </div>
+          {!picked && <p className="m-0 text-xs text-amber-ink">{t.client.notInCrm}</p>}
+        </div>
       )}
-
-      <div className="flex flex-col gap-3">
-        <SubHeading>{t.client.receiver}</SubHeading>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-12">
-          <Field label={t.client.fullName} htmlFor={fieldId("receiver.fullName")} required error={nameError} className="sm:col-span-6">
-            <input
-              id={fieldId("receiver.fullName")}
-              autoComplete="off"
-              value={r.fullName}
-              onChange={(e) => setReceiver({ fullName: e.target.value })}
-              onBlur={() => touch("receiver.fullName")}
-              aria-invalid={!!nameError || undefined}
-              aria-describedby={nameError ? `${fieldId("receiver.fullName")}-msg` : undefined}
-              className={inputClass(!!nameError)}
-            />
-          </Field>
-          <Field label={t.client.email} htmlFor={fieldId("receiver.email")} required error={emailError} className="sm:col-span-6">
-            <input
-              id={fieldId("receiver.email")}
-              type="email"
-              autoComplete="off"
-              value={r.email}
-              onChange={(e) => setReceiver({ email: e.target.value })}
-              onBlur={() => touch("receiver.email")}
-              aria-invalid={!!emailError || undefined}
-              aria-describedby={emailError ? `${fieldId("receiver.email")}-msg` : undefined}
-              className={inputClass(!!emailError)}
-            />
-          </Field>
-          <Field label={t.client.address} htmlFor="receiver-address" className="sm:col-span-12">
-            <input id="receiver-address" value={r.address} onChange={(e) => setReceiver({ address: e.target.value })} className="input" />
-          </Field>
-          <Field label={t.client.city} htmlFor="receiver-city" className="sm:col-span-5">
-            <input id="receiver-city" value={r.city} onChange={(e) => setReceiver({ city: e.target.value })} className="input" />
-          </Field>
-          <Field label={t.client.zip} htmlFor="receiver-zip" className="sm:col-span-3">
-            <input id="receiver-zip" value={r.zip} onChange={(e) => setReceiver({ zip: e.target.value })} className="input" />
-          </Field>
-          <Field label={t.client.country} htmlFor="receiver-country" className="sm:col-span-4">
-            <select id="receiver-country" value={r.country} onChange={(e) => setReceiver({ country: e.target.value })} className="input">
-              <option value="">—</option>
-              {!known && r.country && <option value={r.country}>{r.country}</option>}
-              <optgroup label={t.client.euCountries}>
-                {countries.filter((c) => c.group === "eu").map((c) => <option key={c.name} value={c.name}>{c.label}</option>)}
-              </optgroup>
-              <optgroup label={t.client.otherCountries}>
-                {countries.filter((c) => c.group === "other").map((c) => <option key={c.name} value={c.name}>{c.label}</option>)}
-              </optgroup>
-            </select>
-          </Field>
-          <Field label={t.client.phone} htmlFor="receiver-phone" className="sm:col-span-6">
-            <input id="receiver-phone" type="tel" value={r.phone} onChange={(e) => setReceiver({ phone: e.target.value })} className="input" />
-          </Field>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3 border-t border-mist pt-5">
-        <SubHeading>{t.client.invoice}</SubHeading>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label={t.client.companyName} htmlFor="invoice-company">
-            <input id="invoice-company" value={form.invoice.companyName} onChange={(e) => setInvoice({ companyName: e.target.value })} className="input" />
-          </Field>
-          <Field label={t.client.identificationNo} htmlFor="invoice-id">
-            <input id="invoice-id" value={form.invoice.identificationNo} onChange={(e) => setInvoice({ identificationNo: e.target.value })} className="input" />
-          </Field>
-          <Field label={t.client.vatNumber} htmlFor="invoice-vat">
-            <input id="invoice-vat" value={form.invoice.vatNumber} onChange={(e) => setInvoice({ vatNumber: e.target.value })} className="input" />
-          </Field>
-          <Field label={t.client.registrationAddress} htmlFor="invoice-address" className="sm:col-span-2">
-            <input
-              id="invoice-address"
-              value={form.invoice.registrationAddress}
-              onChange={(e) => setInvoice({ registrationAddress: e.target.value })}
-              className="input"
-            />
-          </Field>
-        </div>
-      </div>
 
       <div className="flex flex-col gap-3 border-t border-mist pt-5">
         <SubHeading>{t.client.offerDetails}</SubHeading>

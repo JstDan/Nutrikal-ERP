@@ -2,27 +2,24 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
-import { fmt, formatDate, formatMoney, formatNumber, formatQty } from "@/lib/i18n";
+import { fmt, formatDate, formatMoney, formatNumber } from "@/lib/i18n";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
-import { StageTracker } from "@/components/stage-tracker";
-import { clientTone, projectStage, projectTone } from "@/lib/status";
-import { addActivity, addContact, createProject, setProjectStatus } from "@/app/actions";
+import { clientTone, orderTone } from "@/lib/status";
+import { ClientFields } from "@/components/client-fields";
+import { addActivity, addContact, updateClient } from "@/app/actions";
 
 type Client = {
   id: string; code: string; legal_name: string; trade_name: string | null; status: string; country_code: string;
   vat_number: string | null; company_id: string | null; address_line1: string | null; city: string | null; postal_code: string | null;
   billing_email: string | null; phone: string | null; preferred_locale: "bg" | "en"; currency: string;
   deposit_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
-  credit_limit: string | null; notes: string | null; owner: string | null;
+  credit_limit: string | null; notes: string | null; owner: string | null; registration_address: string | null; website: string | null;
 };
-type Project = { id: string; code: string; name: string; product_format: string | null; status: string; expected_units: number | null; target_date: string | null };
-type Reservation = { project_id: string; name: string; quantity: string; base_unit: string };
+type Order = { id: string; code: string; status: string; total_packs: number; products: string | null };
 type Contact = { id: string; first_name: string; last_name: string | null; position: string | null; email: string | null; phone: string | null; is_primary: boolean };
 type Activity = { id: string; type: string; subject: string; body: string | null; created_at: string; due_at: string | null; done_at: string | null; project_code: string | null };
 
-const STATUSES = ["inquiry", "formulation", "offer", "order", "production", "completed", "on_hold", "lost"] as const;
-const FORMATS = ["capsule", "tablet", "softgel", "powder", "sachet", "stick_pack", "liquid", "gummy", "bar", "other"] as const;
 
 export default async function ClientPage({ params }: PageProps<"/clients/[id]">) {
   const { id } = await params;
@@ -39,22 +36,20 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
     const settings = (await tx.query<{ default_deposit_pct: string | null; default_balance_terms: "before_dispatch" | "net_days"; default_balance_net_days: number | null }>(
       "select default_deposit_pct::text, default_balance_terms, default_balance_net_days from company_settings limit 1")).rows[0];
     const contacts = (await tx.query<Contact>("select * from contacts where client_id = $1 order by is_primary desc, first_name", [id])).rows;
-    const projects = (await tx.query<Project>(
-      `select id, code, name, product_format, status, expected_units, target_date::text from projects
-        where client_id = $1 order by status in ('completed', 'lost'), created_at desc`, [id])).rows;
-    const reservations = (await tx.query<Reservation>(
-      `select r.project_id, i.name, sum(r.quantity)::text as quantity, i.base_unit
-         from stock_reservations r join items i on i.id = r.item_id join projects p on p.id = r.project_id
-        where p.client_id = $1 and r.status = 'active'
-        group by r.project_id, i.name, i.base_unit order by i.name`, [id])).rows;
+    const product = locale === "bg" ? "coalesce(l.product_bg, l.product)" : "l.product";
+    const orders = (await tx.query<Order>(
+      `select o.id, o.code, o.status, o.total_packs,
+              (select string_agg(${product}, ', ' order by l.sort_order) from sales_order_line_overview l where l.order_id = o.id) as products
+         from sales_order_overview o where o.client_id = $1
+        order by o.status in ('closed', 'cancelled'), o.code desc`, [id])).rows;
     const activities = (await tx.query<Activity>(
       `select a.id, a.type, a.subject, a.body, a.created_at::text, a.due_at::text, a.done_at::text, p.code as project_code
          from activities a left join projects p on p.id = a.project_id
         where a.client_id = $1 order by a.created_at desc limit 30`, [id])).rows;
-    return { client, settings, contacts, projects, reservations, activities };
+    return { client, settings, contacts, orders, activities };
   });
   if (!data) notFound();
-  const { client: c, settings, contacts, projects, reservations, activities } = data;
+  const { client: c, settings, contacts, orders, activities } = data;
 
   const deposit = c.deposit_pct ?? settings?.default_deposit_pct;
   const balance = c.balance_terms ?? settings?.default_balance_terms ?? "before_dispatch";
@@ -77,7 +72,6 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
         actions={canEdit && (
           <>
             <a href="#log-activity" className="btn btn-outline">{d.logActivity}</a>
-            <a href="#new-project" className="btn btn-primary">{d.newProject}</a>
           </>
         )}
       />
@@ -97,7 +91,20 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
             {(c.address_line1 || c.city) && (
               <p className="m-0 text-[13px] text-ink-2">{[c.address_line1, [c.postal_code, c.city].filter(Boolean).join(" ")].filter(Boolean).join(", ")}</p>
             )}
+            {c.registration_address && (
+              <p className="m-0 text-[13px] text-ink-2">{t.clients.form.registrationAddress}: {c.registration_address}</p>
+            )}
+            {(c.phone || c.website) && <p className="m-0 text-[13px] text-ink-2 break-all">{[c.phone, c.website].filter(Boolean).join(" · ")}</p>}
             {c.notes && <p className="m-0 text-sm whitespace-pre-line">{c.notes}</p>}
+            {canEdit && (
+              <details className="border-t border-mist pt-3">
+                <summary className="cursor-pointer text-xs font-semibold tracking-[2px] uppercase">{d.editClient}</summary>
+                <ActionForm action={updateClient} submitLabel={t.common.save} resetOnSuccess={false} className="mt-4">
+                  <input type="hidden" name="client_id" value={c.id} />
+                  <ClientFields t={t} locale={locale} c={c} />
+                </ActionForm>
+              </details>
+            )}
           </Card>
 
           <Card title={d.contacts} id="contacts-h">
@@ -122,11 +129,9 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
                 <ActionForm action={addContact} submitLabel={t.common.add} className="mt-4">
                   <input type="hidden" name="client_id" value={c.id} />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="field"><span>{d.firstName} *</span><input name="first_name" required className="input" /></label>
-                    <label className="field"><span>{d.lastName}</span><input name="last_name" className="input" /></label>
-                    <label className="field"><span>{d.position}</span><input name="position" className="input" /></label>
-                    <label className="field"><span>{d.email}</span><input name="email" type="email" className="input" /></label>
-                    <label className="field sm:col-span-2"><span>{t.clients.form.phone}</span><input name="phone" type="tel" className="input" /></label>
+                    <label className="field sm:col-span-2"><span>{t.clients.form.contactName} *</span><input name="first_name" required className="input" /></label>
+                    <label className="field"><span>{d.email} *</span><input name="email" type="email" required className="input" /></label>
+                    <label className="field"><span>{t.clients.form.phone}</span><input name="phone" type="tel" className="input" /></label>
                   </div>
                 </ActionForm>
               </details>
@@ -136,72 +141,17 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
 
         {/* ----------------------------------------------- right column */}
         <div className="flex min-w-0 flex-col gap-4">
-          {projects.length === 0 && <Card title={d.projects} id="projects-h"><Empty>{d.noProjects}</Empty></Card>}
-          {projects.map((p) => {
-            const res = reservations.filter((r) => r.project_id === p.id);
-            return (
-              <Card
-                key={p.id}
-                id={`p-${p.id}`}
-                title={<>{p.code} · {p.name}</>}
-                action={<Chip tone={projectTone(p.status)}>{t.enums.projectStatus[p.status as "inquiry"]}</Chip>}
-              >
-                <StageTracker stage={projectStage(p.status, res.length > 0)} t={t} />
-                <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
-                  <Fact label={t.projects.format}>{p.product_format ? t.enums.productFormat[p.product_format as "capsule"] : "—"}</Fact>
-                  <Fact label={t.projects.units}>{p.expected_units ? formatNumber(locale, p.expected_units) : "—"}</Fact>
-                  <Fact label={t.projects.form.target}>{formatDate(locale, p.target_date)}</Fact>
-                </div>
-                <div className="flex flex-col gap-1.5 rounded bg-canvas px-4 py-3 text-sm">
-                  <span className="label">{d.reserved}</span>
-                  {res.length === 0 ? (
-                    <span className="text-ink-2">{d.noReservations}</span>
-                  ) : (
-                    res.map((r) => (
-                      <span key={r.name} className="flex flex-wrap justify-between gap-2">
-                        <span>{r.name}</span>
-                        <span className="font-semibold">{formatQty(locale, r.quantity, r.base_unit)}</span>
-                      </span>
-                    ))
-                  )}
-                </div>
-                {canEdit && (
-                  <form action={setProjectStatus} className="flex flex-wrap items-end gap-2">
-                    <input type="hidden" name="project_id" value={p.id} />
-                    <label className="field min-w-[180px] flex-[0_1_240px]">
-                      <span className="sr-only">{t.projects.status}</span>
-                      <select name="status" defaultValue={p.status} className="input" aria-label={`${t.projects.status} ${p.code}`}>
-                        {STATUSES.map((s) => <option key={s} value={s}>{t.enums.projectStatus[s]}</option>)}
-                      </select>
-                    </label>
-                    <button type="submit" className="btn btn-outline">{t.common.save}</button>
-                  </form>
-                )}
-              </Card>
-            );
-          })}
-
-          {canEdit && (
-            <Card title={d.newProject} id="new-project">
-              <ActionForm action={createProject} submitLabel={t.projects.form.submit} resetOnSuccess={false}>
-                <input type="hidden" name="client_id" value={c.id} />
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <label className="field md:col-span-2"><span>{t.projects.form.name} *</span><input name="name" required className="input" /></label>
-                  <label className="field"><span>{t.projects.form.format}</span>
-                    <select name="product_format" className="input" defaultValue="capsule">
-                      {FORMATS.map((f) => <option key={f} value={f}>{t.enums.productFormat[f]}</option>)}
-                    </select>
-                  </label>
-                  <label className="field"><span>{t.projects.form.units}</span><input name="expected_units" type="number" min={1} className="input" /></label>
-                  <label className="field"><span>{t.projects.form.target}</span><input name="target_date" type="date" className="input" /></label>
-                  <label className="flex min-h-11 items-center gap-3 self-end text-sm font-semibold">
-                    <input name="nda_signed" type="checkbox" className="h-5 w-5 accent-ink" /> {t.projects.form.nda}
-                  </label>
-                  <label className="field md:col-span-2"><span>{t.projects.form.description}</span><textarea name="description" className="input" /></label>
-                </div>
-              </ActionForm>
-            </Card>
-          )}
+          <Card title={t.nav.orders} id="orders-h" action={<Link href="/orders" className="text-ink">{t.nav.orders} →</Link>}>
+            {orders.length === 0 && <Empty>{t.orders.empty}</Empty>}
+            {orders.map((o) => (
+              <div key={o.id} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[110px_minmax(0,1fr)_100px_auto]">
+                <Link href={`/orders/${o.id}`} className="font-semibold text-ink">{o.code}</Link>
+                <span className="hide-sm min-w-0 break-words">{o.products ?? "—"}</span>
+                <span className="hide-sm">{formatNumber(locale, o.total_packs)}</span>
+                <Chip tone={orderTone(o.status)}>{t.enums.orderStatus[o.status as "draft"]}</Chip>
+              </div>
+            ))}
+          </Card>
 
           <Card title={d.activity} id="log-activity">
             {canEdit && (
@@ -214,12 +164,6 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
                     </select>
                   </label>
                   <label className="field"><span>{d.subject} *</span><input name="subject" required className="input" /></label>
-                  <label className="field"><span>{t.projects.code}</span>
-                    <select name="project_id" className="input" defaultValue="">
-                      <option value="">—</option>
-                      {projects.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
-                    </select>
-                  </label>
                   <label className="field"><span>{d.due} ({t.common.optional})</span><input name="due_at" type="datetime-local" className="input" /></label>
                   <label className="field md:col-span-2"><span>{d.details}</span><textarea name="body" className="input" /></label>
                 </div>

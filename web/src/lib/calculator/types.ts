@@ -147,6 +147,8 @@ export interface OfferForm {
   mode: FormulaMode;
   /** Catalog mode: the chosen product – a snapshot of its code, name and prices when it was picked. */
   catalog: Omit<CatalogProduct, 'active'> | null;
+  /** The CRM client the offer is for (receiver and invoice below are a snapshot of its data). Older offers: null. */
+  clientId: string | null;
   /** Nutrikal contact person printed on the offer (the sales email comes from Settings). */
   contact: { name: string; phone: string };
   receiver: {
@@ -198,6 +200,7 @@ export interface OfferRecord {
   offer_no: string;
   receiver_name: string;
   receiver_email: string;
+  client_id: string | null;
   company_name: string | null;
   product_name: string | null;
   product_type: ProductType | null;

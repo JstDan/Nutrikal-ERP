@@ -67,7 +67,7 @@ export async function loadMaterials(userId: string): Promise<RawMaterial[]> {
   return rows.map((m) => ({ ...m, price_eur_per_kg: num(m.price_eur_per_kg) }));
 }
 
-const OFFER_COLUMNS = `id, offer_no, receiver_name, receiver_email, company_name, product_name, product_type,
+const OFFER_COLUMNS = `id, offer_no, receiver_name, receiver_email, client_id, company_name, product_name, product_type,
   total_excl_vat, total_incl_vat, data, results, created_by, created_at::text, updated_at::text`;
 
 export const toOffer = (r: OfferRecord): OfferRecord => ({
@@ -109,6 +109,8 @@ export type CrmClient = {
   identificationNo: string;
   vatNumber: string;
   address: string;
+  /** Registered (invoice) address when it differs from the address. */
+  registrationAddress: string;
   city: string;
   zip: string;
   country: string;
@@ -123,11 +125,11 @@ export async function loadCrmClients(userId: string): Promise<CrmClient[]> {
   const rows = await q<{
     id: string; code: string; legal_name: string; trade_name: string | null; company_id: string | null; vat_number: string | null;
     address_line1: string | null; address_line2: string | null; city: string | null; postal_code: string | null; country_code: string;
-    billing_email: string | null; phone: string | null; contact_name: string | null; contact_email: string | null; contact_phone: string | null;
+    billing_email: string | null; phone: string | null; registration_address: string | null; contact_name: string | null; contact_email: string | null; contact_phone: string | null;
   }>(
     userId,
     `select c.id, c.code, c.legal_name, c.trade_name, c.company_id, c.vat_number, c.address_line1, c.address_line2, c.city,
-            c.postal_code, c.country_code, c.billing_email, c.phone,
+            c.postal_code, c.country_code, c.billing_email, c.phone, c.registration_address,
             nullif(trim(concat_ws(' ', k.first_name, k.last_name)), '') as contact_name, k.email as contact_email, k.phone as contact_phone
        from clients c
        left join lateral (
@@ -144,6 +146,7 @@ export async function loadCrmClients(userId: string): Promise<CrmClient[]> {
     identificationNo: c.company_id ?? "",
     vatNumber: c.vat_number ?? "",
     address: [c.address_line1, c.address_line2].filter(Boolean).join(", "),
+    registrationAddress: c.registration_address ?? "",
     city: c.city ?? "",
     zip: c.postal_code ?? "",
     country: countryName(c.country_code),

@@ -1,24 +1,26 @@
 import Link from "next/link";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
-import { fmt, formatDate, formatQty } from "@/lib/i18n";
+import { fmt, formatDate, formatNumber, formatQty } from "@/lib/i18n";
 import { Card, Chip, Dot, Empty, PageHeader, TextLink } from "@/components/ui";
 import { completeTask } from "./actions";
-import { projectTone } from "@/lib/status";
+import { orderTone } from "@/lib/status";
 
-const PIPELINE = ["inquiry", "formulation", "offer", "order", "production"] as const;
+/** Open orders by status, in order. */
+const PIPELINE = ["draft", "confirmed", "in_production", "ready", "dispatched"] as const;
 
 export default async function Dashboard() {
   const { user, locale, t } = await requireStaff();
 
   const data = await withUser(user.id, async (tx) => {
     const clients = (await tx.query<{ status: string; n: number }>("select status, count(*)::int as n from clients group by status")).rows;
-    const pipeline = (await tx.query<{ status: string; n: number }>("select status, count(*)::int as n from projects group by status")).rows;
-    const production = (await tx.query<{ id: string; code: string; name: string; status: string; client: string; client_id: string; expected_units: number | null; target_date: string | null }>(
-      `select p.id, p.code, p.name, p.status, c.legal_name as client, c.id as client_id, p.expected_units, p.target_date::text
-         from projects p join clients c on c.id = p.client_id
-        where p.status in ('order', 'production')
-        order by (p.status = 'production') desc, p.target_date nulls last`,
+    // Orders (the overview has no prices and shows nothing to Production)
+    const pipeline = (await tx.query<{ status: string; n: number }>("select status::text, count(*)::int as n from sales_order_overview group by status")).rows;
+    const production = (await tx.query<{ id: string; code: string; status: string; client: string; client_id: string; total_packs: number; requested_date: string | null }>(
+      `select id, code, status::text, client, client_id, total_packs, requested_date::text
+         from sales_order_overview
+        where status in ('confirmed', 'in_production', 'ready')
+        order by (status = 'in_production') desc, requested_date nulls last, code`,
     )).rows;
     const low = (await tx.query<{ item_id: string; name: string; available: string; reorder_level: string; base_unit: string }>(
       `select s.item_id, case when $1 = 'bg' then coalesce(i.name_bg, s.name) else s.name end as name, s.available, s.reorder_level, s.base_unit
@@ -43,14 +45,14 @@ export default async function Dashboard() {
   });
 
   const count = (rows: { status: string; n: number }[], s: string) => rows.find((r) => r.status === s)?.n ?? 0;
-  const openProjects = PIPELINE.reduce((a, s) => a + count(data.pipeline, s), 0);
+  const openOrders = PIPELINE.reduce((a, s) => a + count(data.pipeline, s), 0);
   const maxStage = Math.max(1, ...PIPELINE.map((s) => count(data.pipeline, s)));
   const alertTotal = data.low.length + data.expiring.length + data.quarantine;
 
   const kpis = [
     { label: t.dashboard.activeClients, value: count(data.clients, "active"), note: `${count(data.clients, "lead")} ${t.dashboard.leads}`, href: "/clients" },
-    { label: t.dashboard.openProjects, value: openProjects, note: t.dashboard.inPipeline, href: "/projects" },
-    { label: t.dashboard.inProduction, value: count(data.pipeline, "production"), note: `${count(data.pipeline, "order")} ${t.dashboard.ordersWaiting}`, href: "/projects" },
+    { label: t.dashboard.openOrders, value: openOrders, note: fmt(t.dashboard.ordersDraft, { n: count(data.pipeline, "draft") }), href: "/orders" },
+    { label: t.dashboard.inProduction, value: count(data.pipeline, "in_production"), note: fmt(t.dashboard.ordersReady, { n: count(data.pipeline, "ready") }), href: "/orders?status=in_production" },
     { label: t.dashboard.stockAlerts, value: alertTotal, note: fmt(t.dashboard.alertsBreakdown, { low: data.low.length, exp: data.expiring.length, quar: data.quarantine }), href: "/inventory" },
   ];
 
@@ -72,21 +74,23 @@ export default async function Dashboard() {
       </section>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <Card title={t.dashboard.production} id="prod-h" action={<TextLink href="/projects">{t.nav.projects} →</TextLink>}>
+        <Card title={t.dashboard.production} id="prod-h" action={<TextLink href="/orders">{t.nav.orders} →</TextLink>}>
           {data.production.length === 0 ? (
             <Empty>{t.dashboard.noProduction}</Empty>
           ) : (
             <div className="flex flex-col">
-              <div className="row hide-sm md:grid-cols-[96px_minmax(0,1.5fr)_110px_130px] lg:grid-cols-[96px_minmax(0,1.5fr)_minmax(0,1fr)_110px_130px] border-b border-mist pb-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2">
-                <span>{t.projects.code}</span><span>{t.projects.name}</span><span className="hide-md">{t.projects.client}</span><span>{t.projects.units}</span><span>{t.projects.status}</span>
+              <div className="row hide-sm md:grid-cols-[100px_minmax(0,1.5fr)_100px_140px] lg:grid-cols-[100px_minmax(0,1.5fr)_100px_110px_140px] border-b border-mist pb-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2">
+                <span>{t.orders.code}</span><span>{t.orders.client}</span><span>{t.orders.packs}</span><span className="hide-md">{t.orders.requested}</span><span>{t.orders.status}</span>
               </div>
-              {data.production.map((p) => (
-                <div key={p.id} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[96px_minmax(0,1.5fr)_110px_130px] lg:grid-cols-[96px_minmax(0,1.5fr)_minmax(0,1fr)_110px_130px]">
-                  <Link href={`/clients/${p.client_id}`} className="font-semibold text-ink">{p.code}</Link>
-                  <span className="hide-sm min-w-0 break-words">{p.name}</span>
-                  <span className="hide-sm hide-md min-w-0 break-words">{p.client}</span>
-                  <span className="hide-sm">{p.expected_units ? `${p.expected_units.toLocaleString(locale === "bg" ? "bg-BG" : "en-GB")}` : "—"}</span>
-                  <Chip tone={projectTone(p.status)}>{t.enums.projectStatus[p.status as keyof typeof t.enums.projectStatus]}</Chip>
+              {data.production.map((o) => (
+                <div key={o.id} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[100px_minmax(0,1.5fr)_100px_140px] lg:grid-cols-[100px_minmax(0,1.5fr)_100px_110px_140px]">
+                  <div className="min-w-0 md:contents">
+                    <Link href={`/orders/${o.id}`} className="font-semibold text-ink">{o.code}</Link>
+                    <Link href={`/clients/${o.client_id}`} className="block min-w-0 break-words text-ink md:inline">{o.client}</Link>
+                  </div>
+                  <span className="hide-sm">{formatNumber(locale, o.total_packs)}</span>
+                  <span className="hide-sm hide-md">{formatDate(locale, o.requested_date)}</span>
+                  <Chip tone={orderTone(o.status)}>{t.enums.orderStatus[o.status as "draft"]}</Chip>
                 </div>
               ))}
             </div>
@@ -136,9 +140,9 @@ export default async function Dashboard() {
               const n = count(data.pipeline, s);
               return (
                 <div key={s} className="contents">
-                  <span>{t.enums.projectStatus[s]}</span>
+                  <Link href={`/orders?status=${s}`} className="text-ink">{t.enums.orderStatus[s]}</Link>
                   <span className="h-3 rounded-sm bg-mist" aria-hidden="true">
-                    <span className={`block h-3 rounded-sm ${s === "production" ? "bg-green" : s === "offer" ? "bg-ink" : "bg-[#8a93a3]"}`} style={{ width: `${(n / maxStage) * 100}%` }} />
+                    <span className={`block h-3 rounded-sm ${s === "in_production" ? "bg-green" : s === "confirmed" ? "bg-ink" : "bg-[#8a93a3]"}`} style={{ width: `${(n / maxStage) * 100}%` }} />
                   </span>
                   <span className="text-right font-semibold">{n}</span>
                 </div>

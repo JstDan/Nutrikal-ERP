@@ -20,6 +20,8 @@ const english = regionNames('en');
 export const countryName = (code: string) => (code === 'XK' ? 'Kosovo' : (english?.of(code.toUpperCase()) ?? code));
 
 export interface CountryOption {
+  /** ISO 3166 code (clients store this). */
+  code: string;
   /** English name, stored on the offer. */
   name: string;
   /** Name in the interface language. */
@@ -34,6 +36,7 @@ export function countryOptions(locale: string): CountryOption[] {
     codes
       .split(' ')
       .map((code) => ({
+        code,
         name: countryName(code),
         label: code === 'XK' ? (locale === 'bg' ? 'Косово' : 'Kosovo') : (local?.of(code) ?? countryName(code)),
         group,
