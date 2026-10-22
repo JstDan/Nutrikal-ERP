@@ -65,9 +65,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
         {rows.map((o) => {
           const tot = total.get(o.id);
           return (
-            <div key={o.id} className={`row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3.5 text-sm last:border-0 ${grid}`}>
+            <div key={o.id} className={`row relative grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3.5 text-sm last:border-0 hover:bg-mist/60 ${grid}`}>
               <div className="min-w-0 md:contents">
-                <Link href={`/orders/${o.id}`} className="font-semibold text-ink">{o.code}</Link>
+                <Link href={`/orders/${o.id}`} className="font-semibold text-ink underline after:absolute after:inset-0 after:content-['']">{o.code}</Link>
                 <span className="block min-w-0 break-words md:inline">{o.client}</span>
               </div>
               <span className="hide-sm min-w-0 break-words">{o.products ?? "—"}</span>
