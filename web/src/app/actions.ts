@@ -497,6 +497,50 @@ export async function createOrderFromOffer(_: ActionState, fd: FormData): Promis
   redirect(`/orders/${id}`);
 }
 
+/** Order from one or more calculator offers of a client plus extra services; starts as unpaid. */
+export async function createOrderFromCalcOffers(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const n = t.orders.new;
+  const clientId = str(fd, "client_id");
+  const offers = fd.getAll("offer_id").filter((x): x is string => typeof x === "string" && x !== "");
+  if (!clientId) return { error: n.chooseClient };
+  if (offers.length === 0) return { error: n.chooseOffer };
+  let services: { description: string; quantity: number; unit_price: number }[];
+  try {
+    services = JSON.parse(str(fd, "services") ?? "[]");
+  } catch {
+    return { error: n.serviceInvalid };
+  }
+  if (!Array.isArray(services) || services.some((s) => !s.description?.trim() || !(s.quantity > 0) || !(s.unit_price >= 0))) {
+    return { error: n.serviceInvalid };
+  }
+  let id: string;
+  try {
+    const [row] = await q<{ id: string }>(
+      user.id,
+      "select create_order_from_calc_offers($1, $2::uuid[], $3::jsonb, $4, $5, $6::date, $7) as id",
+      [clientId, offers, JSON.stringify(services), num(fd, "vat_pct"), str(fd, "customer_ref"), str(fd, "requested_date"), str(fd, "notes")],
+    );
+    id = row.id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  redirect(`/orders/${id}`);
+}
+
+/** Admin: the calculator line of a paid order gets its approved formula (and a project), so production can be planned. */
+export async function linkOrderLineFormula(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, "select link_order_line_formula($1, $2)", [str(fd, "line_id"), str(fd, "formula_version_id")]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: t.common.saved };
+}
+
 export async function addOrderLine(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   const [offerId, qty] = (str(fd, "offer_quantity") ?? "|").split("|");

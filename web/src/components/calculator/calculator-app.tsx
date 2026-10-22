@@ -237,7 +237,7 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
             {/* Catalog product: product instead of type, formula and quantity per pack; numbered 1–5 */}
             <CatalogProductSection {...sectionProps} catalog={catalog} />
             <MarkupSection {...sectionProps} result={result} step={4} />
-            <OfferLinesSection {...sectionProps} presets={settings.service_presets} step={5} />
+            <OfferLinesSection {...sectionProps} step={5} />
           </>
         ) : (
           <>
@@ -245,7 +245,7 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
             <FormulaSection {...sectionProps} materials={materials} result={result} />
             <QuantitySection {...sectionProps} result={result} />
             <MarkupSection {...sectionProps} result={result} />
-            <OfferLinesSection {...sectionProps} presets={settings.service_presets} />
+            <OfferLinesSection {...sectionProps} />
           </>
         )}
         <ResultsSection

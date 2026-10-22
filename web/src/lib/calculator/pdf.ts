@@ -514,7 +514,7 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   return btoa(binary);
 }
 
-function loadImage(dataUrl: string | null): Promise<PdfImage | null> {
+export function loadImage(dataUrl: string | null): Promise<PdfImage | null> {
   if (!dataUrl) return Promise.resolve(null);
   return new Promise((resolve) => {
     const img = new Image();
@@ -524,7 +524,7 @@ function loadImage(dataUrl: string | null): Promise<PdfImage | null> {
   });
 }
 
-function loadAssets() {
+export function loadAssets() {
   assetCache ??= (async () => {
     // Served from web/public/calculator.
     const files = ['Poppins-Regular.ttf', 'Poppins-SemiBold.ttf', 'Poppins-Bold.ttf', 'Roboto-Regular.ttf', 'Roboto-Bold.ttf', 'logo-nutrikal.png'];
