@@ -87,27 +87,62 @@ export async function createClient(_: ActionState, fd: FormData): Promise<Action
   const { user } = await getSession();
   let id: string;
   try {
-    const [row] = await q<{ id: string }>(
-      user.id,
-      `insert into clients (legal_name, trade_name, status, country_code, vat_number, company_id, address_line1, city,
-         postal_code, billing_email, phone, website, preferred_locale, deposit_pct, balance_terms, balance_net_days,
-         credit_limit, notes, owner_id)
-       values ($1, $2, coalesce($3, 'lead')::client_status, upper(coalesce($4, 'BG')), $5, $6, $7, $8, $9, $10, $11, $12,
-         coalesce($13, 'en')::app_locale, $14, $15::balance_terms, $16, $17, $18, auth.uid())
-       returning id`,
-      [
-        str(fd, "legal_name"), str(fd, "trade_name"), str(fd, "status"), str(fd, "country_code"), str(fd, "vat_number"),
-        str(fd, "company_id"), str(fd, "address_line1"), str(fd, "city"), str(fd, "postal_code"), str(fd, "billing_email"),
-        str(fd, "phone"), str(fd, "website"), str(fd, "preferred_locale"), num(fd, "deposit_pct"), str(fd, "balance_terms"),
-        num(fd, "balance_net_days"), num(fd, "credit_limit"), str(fd, "notes"),
-      ],
-    );
-    id = row.id;
+    // The client and its contact person (who receives the offers) together
+    id = await withUser(user.id, async (tx) => {
+      const [row] = (await tx.query<{ id: string }>(
+        `insert into clients (legal_name, trade_name, status, country_code, vat_number, company_id, address_line1, city,
+           postal_code, billing_email, phone, website, preferred_locale, deposit_pct, balance_terms, balance_net_days,
+           credit_limit, notes, registration_address, owner_id)
+         values ($1, $2, coalesce($3, 'lead')::client_status, upper(coalesce($4, 'BG')), $5, $6, $7, $8, $9, $10, $11, $12,
+           coalesce($13, 'en')::app_locale, $14, $15::balance_terms, $16, $17, $18, $19, auth.uid())
+         returning id`,
+        clientValues(fd),
+      )).rows;
+      if (str(fd, "contact_first_name")) {
+        await tx.query(
+          `insert into contacts (client_id, first_name, last_name, position, email, phone, is_primary) values ($1, $2, $3, $4, $5, $6, true)`,
+          [row.id, str(fd, "contact_first_name"), str(fd, "contact_last_name"), str(fd, "contact_position"),
+           str(fd, "contact_email"), str(fd, "contact_phone")],
+        );
+      }
+      return row.id;
+    });
   } catch (e) {
     return { error: errorText(e) };
   }
   revalidatePath("/clients");
   redirect(`/clients/${id}`);
+}
+
+/** The client form fields ($1–$19), in the order of the insert above and the update below. */
+const clientValues = (fd: FormData) => [
+  str(fd, "legal_name"), str(fd, "trade_name"), str(fd, "status"), str(fd, "country_code"), str(fd, "vat_number"),
+  str(fd, "company_id"), str(fd, "address_line1"), str(fd, "city"), str(fd, "postal_code"), str(fd, "billing_email"),
+  str(fd, "phone"), str(fd, "website"), str(fd, "preferred_locale"), num(fd, "deposit_pct"), str(fd, "balance_terms"),
+  num(fd, "balance_net_days"), num(fd, "credit_limit"), str(fd, "notes"), str(fd, "registration_address"),
+];
+
+export async function updateClient(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const id = str(fd, "client_id");
+  try {
+    const rows = await q<{ id: string }>(
+      user.id,
+      `update clients set legal_name = $1, trade_name = $2, status = coalesce($3, status::text)::client_status,
+         country_code = upper(coalesce($4, country_code)), vat_number = $5, company_id = $6, address_line1 = $7, city = $8,
+         postal_code = $9, billing_email = $10, phone = $11, website = $12, preferred_locale = coalesce($13, 'en')::app_locale,
+         deposit_pct = $14, balance_terms = $15::balance_terms, balance_net_days = $16, credit_limit = $17, notes = $18,
+         registration_address = $19
+       where id = $20 returning id`,
+      [...clientValues(fd), id],
+    );
+    if (!rows.length) return { error: t.clients.form.notSaved };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/clients/${id}`);
+  revalidatePath("/clients");
+  return { ok: true, message: t.common.saved };
 }
 
 export async function createProject(_: ActionState, fd: FormData): Promise<ActionState> {

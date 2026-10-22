@@ -3,8 +3,7 @@ import { parseNum, parsePositiveInt } from './numbers';
 import { isCapsule, type OfferForm } from './types';
 
 export type FieldKey =
-  | 'receiver.fullName'
-  | 'receiver.email'
+  | 'client'
   | 'catalogProduct'
   | 'productType'
   | 'rows'
@@ -16,12 +15,11 @@ export type FieldKey =
 
 /** Message keys in the calc.validation dictionary. */
 export type ValidationCode =
-  | 'required' | 'email' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq';
+  | 'required' | 'email' | 'client' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq';
 
 /** Field order = order on the page, used to scroll to the first error. */
 export const FIELD_ORDER: FieldKey[] = [
-  'receiver.fullName',
-  'receiver.email',
+  'client',
   'catalogProduct',
   'productType',
   'rows',
@@ -44,9 +42,8 @@ export type ValidationErrors = Partial<Record<FieldKey, ValidationCode>>;
 
 export function validateOffer(form: OfferForm): ValidationErrors {
   const errors: ValidationErrors = {};
-  if (!form.receiver.fullName.trim()) errors['receiver.fullName'] = 'required';
-  if (!form.receiver.email.trim()) errors['receiver.email'] = 'required';
-  else if (!isValidEmail(form.receiver.email)) errors['receiver.email'] = 'email';
+  // The client comes from CRM (its details are edited in Clients)
+  if (!form.clientId) errors.client = 'client';
   const units = parsePositiveInt(form.numberOfUnits);
   if (form.mode === 'catalog') {
     // Catalog product: no formula or packaging; the quantity must reach the product's smallest price step.

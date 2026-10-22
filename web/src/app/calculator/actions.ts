@@ -30,23 +30,23 @@ export async function saveOffer(input: OfferInput): Promise<CalcResult<OfferReco
   const res = await run(async (uid) => {
     const values = [
       input.offer_no, input.receiver_name, input.receiver_email, input.company_name, input.product_name, input.product_type,
-      input.total_excl_vat, input.total_incl_vat, JSON.stringify(input.data), JSON.stringify(input.results),
+      input.total_excl_vat, input.total_incl_vat, JSON.stringify(input.data), JSON.stringify(input.results), input.client_id,
     ];
-    const cols = `id, offer_no, receiver_name, receiver_email, company_name, product_name, product_type, total_excl_vat,
+    const cols = `id, offer_no, receiver_name, receiver_email, client_id, company_name, product_name, product_type, total_excl_vat,
       total_incl_vat, data, results, created_by, created_at::text, updated_at::text`;
     const rows = input.id
       ? await q<OfferRecord>(
           uid,
           `update calc_offers set offer_no = $1, receiver_name = $2, receiver_email = $3, company_name = $4, product_name = $5,
-             product_type = $6, total_excl_vat = $7, total_incl_vat = $8, data = $9::jsonb, results = $10::jsonb
-           where id = $11 returning ${cols}`,
+             product_type = $6, total_excl_vat = $7, total_incl_vat = $8, data = $9::jsonb, results = $10::jsonb, client_id = $11
+           where id = $12 returning ${cols}`,
           [...values, input.id],
         )
       : await q<OfferRecord>(
           uid,
           `insert into calc_offers (offer_no, receiver_name, receiver_email, company_name, product_name, product_type,
-             total_excl_vat, total_incl_vat, data, results)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb) returning ${cols}`,
+             total_excl_vat, total_incl_vat, data, results, client_id)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11) returning ${cols}`,
           values,
         );
     if (!rows[0]) throw new Error("Offer not found");

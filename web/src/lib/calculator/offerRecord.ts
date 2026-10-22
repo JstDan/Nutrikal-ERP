@@ -21,8 +21,9 @@ export function toOfferInput(form: OfferForm, result: CalcResult, currentFixedCo
   return {
     id: form.id,
     offer_no: form.offer.offerNo.trim(),
-    receiver_name: form.receiver.fullName.trim(),
+    receiver_name: form.receiver.fullName.trim() || form.invoice.companyName.trim(),
     receiver_email: form.receiver.email.trim(),
+    client_id: form.clientId,
     company_name: form.invoice.companyName.trim() || null,
     product_name: productName(form) || null,
     product_type: form.mode === 'catalog' ? null : form.productType,

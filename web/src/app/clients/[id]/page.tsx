@@ -7,14 +7,15 @@ import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { StageTracker } from "@/components/stage-tracker";
 import { clientTone, projectStage, projectTone } from "@/lib/status";
-import { addActivity, addContact, createProject, setProjectStatus } from "@/app/actions";
+import { ClientFields } from "@/components/client-fields";
+import { addActivity, addContact, createProject, setProjectStatus, updateClient } from "@/app/actions";
 
 type Client = {
   id: string; code: string; legal_name: string; trade_name: string | null; status: string; country_code: string;
   vat_number: string | null; company_id: string | null; address_line1: string | null; city: string | null; postal_code: string | null;
   billing_email: string | null; phone: string | null; preferred_locale: "bg" | "en"; currency: string;
   deposit_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
-  credit_limit: string | null; notes: string | null; owner: string | null;
+  credit_limit: string | null; notes: string | null; owner: string | null; registration_address: string | null; website: string | null;
 };
 type Project = { id: string; code: string; name: string; product_format: string | null; status: string; expected_units: number | null; target_date: string | null };
 type Reservation = { project_id: string; name: string; quantity: string; base_unit: string };
@@ -97,7 +98,20 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
             {(c.address_line1 || c.city) && (
               <p className="m-0 text-[13px] text-ink-2">{[c.address_line1, [c.postal_code, c.city].filter(Boolean).join(" ")].filter(Boolean).join(", ")}</p>
             )}
+            {c.registration_address && (
+              <p className="m-0 text-[13px] text-ink-2">{t.clients.form.registrationAddress}: {c.registration_address}</p>
+            )}
+            {(c.phone || c.website) && <p className="m-0 text-[13px] text-ink-2 break-all">{[c.phone, c.website].filter(Boolean).join(" · ")}</p>}
             {c.notes && <p className="m-0 text-sm whitespace-pre-line">{c.notes}</p>}
+            {canEdit && (
+              <details className="border-t border-mist pt-3">
+                <summary className="cursor-pointer text-xs font-semibold tracking-[2px] uppercase">{d.editClient}</summary>
+                <ActionForm action={updateClient} submitLabel={t.common.save} resetOnSuccess={false} className="mt-4">
+                  <input type="hidden" name="client_id" value={c.id} />
+                  <ClientFields t={t} locale={locale} c={c} />
+                </ActionForm>
+              </details>
+            )}
           </Card>
 
           <Card title={d.contacts} id="contacts-h">

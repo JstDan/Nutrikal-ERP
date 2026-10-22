@@ -892,6 +892,15 @@ await ok('only admin changes the catalog sheet link', async () => {
   eq((await as('sales', `update calc_settings set catalog_sheet_url = 'x' returning id`)).length, 0, 'sales');
   eq((await one('sales', 'select catalog_sheet_url from calc_settings')).catalog_sheet_url.includes('1WE7F6aTC3jezBPPC8oEnDS_aCee1Hpd1FPthdpYdPF0'), true, 'default');
 });
+await ok('a calculator offer is for a CRM client; sales records the registered address', async () => {
+  const c = await one('sales', `insert into clients (legal_name, country_code, registration_address)
+                                values ('Offer Client Ltd', 'DE', 'Hauptstr. 1, Berlin') returning id`);
+  const o = await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, data, results)
+                                values ('NK-T-CL', 'Offer Client Ltd', '', $1, '{}', '{}') returning client_id`, [c.id]);
+  eq(o.client_id, c.id, 'client');
+  eq((await one('admin', 'select registration_address from clients where id = $1', [c.id])).registration_address, 'Hauptstr. 1, Berlin', 'address');
+  eq((await as('production', 'select id from clients where id = $1', [c.id])).length, 0, 'production');
+});
 
 console.log('\nExpected deliveries and stock counts');
 let edItem, edSupplier, edReq, ed1, ed2, edLot;
