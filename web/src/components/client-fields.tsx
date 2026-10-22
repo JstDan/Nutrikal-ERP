@@ -22,10 +22,23 @@ export function ClientFields({ t, locale, c, withContact }: { t: Dict; locale: L
 
   return (
     <>
-      <fieldset className="m-0 flex flex-col gap-4 border-0 p-0">
+      {withContact && (
+        <fieldset className="m-0 flex flex-col gap-4 border-0 p-0">
+          <legend className="mb-1 text-base font-bold">{f.contactSection}</legend>
+          <p className="m-0 text-[13px] text-ink-2">{f.contactHint}</p>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <label className="field"><span>{f.contactName} *</span><input name="contact_name" required autoComplete="off" className="input" /></label>
+            <label className="field"><span>{t.clients.detail.email} *</span><input name="contact_email" type="email" required autoComplete="off" className="input" /></label>
+            <label className="field"><span>{f.phone}</span><input name="contact_phone" type="tel" autoComplete="off" className="input" /></label>
+          </div>
+          <p className="m-0 text-[13px] text-ink-2">{f.laterHint}</p>
+        </fieldset>
+      )}
+
+      <fieldset className={`m-0 flex flex-col gap-4 border-0 p-0 ${withContact ? "border-t border-mist pt-4" : ""}`}>
         <legend className="mb-2 text-base font-bold">{f.company}</legend>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <label className="field"><span>{f.legalName} *</span><input name="legal_name" required defaultValue={v(c?.legal_name)} className="input" /></label>
+          <label className="field"><span>{f.legalName}{c ? " *" : ""}</span><input name="legal_name" required={!!c} defaultValue={v(c?.legal_name)} className="input" /></label>
           <label className="field"><span>{f.tradeName}</span><input name="trade_name" defaultValue={v(c?.trade_name)} className="input" /></label>
           <label className="field"><span>{f.companyId}</span><input name="company_id" defaultValue={v(c?.company_id)} className="input" /></label>
           <label className="field"><span>{f.vatNumber}</span><input name="vat_number" defaultValue={v(c?.vat_number)} className="input" /></label>
@@ -56,8 +69,8 @@ export function ClientFields({ t, locale, c, withContact }: { t: Dict; locale: L
           <label className="field md:col-span-2"><span>{f.address}</span><input name="address_line1" defaultValue={v(c?.address_line1)} className="input" /></label>
           <label className="field"><span>{f.city}</span><input name="city" defaultValue={v(c?.city)} className="input" /></label>
           <label className="field"><span>{f.postalCode}</span><input name="postal_code" defaultValue={v(c?.postal_code)} className="input" /></label>
-          <label className="field"><span>{f.country} *</span>
-            <select name="country_code" required className="input" defaultValue={c?.country_code ?? "BG"}>
+          <label className="field"><span>{f.country}</span>
+            <select name="country_code" className="input" defaultValue={c?.country_code ?? "BG"}>
               <optgroup label={t.calc.client.euCountries}>
                 {countries.filter((x) => x.group === "eu").map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}
               </optgroup>
@@ -71,20 +84,6 @@ export function ClientFields({ t, locale, c, withContact }: { t: Dict; locale: L
           <label className="field"><span>{f.website}</span><input name="website" type="url" defaultValue={v(c?.website)} className="input" placeholder="https://" /></label>
         </div>
       </fieldset>
-
-      {withContact && (
-        <fieldset className="m-0 flex flex-col gap-4 border-0 border-t border-mist p-0 pt-4">
-          <legend className="mb-1 text-base font-bold">{f.contactSection}</legend>
-          <p className="m-0 text-[13px] text-ink-2">{f.contactHint}</p>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <label className="field"><span>{t.clients.detail.firstName} *</span><input name="contact_first_name" required className="input" /></label>
-            <label className="field"><span>{t.clients.detail.lastName}</span><input name="contact_last_name" className="input" /></label>
-            <label className="field"><span>{t.clients.detail.email}</span><input name="contact_email" type="email" className="input" /></label>
-            <label className="field"><span>{f.phone}</span><input name="contact_phone" type="tel" className="input" /></label>
-            <label className="field md:col-span-2"><span>{t.clients.detail.position}</span><input name="contact_position" className="input" /></label>
-          </div>
-        </fieldset>
-      )}
 
       <fieldset className="m-0 flex flex-col gap-4 border-0 border-t border-mist p-0 pt-4">
         <legend className="mb-1 text-base font-bold">{f.terms}</legend>

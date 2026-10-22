@@ -136,11 +136,9 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
                 <ActionForm action={addContact} submitLabel={t.common.add} className="mt-4">
                   <input type="hidden" name="client_id" value={c.id} />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="field"><span>{d.firstName} *</span><input name="first_name" required className="input" /></label>
-                    <label className="field"><span>{d.lastName}</span><input name="last_name" className="input" /></label>
-                    <label className="field"><span>{d.position}</span><input name="position" className="input" /></label>
-                    <label className="field"><span>{d.email}</span><input name="email" type="email" className="input" /></label>
-                    <label className="field sm:col-span-2"><span>{t.clients.form.phone}</span><input name="phone" type="tel" className="input" /></label>
+                    <label className="field sm:col-span-2"><span>{t.clients.form.contactName} *</span><input name="first_name" required className="input" /></label>
+                    <label className="field"><span>{d.email} *</span><input name="email" type="email" required className="input" /></label>
+                    <label className="field"><span>{t.clients.form.phone}</span><input name="phone" type="tel" className="input" /></label>
                   </div>
                 </ActionForm>
               </details>

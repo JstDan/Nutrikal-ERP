@@ -84,11 +84,17 @@ export async function actAs(fd: FormData) {
 
 // -------------------------------------------------------------------- CRM
 export async function createClient(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { user } = await getSession();
+  const { user, t } = await getSession();
+  // Only the contact person's names and email are required at first; the rest is filled in later.
+  const contactName = str(fd, "contact_name");
+  const contactEmail = str(fd, "contact_email");
+  if (!contactName || !contactEmail) return { error: t.clients.form.contactRequired };
   let id: string;
   try {
     // The client and its contact person (who receives the offers) together
     id = await withUser(user.id, async (tx) => {
+      const values = clientValues(fd);
+      values[0] ??= contactName; // no company name yet: the contact person's names until it is filled in
       const [row] = (await tx.query<{ id: string }>(
         `insert into clients (legal_name, trade_name, status, country_code, vat_number, company_id, address_line1, city,
            postal_code, billing_email, phone, website, preferred_locale, deposit_pct, balance_terms, balance_net_days,
@@ -96,15 +102,12 @@ export async function createClient(_: ActionState, fd: FormData): Promise<Action
          values ($1, $2, coalesce($3, 'lead')::client_status, upper(coalesce($4, 'BG')), $5, $6, $7, $8, $9, $10, $11, $12,
            coalesce($13, 'en')::app_locale, $14, $15::balance_terms, $16, $17, $18, $19, auth.uid())
          returning id`,
-        clientValues(fd),
+        values,
       )).rows;
-      if (str(fd, "contact_first_name")) {
-        await tx.query(
-          `insert into contacts (client_id, first_name, last_name, position, email, phone, is_primary) values ($1, $2, $3, $4, $5, $6, true)`,
-          [row.id, str(fd, "contact_first_name"), str(fd, "contact_last_name"), str(fd, "contact_position"),
-           str(fd, "contact_email"), str(fd, "contact_phone")],
-        );
-      }
+      await tx.query(
+        "insert into contacts (client_id, first_name, email, phone, is_primary) values ($1, $2, $3, $4, true)",
+        [row.id, contactName, contactEmail, str(fd, "contact_phone")],
+      );
       return row.id;
     });
   } catch (e) {
@@ -173,6 +176,7 @@ export async function setProjectStatus(fd: FormData) {
 export async function addContact(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   const clientId = str(fd, "client_id");
+  if (!str(fd, "first_name") || !str(fd, "email")) return { error: t.clients.form.contactRequired };
   try {
     await q(
       user.id,
