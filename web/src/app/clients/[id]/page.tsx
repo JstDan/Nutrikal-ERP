@@ -39,7 +39,7 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
     const product = locale === "bg" ? "coalesce(l.product_bg, l.product)" : "l.product";
     const orders = (await tx.query<Order>(
       `select o.id, o.code, o.status, o.total_packs,
-              (select string_agg(${product}, ', ' order by l.sort_order) from sales_order_line_overview l where l.order_id = o.id) as products
+              (select string_agg(${product}, ', ' order by l.sort_order) from sales_order_line_overview l where l.order_id = o.id and l.kind <> 'service') as products
          from sales_order_overview o where o.client_id = $1
         order by o.status in ('closed', 'cancelled'), o.code desc`, [id])).rows;
     const activities = (await tx.query<Activity>(
@@ -141,7 +141,7 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
 
         {/* ----------------------------------------------- right column */}
         <div className="flex min-w-0 flex-col gap-4">
-          <Card title={t.nav.orders} id="orders-h" action={<Link href="/orders" className="text-ink">{t.nav.orders} →</Link>}>
+          <Card title={t.nav.orders} id="orders-h" action={canEdit ? <Link href={`/orders/new?client=${c.id}`} className="text-ink">+ {t.orders.newOrder}</Link> : <Link href="/orders" className="text-ink">{t.nav.orders} →</Link>}>
             {orders.length === 0 && <Empty>{t.orders.empty}</Empty>}
             {orders.map((o) => (
               <div key={o.id} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[110px_minmax(0,1fr)_100px_auto]">

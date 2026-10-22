@@ -9,7 +9,7 @@ type Row = {
   id: string; code: string; status: string; requested_date: string | null; client: string; line_count: number; total_packs: number;
   products: string | null;
 };
-const STATUSES = ["draft", "confirmed", "in_production", "ready", "dispatched", "closed", "cancelled"] as const;
+const STATUSES = ["unpaid", "draft", "confirmed", "in_production", "ready", "dispatched", "closed", "cancelled"] as const;
 
 export default async function OrdersPage({ searchParams }: PageProps<"/orders">) {
   const { user, locale, t } = await requireStaff();
@@ -22,7 +22,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
     // The overviews have no prices, so Inventory can use them too
     rows: (await tx.query<Row>(
       `select o.id, o.code, o.status, o.requested_date::text, o.client, o.line_count, o.total_packs,
-              (select string_agg(${name}, ', ' order by l.sort_order) from sales_order_line_overview l where l.order_id = o.id) as products
+              (select string_agg(${name}, ', ' order by l.sort_order) from sales_order_line_overview l where l.order_id = o.id and l.kind <> 'service') as products
          from sales_order_overview o where ($1 = '' or o.status::text = $1)
         order by o.status in ('closed', 'cancelled'), o.code desc`, [status])).rows,
     totals: seesPrices
@@ -36,8 +36,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={t.orders.title} subtitle={t.orders.subtitle} />
-      {seesPrices && <p className="m-0 text-sm text-ink-2">{t.orders.fromOffer} <Link href="/offers?status=sent" className="text-ink">{t.nav.offers}</Link></p>}
+      <PageHeader
+        title={t.orders.title}
+        subtitle={t.orders.subtitle}
+        actions={seesPrices ? <Link href="/orders/new" className="btn btn-primary">+ {t.orders.newOrder}</Link> : undefined}
+      />
+      {seesPrices && <p className="m-0 text-sm text-ink-2">{t.orders.fromOffer} <Link href="/offers" className="text-ink">{t.nav.offers}</Link></p>}
       <nav aria-label={t.orders.status} className="flex flex-wrap gap-1">
         {(["", ...STATUSES] as const).map((s) => (
           <Link

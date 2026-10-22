@@ -902,6 +902,74 @@ await ok('a calculator offer is for a CRM client; sales records the registered a
   eq((await as('production', 'select id from clients where id = $1', [c.id])).length, 0, 'production');
 });
 
+console.log('\nOrders from calculator offers');
+let calcA, calcB, calcOrder;
+const calcV = await one('admin', `select v.id from formula_versions v join formulas f on f.id = v.formula_id
+  where v.status = 'approved' and f.client_id = $1 limit 1`, [client.id]);
+const calcOffer = (no, clientId, units, price) => one('sales',
+  `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, data, results)
+   values ($1, 'Client', '', $2, $1 || ' product', jsonb_build_object('numberOfUnits', $3::text), jsonb_build_object('unitPrice', $4::numeric))
+   returning id`, [no, clientId, units, price]);
+await ok('sales creates an unpaid order from two calculator offers and services', async () => {
+  calcA = await calcOffer('NK-T-OA', client.id, 1000, 4.5);
+  calcB = await calcOffer('NK-T-OB', client.id, 500, 6);
+  const r = await one('sales', `select create_order_from_calc_offers($1, $2, $3::jsonb, 20, 'PO-1') as id`,
+    [client.id, [calcA.id, calcB.id], JSON.stringify([{ description: 'Free Sale Certificate', quantity: 1, unit_price: 300 }])]);
+  calcOrder = await one('sales', 'select * from sales_orders where id = $1', [r.id]);
+  eq(calcOrder.status, 'unpaid', 'status'); eq(calcOrder.vat_pct, '20.00', 'vat');
+  const lines = await as('sales', 'select kind, description, quantity, unit_price::float as price from sales_order_lines where order_id = $1 order by sort_order', [r.id]);
+  eq(lines.map(l => `${l.kind}:${l.quantity}x${l.price}`).join(','), 'calc_offer:1000x4.5,calc_offer:500x6,service:1x300', 'lines');
+  const ov = await one('sales', 'select line_count, total_packs from sales_order_overview where id = $1', [r.id]);
+  eq(ov.line_count, 2, 'products only'); eq(ov.total_packs, 1500, 'packs');
+});
+await fails('an offer already in an order cannot be ordered again', () =>
+  as('sales', 'select create_order_from_calc_offers($1, $2)', [client.id, [calcA.id]]), 'already in an order');
+await fails('an offer of another client cannot be ordered', async () => {
+  const x = await calcOffer('NK-T-OX', client2.id, 100, 5);
+  await as('sales', 'select create_order_from_calc_offers($1, $2)', [client.id, [x.id]]);
+}, 'another client');
+await fails('an offer in an order cannot be changed', () =>
+  as('sales', `update calc_offers set product_name = 'X' where id = $1`, [calcA.id]), 'in an order');
+await fails('production cannot create orders from calculator offers', () =>
+  as('production', 'select create_order_from_calc_offers($1, $2)', [client.id, [calcB.id]]), 'not allowed|permission');
+await fails('only admin confirms the payment', () =>
+  as('sales', `update sales_orders set status = 'confirmed' where id = $1`, [calcOrder.id]), 'only admin confirms');
+await fails('a line cannot be linked to a formula before the payment', async () => {
+  const l = await one('admin', `select id from sales_order_lines where calc_offer_id = $1`, [calcA.id]);
+  await as('admin', 'select link_order_line_formula($1, $2)', [l.id, calcV.id]);
+}, 'confirm the payment');
+await ok('admin confirms the payment: paid in full', async () => {
+  await as('admin', `update sales_orders set status = 'confirmed' where id = $1`, [calcOrder.id]);
+  const o = await one('admin', 'select status, deposit_received_on, balance_received_on from sales_orders where id = $1', [calcOrder.id]);
+  eq(o.status, 'confirmed', 'status'); eq(!!o.deposit_received_on && !!o.balance_received_on, true, 'paid');
+});
+await fails('an order from calculator offers does not go back to draft', () =>
+  as('admin', `update sales_orders set status = 'draft' where id = $1`, [calcOrder.id]), 'back to draft');
+await fails('sales cannot link a line to a formula', async () => {
+  const l = await one('sales', `select id from sales_order_lines where calc_offer_id = $1`, [calcA.id]);
+  await as('sales', 'select link_order_line_formula($1, $2)', [l.id, calcV.id]);
+}, 'not allowed|permission');
+await ok('admin links the line to an approved formula: a project opens and production can be planned', async () => {
+  const l = await one('admin', `select id from sales_order_lines where calc_offer_id = $1`, [calcA.id]);
+  const p = (await one('admin', 'select link_order_line_formula($1, $2) as id', [l.id, calcV.id])).id;
+  const proj = await one('admin', 'select client_id, name, status from projects where id = $1', [p]);
+  eq(proj.client_id, client.id, 'client'); eq(proj.name, 'NK-T-OA product', 'name'); eq(proj.status, 'order', 'stage');
+  const m = await one('admin', 'insert into manufacturing_orders (sales_order_line_id, quantity) values ($1, 1000) returning formula_version_id, project_id', [l.id]);
+  eq(m.formula_version_id, calcV.id, 'formula'); eq(m.project_id, p, 'project');
+});
+await fails('a planned line keeps its formula', async () => {
+  const l = await one('admin', `select id from sales_order_lines where calc_offer_id = $1`, [calcA.id]);
+  await as('admin', 'select link_order_line_formula($1, $2)', [l.id, calcV.id]);
+}, 'already planned');
+await fails('a service line is never linked to a formula', async () => {
+  const l = await one('admin', `select id from sales_order_lines where order_id = $1 and kind = 'service'`, [calcOrder.id]);
+  await as('admin', 'select link_order_line_formula($1, $2)', [l.id, calcV.id]);
+}, 'only a calculator line');
+await ok('production sees no calculator orders', async () => {
+  eq((await as('production', 'select * from sales_order_lines')).length, 0, 'lines');
+  eq((await as('production', 'select * from sales_order_overview')).length, 0, 'overview');
+});
+
 console.log('\nExpected deliveries and stock counts');
 let edItem, edSupplier, edReq, ed1, ed2, edLot;
 await db.query('update company_settings set require_waybill_photo = false'); // the photo rule is tested further down

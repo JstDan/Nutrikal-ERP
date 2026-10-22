@@ -7,7 +7,7 @@ import { completeTask } from "./actions";
 import { orderTone } from "@/lib/status";
 
 /** Open orders by status, in order. */
-const PIPELINE = ["draft", "confirmed", "in_production", "ready", "dispatched"] as const;
+const PIPELINE = ["unpaid", "draft", "confirmed", "in_production", "ready", "dispatched"] as const;
 
 export default async function Dashboard() {
   const { user, locale, t } = await requireStaff();
@@ -51,7 +51,7 @@ export default async function Dashboard() {
 
   const kpis = [
     { label: t.dashboard.activeClients, value: count(data.clients, "active"), note: `${count(data.clients, "lead")} ${t.dashboard.leads}`, href: "/clients" },
-    { label: t.dashboard.openOrders, value: openOrders, note: fmt(t.dashboard.ordersDraft, { n: count(data.pipeline, "draft") }), href: "/orders" },
+    { label: t.dashboard.openOrders, value: openOrders, note: fmt(t.dashboard.ordersDraft, { n: count(data.pipeline, "unpaid") }), href: "/orders" },
     { label: t.dashboard.inProduction, value: count(data.pipeline, "in_production"), note: fmt(t.dashboard.ordersReady, { n: count(data.pipeline, "ready") }), href: "/orders?status=in_production" },
     { label: t.dashboard.stockAlerts, value: alertTotal, note: fmt(t.dashboard.alertsBreakdown, { low: data.low.length, exp: data.expiring.length, quar: data.quarantine }), href: "/inventory" },
   ];

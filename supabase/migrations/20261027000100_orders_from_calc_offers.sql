@@ -2,34 +2,37 @@
 -- Nutrikal ERP + CRM — orders from calculator offers
 -- Flow (owner, Oct 2026):
 --   1. Sales creates the client in Clients (CRM).
---   2. Sales makes the offer in the calculator for that client (product
---      only; calc_offers.client_id).
---   3. Admin creates the order from one or more of the client's calculator
---      offers plus extra services; it starts as UNPAID and its proforma
---      ("according to offer No …") is printed.
---   4. When the client has paid, admin confirms the payment (→ confirmed)
---      and releases it to production. A calculator line has no ERP formula
---      yet: production for it is planned once it is linked to an approved
---      formula version (later step); the manufacturing-order guard already
---      refuses a line without one.
+--   2. Sales makes the offer in the calculator for that client, custom or
+--      catalog (product only; calc_offers.client_id).
+--   3. Sales creates the order: a client that has offers, one or more of
+--      its calculator offers and the extra services (Free Sale
+--      Certificate, COA, label design, other). The order starts as UNPAID
+--      and its proforma ("according to offer No …") is printed.
+--   4. When the proforma is paid, admin confirms the payment
+--      (→ confirmed) and starts production: each calculator line is
+--      linked to an approved formula version (a project for the client is
+--      opened for it), then planned as a manufacturing order. The
+--      manufacturing order checks the stock, reserves it, orders what is
+--      missing (Production receives it with the waybill) and is sent to
+--      Production once everything is reserved — the existing flow.
 --
 -- Order lines are of three kinds:
 --   offer       ERP offer (offer, project and formula version) — as before
 --   calc_offer  calculator offer: product name, quantity and unit price
---               copied from the offer
+--               copied from the offer; formula version and project are
+--               added by admin when production starts
 --   service     extra service (certificate, label design…), never produced
 --
 --                          admin   sales   production
--- create from calc offers  yes     —       —
+-- create from calc offers  yes     yes     —
 -- confirm payment          yes     —       —
+-- link line to a formula   yes     —       —
 -- orders, lines            all     all     —   (unchanged)
 -- =====================================================================
 
 alter type public.order_status add value if not exists 'unpaid' before 'confirmed';
 
--- ------------------------------------------- calculator offer → client
-alter table public.calc_offers add column client_id uuid references public.clients (id);
-create index calc_offers_client_idx on public.calc_offers (client_id);
+-- calc_offers.client_id: 20261026000100_calc_offer_client.sql
 
 -- An offer that is in an order (not cancelled) is fixed: the order and its
 -- proforma quote it. Changes go into a copy (Duplicate) instead.
@@ -56,7 +59,8 @@ alter table public.sales_order_lines
   add column description text,
   add constraint sales_order_lines_kind_chk check (
     (kind = 'offer' and offer_id is not null and project_id is not null and formula_version_id is not null)
-    or (kind = 'calc_offer' and calc_offer_id is not null and offer_id is null and description is not null)
+    or (kind = 'calc_offer' and calc_offer_id is not null and offer_id is null and description is not null
+        and (formula_version_id is null) = (project_id is null))
     or (kind = 'service' and offer_id is null and calc_offer_id is null and project_id is null
         and formula_version_id is null and description is not null)
   );
@@ -65,7 +69,7 @@ create index sales_order_lines_calc_offer_idx on public.sales_order_lines (calc_
 create trigger calc_offers_in_order_guard before update or delete on public.calc_offers
   for each row execute function public.calc_offers_in_order_guard();
 
--- VAT % on the proforma (chosen by admin when the order is created)
+-- VAT % on the proforma (chosen when the order is created)
 alter table public.sales_orders add column vat_pct numeric(5, 2) check (vat_pct between 0 and 100);
 
 -- ------------------------------------------------- status rules
@@ -105,11 +109,15 @@ begin
     end if;
     if old.status = 'unpaid' and new.status = 'confirmed' then
       if not v_admin then
-        raise exception 'Only admin confirms the payment';
+        raise exception 'Only admin confirms the payment' using errcode = '42501';
       end if;
       -- The proforma is for the full amount: paid in full
       new.deposit_received_on := coalesce(new.deposit_received_on, current_date);
       new.balance_received_on := coalesce(new.balance_received_on, current_date);
+    end if;
+    -- An order with calculator offers goes back to unpaid, never to draft
+    if new.status = 'draft' and exists (select 1 from public.sales_order_lines where order_id = new.id and kind <> 'offer') then
+      raise exception 'An order from calculator offers cannot go back to draft';
     end if;
     if new.status = 'in_production' and coalesce(new.deposit_pct, 0) > 0
        and new.deposit_received_on is null and not v_admin then
@@ -132,7 +140,9 @@ begin
 end
 $$;
 
--- Lines: as before; the new columns are fixed once added too
+-- Lines: as before (they change only on a draft order). The one exception
+-- is link_order_line_formula, which adds formula version and project to a
+-- calculator line of a paid order.
 create or replace function public.sales_order_lines_guard()
 returns trigger language plpgsql security definer set search_path = public
 as $$
@@ -144,7 +154,10 @@ begin
   if v_status is null and tg_op = 'DELETE' then
     return old;   -- the order itself is being deleted
   end if;
-  if v_status <> 'draft' then
+  if tg_op = 'UPDATE' and current_setting('nk.line_link', true) = 'on' then
+    return new;
+  end if;
+  if v_status <> 'draft' and not (tg_op = 'INSERT' and current_setting('nk.order_create', true) = 'on') then
     raise exception 'Products can only change on a draft order';
   end if;
   if tg_op = 'UPDATE' and (new.order_id, new.offer_id, new.project_id, new.formula_version_id, new.quantity, new.unit_price,
@@ -158,28 +171,29 @@ end
 $$;
 
 -- ------------------------------------------- create from calc offers
--- p_services: [{"description": "Label design", "quantity": 1, "unit_price": 200}, …]
+-- p_services: [{"description": "Label design service", "quantity": 1, "unit_price": 200}, …]
 create or replace function public.create_order_from_calc_offers(
   p_client        uuid,
   p_offers        uuid[],
   p_services      jsonb default '[]'::jsonb,
   p_vat_pct       numeric default null,
   p_customer_ref  text default null,
-  p_requested     date default null
+  p_requested     date default null,
+  p_notes         text default null
 )
 returns uuid
 language plpgsql security definer set search_path = public
 as $$
 declare
-  c      public.clients;
-  o      public.calc_offers;
-  v_id   uuid;
-  v_qty  integer;
+  c       public.clients;
+  o       public.calc_offers;
+  v_id    uuid;
+  v_qty   integer;
   v_price numeric;
-  v_n    integer := 0;
-  s      record;
+  v_n     integer := 0;
+  s       record;
 begin
-  perform public.require_role('admin');
+  perform public.require_role('admin', 'sales');
   select * into c from public.clients where id = p_client;
   if not found then
     raise exception 'Unknown client';
@@ -188,10 +202,14 @@ begin
     raise exception 'Choose at least one offer';
   end if;
 
-  insert into public.sales_orders (client_id, currency, deposit_pct, balance_terms, balance_net_days, vat_pct, customer_ref, requested_date)
-  values (c.id, 'EUR', c.deposit_pct, c.balance_terms, c.balance_net_days, p_vat_pct, nullif(trim(p_customer_ref), ''), p_requested)
+  insert into public.sales_orders (client_id, currency, status, deposit_pct, balance_terms, balance_net_days, vat_pct,
+                                   customer_ref, requested_date, notes)
+  values (c.id, 'EUR', 'unpaid', 0, 'before_dispatch', null,
+          coalesce(p_vat_pct, (select default_vat_rate from public.company_settings limit 1), 20),
+          nullif(trim(p_customer_ref), ''), p_requested, nullif(trim(p_notes), ''))
   returning id into v_id;
 
+  perform set_config('nk.order_create', 'on', true);
   for o in select * from public.calc_offers where id = any (p_offers) order by offer_no loop
     if o.client_id is distinct from c.id then
       raise exception 'Offer % is for another client', o.offer_no;
@@ -209,7 +227,7 @@ begin
     values (v_id, 'calc_offer', o.id, coalesce(nullif(o.product_name, ''), o.offer_no), v_qty, v_price, v_n);
     v_n := v_n + 1;
   end loop;
-  if v_n <> array_length(p_offers, 1) then
+  if v_n <> (select count(distinct x) from unnest(p_offers) x) then
     raise exception 'Unknown offer';
   end if;
 
@@ -221,14 +239,68 @@ begin
     values (v_id, 'service', trim(s.description), s.quantity, s.unit_price, v_n);
     v_n := v_n + 1;
   end loop;
-
-  update public.sales_orders set status = 'unpaid' where id = v_id;
+  perform set_config('nk.order_create', 'off', true);
   return v_id;
 end
 $$;
 
-revoke execute on function public.create_order_from_calc_offers(uuid, uuid[], jsonb, numeric, text, date) from public, anon;
-grant execute on function public.create_order_from_calc_offers(uuid, uuid[], jsonb, numeric, text, date) to authenticated;
+revoke execute on function public.create_order_from_calc_offers(uuid, uuid[], jsonb, numeric, text, date, text) from public, anon;
+grant execute on function public.create_order_from_calc_offers(uuid, uuid[], jsonb, numeric, text, date, text) to authenticated;
+
+-- --------------------------------------- link a line to its formula
+-- Admin, once the order is paid: the calculator line gets an approved
+-- formula version and a project for the client (opened here when the
+-- line has none), so it can be planned as a manufacturing order. The
+-- link can change until a manufacturing order exists for the line.
+create or replace function public.link_order_line_formula(p_line uuid, p_version uuid)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  l          public.sales_order_lines;
+  so         public.sales_orders;
+  v_status   public.formula_status;
+  v_fclient  uuid;
+  v_format   public.product_format;
+  v_project  uuid;
+begin
+  perform public.require_role('admin');
+  select * into l from public.sales_order_lines where id = p_line;
+  if not found or l.kind <> 'calc_offer' then
+    raise exception 'Only a calculator line is linked to a formula';
+  end if;
+  select * into so from public.sales_orders where id = l.order_id;
+  if so.status not in ('confirmed', 'in_production') then
+    raise exception 'Confirm the payment first';
+  end if;
+  if exists (select 1 from public.manufacturing_orders where sales_order_line_id = p_line and status <> 'cancelled') then
+    raise exception 'This line is already planned for production';
+  end if;
+  select v.status, f.client_id, f.product_format into v_status, v_fclient, v_format
+    from public.formula_versions v join public.formulas f on f.id = v.formula_id where v.id = p_version;
+  if v_status is distinct from 'approved' then
+    raise exception 'Production needs an approved formula version';
+  end if;
+  if v_fclient is not null and v_fclient <> so.client_id then
+    raise exception 'This formula belongs to another client';
+  end if;
+
+  v_project := l.project_id;
+  if v_project is null then
+    insert into public.projects (client_id, name, product_format, status)
+    values (so.client_id, l.description, v_format, 'order')
+    returning id into v_project;
+  end if;
+
+  perform set_config('nk.line_link', 'on', true);
+  update public.sales_order_lines set formula_version_id = p_version, project_id = v_project where id = p_line;
+  perform set_config('nk.line_link', 'off', true);
+  return v_project;
+end
+$$;
+
+revoke execute on function public.link_order_line_formula(uuid, uuid) from public, anon;
+grant execute on function public.link_order_line_formula(uuid, uuid) to authenticated;
 
 -- ------------------------------------------------------------ views
 -- Packs count products only (no services); lines of every kind are listed.
@@ -243,7 +315,8 @@ select so.id, so.code, so.status, so.requested_date, so.created_at, so.confirmed
 
 create or replace view public.sales_order_line_overview as
 select l.id, l.order_id, l.quantity, l.sort_order, l.project_id, p.code as project_code, p.name as project_name,
-       f.id as formula_id, f.code as formula_code, coalesce(f.name, l.description) as product, f.name_bg as product_bg, f.product_format,
+       f.id as formula_id, f.code as formula_code, coalesce(l.description, f.name) as product,
+       case when l.kind = 'offer' then f.name_bg end as product_bg, f.product_format,
        v.id as formula_version_id, v.version as formula_version, l.offer_id,
        l.kind, l.calc_offer_id, co.offer_no as calc_offer_no
   from public.sales_order_lines l
