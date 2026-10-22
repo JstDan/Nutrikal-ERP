@@ -5,6 +5,8 @@ import { requireRole } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice, getDict, type Locale } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
 import { Wordmark } from "@/components/logo";
+import { ProformaPdfButton } from "@/components/proforma-pdf-button";
+import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 
 type Doc = {
   code: string; currency: string; vat_pct: string | null; created_at: string; customer_ref: string | null; notes: string | null;
@@ -55,11 +57,57 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
   const vatPct = Number(o.vat_pct ?? 0);
   const vat = Math.round(subtotal * vatPct) / 100;
   const grid = "grid-cols-[minmax(0,1fr)_56px_96px_104px]";
+  const buyerAddress = o.client_registration
+    || [o.client_address, [o.client_postal, o.client_city].filter(Boolean).join(" "), o.client_country].filter(Boolean).join(", ");
+
+  const model: ProformaPdfModel = {
+    fileName: `Proforma-${o.code}.pdf`,
+    title: P.title,
+    meta: [`${P.number} ${o.code}`, `${P.date}: ${formatDate(l, o.created_at)}`],
+    seller: {
+      heading: P.seller,
+      lines: [
+        s?.company_name ?? "", s?.company_address ?? "",
+        s?.company_id ? `${P.companyId}: ${s.company_id}` : "", s?.company_vat ? `${P.vatNo}: ${s.company_vat}` : "",
+        [s?.company_email, s?.company_phone].filter(Boolean).join(" · "),
+      ].filter(Boolean),
+    },
+    buyer: {
+      heading: P.buyer,
+      lines: [
+        o.client, buyerAddress,
+        o.client_company_id ? `${P.companyId}: ${o.client_company_id}` : "", o.client_vat ? `${P.vatNo}: ${o.client_vat}` : "",
+        o.customer_ref ? fmt(P.customerRef, { ref: o.customer_ref }) : "",
+      ].filter(Boolean),
+    },
+    head: [P.description, P.quantity, P.unitPrice, P.amount],
+    rows: lines.map((x) => ({
+      description: x.description,
+      note: x.offer_no ? fmt(P.accordingTo, { no: x.offer_no }) : null,
+      quantity: formatNumber(l, x.quantity),
+      unitPrice: money(Number(x.unit_price)),
+      amount: money(Number(x.unit_price) * x.quantity),
+    })),
+    totals: [
+      [P.subtotal, money(subtotal)],
+      [fmt(P.vat, { pct: formatNumber(l, vatPct) }), money(vat)],
+      [P.total, money(subtotal + vat)],
+    ],
+    vatNote: vatPct === 0 ? P.zeroVat : null,
+    bank: {
+      heading: P.bank,
+      lines: [`${P.bankName}: ${s?.bank_name ?? ""}`, `IBAN: ${s?.bank_iban ?? ""}`, `BIC: ${s?.bank_bic ?? ""}`, fmt(P.reference, { code: o.code })],
+    },
+    notes: o.notes,
+    footer: P.note,
+    logoDataUrl: s?.logo_data_url ?? null,
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2 print:hidden">
-        <PrintButton label={ui.orders.proforma.printNow} />
+        <ProformaPdfButton model={model} label={ui.orders.proforma.download} errorText={ui.orders.proforma.downloadFailed} />
+        <PrintButton label={ui.orders.proforma.printNow} variant="outline" />
         <Link href={`/orders/${id}`} className="btn btn-outline">{ui.orders.proforma.back}</Link>
       </div>
 
@@ -91,7 +139,7 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
             <h2 className="label m-0">{P.buyer}</h2>
             <div className="font-semibold break-words">{o.client}</div>
             <div className="text-ink-2 break-words">
-              {o.client_registration || [o.client_address, [o.client_postal, o.client_city].filter(Boolean).join(" "), o.client_country].filter(Boolean).join(", ")}
+              {buyerAddress}
             </div>
             {o.client_company_id && <div className="text-ink-2">{P.companyId}: {o.client_company_id}</div>}
             {o.client_vat && <div className="text-ink-2">{P.vatNo}: {o.client_vat}</div>}
