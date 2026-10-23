@@ -859,6 +859,7 @@ export const en = {
     },
     detail: {
       lines: "Products",
+      withCapsules: "{name} – {n} capsules",
       product: "Product",
       project: "Project",
       offer: "Offer",
@@ -907,6 +908,7 @@ export const en = {
     },
     proforma: {
       title: "Proforma invoice",
+      withCapsules: "{name} – {n} capsules",
       number: "No",
       date: "Date",
       seller: "Supplier",
@@ -1079,6 +1081,14 @@ export const en = {
       removed: "No longer in the catalog",
       pricesChanged: "This product's prices in the catalog have changed.",
       updatePrices: "Use current prices",
+      capsules: "Capsules per jar",
+      capsulesHint: "Standard {std}; from {min} to {max}. The price changes in proportion.",
+      servings: "Servings per jar",
+      servingsValue: "{n} ({caps} capsules each)",
+      pricesFor: "catalog prices are for {n} capsules",
+      withCapsules: "{name} – {n} capsules",
+      composition: "Composition per serving",
+      compositionHint: "From the product catalogue.",
     },
     catalogTab: {
       title: "Catalog formulas",
@@ -1089,7 +1099,7 @@ export const en = {
       status: "Status",
       statusActive: "Active",
       statusRemoved: "Removed from the sheet",
-      managedInSheet: "Codes, names and prices are changed only in the catalog Google Sheet.",
+      managedInSheet: "Codes, names and prices are changed only in the catalog Google Sheet. Products without a known composition are not shown.",
       syncTitle: "Sync with the catalog Google Sheet",
       syncHint: "The catalog sheet is the source of the catalog products and syncs automatically every day at 17:00 (Sofia time), separately from the raw material price list; press Sync to update it now. New products are added, prices updated, and products removed from the sheet are deactivated (saved offers keep their prices).",
       ok: "Synced: {added} new, {changed} changed, {unchanged} unchanged",
@@ -1288,6 +1298,7 @@ export const en = {
       extraItems: "Each extra line needs a description, a quantity above 0 and a price",
       catalogProduct: "Choose a product from the catalog",
       belowMoq: "The quantity is below this product's minimum",
+      capsuleRange: "Enter a whole number from 30 to 180",
     },
     offers: {
       title: "Calculator offers",

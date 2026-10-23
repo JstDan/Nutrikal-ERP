@@ -1,10 +1,12 @@
 import { catalogMinQty } from './catalogImport';
+import { CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, standardCapsules } from './catalogCapsules';
 import { parseNum, parsePositiveInt } from './numbers';
 import { isCapsule, type OfferForm } from './types';
 
 export type FieldKey =
   | 'client'
   | 'catalogProduct'
+  | 'catalogCapsules'
   | 'productType'
   | 'rows'
   | 'capsulesPerDose'
@@ -15,12 +17,13 @@ export type FieldKey =
 
 /** Message keys in the calc.validation dictionary. */
 export type ValidationCode =
-  | 'required' | 'email' | 'client' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq';
+  | 'required' | 'email' | 'client' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq' | 'capsuleRange';
 
 /** Field order = order on the page, used to scroll to the first error. */
 export const FIELD_ORDER: FieldKey[] = [
   'client',
   'catalogProduct',
+  'catalogCapsules',
   'productType',
   'rows',
   'capsulesPerDose',
@@ -48,6 +51,10 @@ export function validateOffer(form: OfferForm): ValidationErrors {
   if (form.mode === 'catalog') {
     // Catalog product: no formula or packaging; the quantity must reach the product's smallest price step.
     if (!form.catalog) errors.catalogProduct = 'catalogProduct';
+    if (standardCapsules(form) && form.catalogCapsules.trim()) {
+      const caps = parsePositiveInt(form.catalogCapsules);
+      if (!caps || caps < CATALOG_CAPSULES_MIN || caps > CATALOG_CAPSULES_MAX) errors.catalogCapsules = 'capsuleRange';
+    }
     if (!units) errors.numberOfUnits = 'positiveInt';
     else if (form.catalog && units < catalogMinQty(form.catalog.tiers)) errors.numberOfUnits = 'belowMoq';
   } else {

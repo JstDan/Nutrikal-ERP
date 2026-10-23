@@ -2,13 +2,14 @@
 
 import { useMemo } from "react";
 import { catalogMinQty, catalogPrice } from "@/lib/calculator/catalogImport";
+import { CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, catalogTiersFor, offerServings, standardCapsules } from "@/lib/calculator/catalogCapsules";
 import { parsePositiveInt } from "@/lib/calculator/numbers";
 import type { CatalogProduct, FormulaMode, OfferForm } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
 import { fmt } from "@/lib/i18n";
 import { Chip } from "@/components/ui";
 import type { SectionProps } from "./client-sections";
-import { Field, Notice, Section, useCalcText } from "./kit";
+import { Field, Notice, NumberField, Section, useCalcText } from "./kit";
 import { SearchCombobox } from "./search-combobox";
 
 const MODES: FormulaMode[] = ["custom", "catalog"];
@@ -59,10 +60,16 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog 
   const picked = form.catalog;
   const current = useMemo(() => (picked ? catalog.find((p) => p.code === picked.code) : undefined), [catalog, picked]);
   const units = parsePositiveInt(form.numberOfUnits);
-  const step = picked && units ? catalogPrice(picked.tiers, units) : null;
+  const tiers = catalogTiersFor(form);
+  const step = picked && units ? catalogPrice(tiers, units) : null;
+  const std = standardCapsules(form);
+  const servings = offerServings(form);
+  const capsError = errorFor("catalogCapsules");
 
   const pick = (p: CatalogProduct) => {
-    setForm((f) => ({ ...f, catalog: { id: p.id, code: p.code, name: p.name, category: p.category, tiers: p.tiers } }));
+    const { active: _active, ...snapshot } = p;
+    // Another product starts from its standard capsules per jar
+    setForm((f) => ({ ...f, catalog: snapshot, catalogCapsules: f.catalog?.code === p.code ? f.catalogCapsules : "" }));
     touch("catalogProduct");
   };
 
@@ -102,12 +109,38 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog 
             </div>
             {!current && <Chip tone="red">{c.removed}</Chip>}
           </div>
+          {std && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field
+                label={c.capsules}
+                htmlFor={fieldId("catalogCapsules")}
+                error={capsError}
+                hint={fmt(c.capsulesHint, { std: num(std), min: num(CATALOG_CAPSULES_MIN), max: num(CATALOG_CAPSULES_MAX) })}
+              >
+                <NumberField
+                  id={fieldId("catalogCapsules")}
+                  integer
+                  value={form.catalogCapsules}
+                  placeholder={String(std)}
+                  onChange={(v) => setForm((f) => ({ ...f, catalogCapsules: v }))}
+                  onBlur={() => touch("catalogCapsules")}
+                  invalid={!!capsError}
+                />
+              </Field>
+              <div className="flex min-w-0 flex-col gap-1 text-sm">
+                <span className="label">{c.servings}</span>
+                <span className="flex min-h-11 items-center font-bold tabular-nums">
+                  {servings ? fmt(c.servingsValue, { n: num(servings), caps: num(picked.capsules_per_serving ?? 0) }) : "–"}
+                </span>
+              </div>
+            </div>
+          )}
           <div role="table" aria-label={c.steps} className="text-sm">
             <div role="row" className="row hide-sm grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2">
               <span role="columnheader">{c.quantity}</span>
               <span role="columnheader" className="text-right">{c.unitPrice}</span>
             </div>
-            {picked.tiers.map((x) => {
+            {tiers.map((x) => {
               const applies = step?.min_qty === x.min_qty;
               return (
                 <div role="row" key={x.min_qty} className={`row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-2 last:border-0 ${applies ? "font-bold" : ""}`}>
@@ -120,7 +153,27 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog 
               );
             })}
           </div>
-          <p className="m-0 text-xs text-ink-2">{fmt(c.minQty, { n: num(catalogMinQty(picked.tiers)) })}</p>
+          <p className="m-0 text-xs text-ink-2">
+            {fmt(c.minQty, { n: num(catalogMinQty(picked.tiers)) })}
+            {std && tiers !== picked.tiers && <> · {fmt(c.pricesFor, { n: num(std) })}</>}
+          </p>
+          {picked.composition && picked.composition.length > 0 && (
+            <details className="text-sm">
+              <summary className="flex min-h-11 cursor-pointer items-center font-semibold">{c.composition}</summary>
+              <div role="table" aria-label={c.composition}>
+                {picked.composition.map((x, i) => (
+                  <div role="row" key={i} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-1.5 last:border-0">
+                    <span role="cell" className="min-w-0 break-words">
+                      {x.name}
+                      {x.note && <span className="block text-xs text-ink-2">{x.note}</span>}
+                    </span>
+                    <span role="cell" className="text-right tabular-nums">{num(x.amount)} {x.unit}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="m-0 mt-1 text-xs text-ink-2">{c.compositionHint}</p>
+            </details>
+          )}
           {current && !sameTiers(picked, current) && (
             <Notice action={<button type="button" onClick={() => pick(current)} className="btn btn-outline whitespace-normal!">{c.updatePrices}</button>}>
               {c.pricesChanged}

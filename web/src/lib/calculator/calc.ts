@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
 import { catalogPrice } from './catalogImport';
+import { catalogTiersFor } from './catalogCapsules';
 import { isCapsule, type CatalogTier, type DoseUnit, type FixedCosts, type OfferForm, type ProductType } from './types';
 import { parseNum, parsePositiveInt } from './numbers';
 
@@ -201,12 +202,13 @@ export function marginFromMarkup(markupPct: number): number {
 }
 
 export function calcInputFromForm(form: OfferForm, fixedCosts: FixedCosts): CalcInput {
-  // A catalog product has no formula, packaging or fixed cost: its price comes from the catalog steps.
+  // A catalog product has no formula, packaging or fixed cost: its price comes from the catalog steps
+  // (in proportion to the capsules per jar when Sales changed them).
   const catalog = form.mode === 'catalog';
   return {
     productType: catalog ? null : form.productType,
     rows: catalog ? [] : form.rows.map((r) => ({ name: r.name, amount: parseNum(r.amount), unit: r.unit, pricePerKg: r.pricePerKg })),
-    catalogTiers: catalog ? (form.catalog?.tiers ?? []) : null,
+    catalogTiers: catalog ? catalogTiersFor(form) : null,
     capsulesPerDose: parsePositiveInt(form.capsulesPerDose),
     quantityPerUnit: parsePositiveInt(form.quantityPerUnit),
     numberOfUnits: parsePositiveInt(form.numberOfUnits),

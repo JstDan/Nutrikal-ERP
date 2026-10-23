@@ -882,6 +882,20 @@ await fails('users cannot call the scheduled catalog sync', () =>
   as('admin', `select calc_record_scheduled_catalog_sync('[]', '{}')`), 'permission denied');
 await fails('users cannot call the catalog sync body directly', () =>
   as('sales', `select calc_apply_catalog_sync('manual', '[]', '{}', null, null)`), 'permission denied');
+await ok('the catalog sync keeps the capsules per jar and composition of a product', async () => {
+  await db.query(`update calc_catalog_products set capsules_per_serving = 2, capsules_per_container = 60,
+    composition = '[{"name":"MSM","amount":200,"unit":"mg","note":null}]' where code = 'NTL-T1'`);
+  await as('sales', `select calc_record_catalog_sync('manual', $1::jsonb, '{}')`, [catalogProducts([['NTL-T1', 'Joint Test v3', 6.5], ['NTL-T3', 'Daily Test', 4]])]);
+  const p = await one('sales', `select name, capsules_per_container, composition from calc_catalog_products where code = 'NTL-T1'`);
+  eq(p.name, 'Joint Test v3', 'name from the sheet');
+  eq(p.capsules_per_container, 60, 'capsules kept');
+  eq(p.composition[0].name, 'MSM', 'composition kept');
+});
+await fails('sales cannot change the capsules per jar of a catalog product', () =>
+  as('sales', `update calc_catalog_products set capsules_per_container = 90 where code = 'NTL-T1'`), 'permission denied');
+await ok('production cannot read catalog compositions', async () => {
+  eq((await as('production', 'select composition from calc_catalog_products')).length, 0, 'production');
+});
 await fails('sales cannot add catalog products directly', () =>
   as('sales', `insert into calc_catalog_products (code, name, tiers) values ('X', 'X', '[{"min_qty":1,"price":1}]')`), 'permission denied');
 await fails('admin cannot change catalog prices directly', () =>
