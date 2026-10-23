@@ -137,10 +137,12 @@ The browser tests create a client, contact, project and task, receive and releas
 
 ## To do (owner, Oct 2026)
 
-- Calculator, capsules: let Sales change the number of capsules per jar.
+- Catalog products without composition or capsule data (EN, M, PB, GP and some powders): fill them in (`calc_catalog_products.composition`, `capsules_per_container`).
 - Calculator, catalog formulas: let Sales change the formula of a ready-made catalog product.
 
 ## Points to review
+
+- Catalog capsule products (Oct 2026): Sales can set 30–180 capsules per jar on an offer; the catalog price is for the standard count (60) and changes in proportion. Composition and serving data come from the Product Catalogue v2.1, matched on the catalog sheet codes (the sheet wins on codes, names and prices).
 
 - Bulgarian text: Poppins has no Cyrillic letters, so Bulgarian falls back to Montserrat, a similar geometric typeface. Latin text stays in Poppins.
 - `NK-WH` (Nutrikal warehouse) is seeded as a location. Deactivate it if all stock is kept at the partner.

@@ -37,6 +37,22 @@ export interface CatalogProduct {
   /** Smallest step first. */
   tiers: CatalogTier[];
   active: boolean;
+  /** Capsule products: capsules per serving and the standard capsules per jar the prices are for. Null otherwise. */
+  capsules_per_serving: number | null;
+  capsules_per_container: number | null;
+  /** Powders: grams per serving. */
+  serving_g: number | null;
+  servings_per_container: number | null;
+  /** Amount per serving, from the product catalogue. Null when not known. */
+  composition: CatalogIngredient[] | null;
+}
+
+/** One ingredient of a catalog product, per serving. */
+export interface CatalogIngredient {
+  name: string;
+  amount: number;
+  unit: DoseUnit;
+  note: string | null;
 }
 
 /** Custom formula (raw materials, packaging, markup) or a catalog product (price from the catalog). */
@@ -147,6 +163,8 @@ export interface OfferForm {
   mode: FormulaMode;
   /** Catalog mode: the chosen product – a snapshot of its code, name and prices when it was picked. */
   catalog: Omit<CatalogProduct, 'active'> | null;
+  /** Catalog capsule product: capsules per jar on this offer (the standard count when empty). */
+  catalogCapsules: string;
   /** The CRM client the offer is for (receiver and invoice below are a snapshot of its data). Older offers: null. */
   clientId: string | null;
   /** Nutrikal contact person printed on the offer (the sales email comes from Settings). */

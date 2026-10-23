@@ -7,13 +7,14 @@ import { PrintButton } from "@/components/print-button";
 import { Wordmark } from "@/components/logo";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
+import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
 
 type Doc = {
   code: string; currency: string; vat_pct: string | null; created_at: string; customer_ref: string | null; notes: string | null;
   locale: Locale; client: string; client_vat: string | null; client_company_id: string | null; client_address: string | null;
   client_registration: string | null; client_city: string | null; client_postal: string | null; client_country: string;
 };
-type Line = { kind: string; description: string; quantity: number; unit_price: string; offer_no: string | null };
+type Line = { kind: string; description: string; quantity: number; unit_price: string; offer_no: string | null; capsules: number | null };
 type Seller = {
   company_name: string; company_id: string; company_vat: string; company_address: string; company_email: string; company_phone: string;
   bank_name: string; bank_iban: string; bank_bic: string; logo_data_url: string | null;
@@ -35,7 +36,7 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
     if (!doc) return null;
     const lines = (await tx.query<Line>(
       `select l.kind, coalesce(l.description, f.name) as description, l.quantity, l.unit_price::text,
-              coalesce(co.offer_no, of.code) as offer_no
+              coalesce(co.offer_no, of.code) as offer_no, ${calcOfferCapsulesSql("co")} as capsules
          from sales_order_lines l
          left join calc_offers co on co.id = l.calc_offer_id
          left join offers of on of.id = l.offer_id
@@ -53,6 +54,7 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
   const l = o.locale === "bg" ? "bg" : "en";
   const P = getDict(l).orders.proforma;
   const money = (n: number | string) => formatPrice(l, n, o.currency);
+  const describe = (x: Line) => (x.capsules ? fmt(P.withCapsules, { name: x.description, n: formatNumber(l, x.capsules) }) : x.description);
   const subtotal = lines.reduce((a, x) => a + Number(x.unit_price) * x.quantity, 0);
   const vatPct = Number(o.vat_pct ?? 0);
   const vat = Math.round(subtotal * vatPct) / 100;
@@ -82,7 +84,7 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
     },
     head: [P.description, P.quantity, P.unitPrice, P.amount],
     rows: lines.map((x) => ({
-      description: x.description,
+      description: describe(x),
       note: x.offer_no ? fmt(P.accordingTo, { no: x.offer_no }) : null,
       quantity: formatNumber(l, x.quantity),
       unitPrice: money(Number(x.unit_price)),
@@ -155,7 +157,7 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
           {lines.map((x, i) => (
             <div key={i} className={`row ${grid} border-b border-mist py-1.5`}>
               <span className="min-w-0 break-words">
-                {x.description}
+                {describe(x)}
                 {x.offer_no && <span className="block text-xs text-ink-2">{fmt(P.accordingTo, { no: x.offer_no })}</span>}
               </span>
               <span className="text-right">{formatNumber(l, x.quantity)}</span>

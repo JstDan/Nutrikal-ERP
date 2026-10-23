@@ -52,7 +52,8 @@ export async function loadSettings(userId: string): Promise<Settings> {
 export async function loadCatalog(userId: string, { includeInactive = false } = {}): Promise<CatalogProduct[]> {
   const rows = await q<CatalogProduct>(
     userId,
-    `select id, code, name, category, tiers, active from calc_catalog_products
+    `select id, code, name, category, tiers, active, capsules_per_serving, capsules_per_container,
+            serving_g::float as serving_g, servings_per_container, composition from calc_catalog_products
       where active or $1 order by active desc, sort_order, code`,
     [includeInactive],
   );

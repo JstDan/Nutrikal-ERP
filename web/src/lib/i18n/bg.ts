@@ -861,6 +861,7 @@ export const bg: Dict = {
     },
     detail: {
       lines: "Продукти",
+      withCapsules: "{name} – {n} капсули",
       product: "Продукт",
       project: "Проект",
       offer: "Оферта",
@@ -909,6 +910,7 @@ export const bg: Dict = {
     },
     proforma: {
       title: "Проформа фактура",
+      withCapsules: "{name} – {n} капсули",
       number: "№",
       date: "Дата",
       seller: "Доставчик",
@@ -1081,6 +1083,14 @@ export const bg: Dict = {
       removed: "Вече не е в каталога",
       pricesChanged: "Цените на този продукт в каталога са променени.",
       updatePrices: "Използвай текущите цени",
+      capsules: "Капсули в бурканче",
+      capsulesHint: "Стандартно {std}; от {min} до {max}. Цената се променя пропорционално.",
+      servings: "Дози в бурканче",
+      servingsValue: "{n} (по {caps} капсули)",
+      pricesFor: "цените в каталога са за {n} капсули",
+      withCapsules: "{name} – {n} капсули",
+      composition: "Състав на доза",
+      compositionHint: "От продуктовия каталог.",
     },
     catalogTab: {
       title: "Каталожни формули",
@@ -1290,6 +1300,7 @@ export const bg: Dict = {
       extraItems: "Всеки допълнителен ред трябва да има описание, количество над 0 и цена",
       catalogProduct: "Изберете продукт от каталога",
       belowMoq: "Количеството е под минималното за този продукт",
+      capsuleRange: "Въведете цяло число от 30 до 180",
     },
     offers: {
       title: "Оферти от калкулатора",

@@ -6,6 +6,7 @@ import { fmt, formatDate, formatNumber, formatPrice } from "@/lib/i18n";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { orderTone } from "@/lib/status";
+import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
 import { addOrderLine, createProductionFromLine, linkOrderLineFormula, removeOrderLine, saveOrder, setOrderStatus } from "@/app/actions";
 
 type Overview = { id: string; code: string; status: string; requested_date: string | null; client: string; client_id: string };
@@ -13,6 +14,7 @@ type Line = {
   id: string; quantity: number; project_id: string | null; project_code: string | null; project_name: string | null; formula_id: string | null;
   formula_code: string | null; formula_version: number | null; formula_version_id: string | null; product: string; product_bg: string | null;
   offer_id: string | null; kind: "offer" | "calc_offer" | "service"; calc_offer_id: string | null; calc_offer_no: string | null;
+  capsules: number | null;
 };
 type Approved = { id: string; code: string; name: string; name_bg: string | null; version: number };
 type Commercial = {
@@ -46,9 +48,10 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
       "select id, code, status, requested_date::text, client, client_id from sales_order_overview where id = $1", [id])).rows[0];
     if (!o) return null;
     const lines = (await tx.query<Line>(
-      `select id, quantity, project_id, project_code, project_name, formula_id, formula_code, formula_version, formula_version_id, product, product_bg,
-              offer_id, kind, calc_offer_id, calc_offer_no
-         from sales_order_line_overview where order_id = $1 order by sort_order`, [id])).rows;
+      `select l.id, l.quantity, l.project_id, l.project_code, l.project_name, l.formula_id, l.formula_code, l.formula_version, l.formula_version_id,
+              l.product, l.product_bg, l.offer_id, l.kind, l.calc_offer_id, l.calc_offer_no, ${calcOfferCapsulesSql("co")} as capsules
+         from sales_order_line_overview l left join calc_offers co on co.id = l.calc_offer_id
+        where l.order_id = $1 order by l.sort_order`, [id])).rows;
     const mos = (await tx.query<Mo>(
       `select id, code, status, sales_order_line_id, quantity from manufacturing_orders
         where sales_order_line_id in (select id from sales_order_line_overview where order_id = $1) order by code`, [id])).rows;
@@ -120,7 +123,9 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                 <div key={l.id} className="flex flex-col gap-3 border-b border-mist pb-4 last:border-0">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-[1_1_240px]">
-                      <div className="font-semibold break-words">{productName(l)}</div>
+                      <div className="font-semibold break-words">
+                        {l.capsules ? fmt(d.withCapsules, { name: productName(l), n: formatNumber(locale, l.capsules) }) : productName(l)}
+                      </div>
                       <div className="text-xs text-ink-2">
                         {l.kind === "calc_offer" && l.calc_offer_id && (
                           <Link href={`/offers/calc/${l.calc_offer_id}`} className="text-ink-2">{fmt(d.calcOffer, { no: l.calc_offer_no ?? "" })}</Link>

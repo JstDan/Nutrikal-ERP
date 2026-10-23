@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { fmt } from '@/lib/i18n';
 import { unitPriceFor, type CalcResult, type OfferLine } from './calc';
 import { formatDate, formatNumber, parseNum } from './numbers';
+import { catalogTiersFor, offerCapsules, offerServings } from './catalogCapsules';
 import { productName } from './offerRecord';
 import { CAPSULE_SIZES, isCapsule, type OfferForm, type ProductType, type Settings } from './types';
 
@@ -126,10 +127,11 @@ export function toPdfModel(
   const units = parseNum(form.numberOfUnits) ?? 0;
   const perUnit = form.quantityPerUnit;
   const name = productName(form) || 'Custom formula';
+  const catalogCaps = offerCapsules(form);
 
   const productLine: OfferLine = {
     description: catalog
-      ? name
+      ? catalogCaps ? `${name} - ${catalogCaps} capsules` : name
       : capsule
         ? `${name} - ${perUnit} capsules with ${packagingPlural[type]}`
         : `${name} - ${perUnit} doses in ${packagingPlural[type]}`,
@@ -147,6 +149,14 @@ export function toPdfModel(
   const servings = result.dosesPerUnit !== null ? formatNumber(result.dosesPerUnit, 2) : '–';
   if (catalog) {
     packaging.push(`Product code: ${catalog.code}`, ...(catalog.category ? [catalog.category] : []));
+    const catalogServings = offerServings(form);
+    if (catalogCaps) {
+      packaging.push(
+        `${catalogCaps} capsules per container.`,
+        ...(catalog.capsules_per_serving ? [`Capsules/Serving: ${catalog.capsules_per_serving}`] : []),
+        ...(catalogServings ? [`Servings/Container: ${formatNumber(catalogServings, 2)}`] : []),
+      );
+    }
   } else if (capsule) {
     const size = (Object.keys(CAPSULE_SIZES) as (keyof typeof CAPSULE_SIZES)[]).includes(form.capsuleSize)
       ? `, capsule size ${form.capsuleSize.replace('size', '')}`
@@ -175,7 +185,7 @@ export function toPdfModel(
   // Sales prices table: the offer quantity plus any price tiers; one column per quantity, no totals.
   // A catalog product shows its own price steps instead of tiers built from a markup.
   const tierPrices = catalog
-    ? catalog.tiers.map((x) => ({ units: x.min_qty, price: x.price }))
+    ? catalogTiersFor(form).map((x) => ({ units: x.min_qty, price: x.price }))
     : (form.priceTiers ?? []).flatMap((tier) => {
         const qty = parseNum(tier.qty);
         const markup = parseNum(tier.markup);

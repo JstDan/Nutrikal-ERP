@@ -3,6 +3,7 @@
 import type { CalcResult } from "@/lib/calculator/calc";
 import { parseNum } from "@/lib/calculator/numbers";
 import { catalogPrice } from "@/lib/calculator/catalogImport";
+import { catalogTiersFor, offerCapsules } from "@/lib/calculator/catalogCapsules";
 import { productName } from "@/lib/calculator/offerRecord";
 import { isCapsule, type OfferForm } from "@/lib/calculator/types";
 import { fmt } from "@/lib/i18n";
@@ -119,12 +120,15 @@ export function ClientSummary({ form, result: r }: { form: OfferForm; result: Ca
   const units = parseNum(form.numberOfUnits) ?? 0;
   const discount = Math.min(100, Math.max(0, parseNum(form.discount) ?? 0));
   const catalog = form.mode === "catalog" ? form.catalog : null;
-  const step = catalog && units ? catalogPrice(catalog.tiers, units) : null;
+  const step = catalog && units ? catalogPrice(catalogTiersFor(form), units) : null;
+  const caps = offerCapsules(form);
 
   const lines = [
     {
       key: "product",
-      description: catalog ? productName(form) : type ? form.offer.productName || t.productType[type] : "–",
+      description: catalog
+        ? caps ? fmt(t.catalog.withCapsules, { name: productName(form), n: num(caps) }) : productName(form)
+        : type ? form.offer.productName || t.productType[type] : "–",
       qty: units,
       unit: t.results.pcs,
       price: r.unitPrice,
@@ -140,6 +144,7 @@ export function ClientSummary({ form, result: r }: { form: OfferForm; result: Ca
           <div>
             <InfoLine label={t.results.product} value={<span className="break-words">{productName(form) || "–"}</span>} />
             <InfoLine label={t.catalog.code} value={catalog?.code ?? "–"} />
+            {caps && <InfoLine label={t.catalog.capsules} value={num(caps)} />}
             <InfoLine label={t.results.quantity} value={units ? num(units) : "–"} />
             <InfoLine label={t.catalog.step} value={step ? fmt(t.catalog.fromQty, { n: num(step.min_qty) }) : "–"} />
           </div>
