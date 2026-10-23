@@ -137,7 +137,7 @@ The browser tests create a client, contact, project and task, receive and releas
 
 ## To do (owner, Oct 2026)
 
-- Catalog products without composition or capsule data (EN, M, PB, GP and some powders): fill them in (`calc_catalog_products.composition`, `capsules_per_container`).
+- Catalog products without composition (EN, M, PB, GP and some powders) are hidden in the calculator until their composition is filled in (`calc_catalog_products.composition`, `capsules_per_container`).
 - Calculator, catalog formulas: let Sales change the formula of a ready-made catalog product.
 
 ## Points to review

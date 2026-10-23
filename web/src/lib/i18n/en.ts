@@ -1099,7 +1099,7 @@ export const en = {
       status: "Status",
       statusActive: "Active",
       statusRemoved: "Removed from the sheet",
-      managedInSheet: "Codes, names and prices are changed only in the catalog Google Sheet.",
+      managedInSheet: "Codes, names and prices are changed only in the catalog Google Sheet. Products without a known composition are not shown.",
       syncTitle: "Sync with the catalog Google Sheet",
       syncHint: "The catalog sheet is the source of the catalog products and syncs automatically every day at 17:00 (Sofia time), separately from the raw material price list; press Sync to update it now. New products are added, prices updated, and products removed from the sheet are deactivated (saved offers keep their prices).",
       ok: "Synced: {added} new, {changed} changed, {unchanged} unchanged",
