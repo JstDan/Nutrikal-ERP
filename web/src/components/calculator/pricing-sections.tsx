@@ -7,7 +7,7 @@ import { isCapsule, type ExtraItem, type PriceTier, type ServicePreset } from "@
 import { fieldId } from "@/lib/calculator/validation";
 import { fmt } from "@/lib/i18n";
 import type { SectionProps } from "./client-sections";
-import { Field, InfoLine, Notice, NumberField, RemoveButton, Section, SubHeading, SummaryBox, Toggle, inputClass, useCalcText, type CalcDict } from "./kit";
+import { Field, Notice, NumberField, RemoveButton, Section, SubHeading, SummaryBox, Toggle, inputClass, useCalcText, type CalcDict } from "./kit";
 
 export const quantityLabel = (t: CalcDict, type: string | null) =>
   type === "powder" ? t.quantity.dosesPerPouch : t.quantity.capsulesPerBottle;
