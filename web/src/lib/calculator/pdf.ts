@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { fmt } from '@/lib/i18n';
 import { unitPriceFor, type CalcResult, type OfferLine } from './calc';
 import { formatDate, formatNumber, parseNum } from './numbers';
-import { catalogTiersFor, offerCapsules, offerServings } from './catalogCapsules';
+import { catalogTiersFor, hasAluminiumLid, offerCapsules, offerServings } from './catalogCapsules';
 import { productName } from './offerRecord';
 import { CAPSULE_SIZES, isCapsule, type OfferForm, type ProductType, type Settings } from './types';
 
@@ -39,6 +39,7 @@ const PDF = {
   packaging_capsules_glass: 'Glass bottle',
   packaging_capsules_plastic: 'Plastic bottle',
   packaging_powder: 'Doypack (pouch)',
+  aluminiumLid: 'with aluminium cap',
 };
 
 export interface PdfImage {
@@ -152,7 +153,7 @@ export function toPdfModel(
     const catalogServings = offerServings(form);
     if (catalogCaps) {
       packaging.push(
-        `${catalogCaps} capsules per container.`,
+        `${PDF[form.jar === 'glass' ? 'packaging_capsules_glass' : 'packaging_capsules_plastic']}${hasAluminiumLid(form) ? ` ${PDF.aluminiumLid}` : ''}, ${catalogCaps} capsules per container.`,
         ...(catalog.capsules_per_serving ? [`Capsules/Serving: ${catalog.capsules_per_serving}`] : []),
         ...(catalogServings ? [`Servings/Container: ${formatNumber(catalogServings, 2)}`] : []),
       );

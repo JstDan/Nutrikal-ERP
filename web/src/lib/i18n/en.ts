@@ -1093,6 +1093,13 @@ export const en = {
       editIngredientsHint: "Makes a custom formula from this product's ingredients, with everything entered so far, priced from the raw materials.",
       editConfirm: "The custom formula already has raw materials. Replace them with this product's ingredients?",
       replace: "Replace",
+      glassJar: "Glass jar",
+      lid: "Lid",
+      lid_plastic: "Plastic",
+      lid_aluminium: "Aluminium",
+      lidExtra: "+{price} per jar",
+      lidIncluded: "incl. {price} for the aluminium lid",
+      withAluminiumLid: "{jar}, aluminium lid",
     },
     catalogTab: {
       title: "Catalog formulas",

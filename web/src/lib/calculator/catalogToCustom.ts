@@ -79,7 +79,7 @@ export function capsuleSizeFor(fillMg: number): CapsuleSize {
 /**
  * The catalog offer as a custom formula. Client, offer data, quantity, markup, VAT and the rest stay as typed;
  * the catalog product stays on the form so switching back to Catalog formula keeps it.
- * Capsule products leave the jar type (glass or plastic) to be chosen.
+ * Capsule products keep the jar (plastic or glass) and the lid chosen on the catalog product.
  */
 export function catalogToCustom(form: OfferForm, materials: RawMaterial[]): OfferForm {
   const p = form.catalog;
@@ -94,7 +94,7 @@ export function catalogToCustom(form: OfferForm, materials: RawMaterial[]): Offe
     const caps = offerCapsules(form);
     return {
       ...next,
-      productType: next.productType === 'capsules_glass' || next.productType === 'capsules_plastic' ? next.productType : null,
+      productType: form.jar === 'glass' ? 'capsules_glass' : 'capsules_plastic',
       capsulesPerDose: String(p.capsules_per_serving),
       capsuleSize: size,
       maxFillMg: String(CAPSULE_SIZES[size]),

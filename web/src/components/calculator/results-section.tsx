@@ -3,7 +3,7 @@
 import type { CalcResult } from "@/lib/calculator/calc";
 import { parseNum } from "@/lib/calculator/numbers";
 import { catalogPrice } from "@/lib/calculator/catalogImport";
-import { catalogTiersFor, offerCapsules } from "@/lib/calculator/catalogCapsules";
+import { catalogTiersFor, hasAluminiumLid, offerCapsules } from "@/lib/calculator/catalogCapsules";
 import { productName } from "@/lib/calculator/offerRecord";
 import { isCapsule, type OfferForm } from "@/lib/calculator/types";
 import { fmt } from "@/lib/i18n";
@@ -145,6 +145,12 @@ export function ClientSummary({ form, result: r }: { form: OfferForm; result: Ca
             <InfoLine label={t.results.product} value={<span className="break-words">{productName(form) || "–"}</span>} />
             <InfoLine label={t.catalog.code} value={catalog?.code ?? "–"} />
             {caps && <InfoLine label={t.catalog.capsules} value={num(caps)} />}
+            {caps && (
+              <InfoLine
+                label={t.results.packaging}
+                value={hasAluminiumLid(form) ? fmt(t.catalog.withAluminiumLid, { jar: t.productType.packaging_capsules_plastic }) : t.productType[form.jar === "glass" ? "packaging_capsules_glass" : "packaging_capsules_plastic"]}
+              />
+            )}
             <InfoLine label={t.results.quantity} value={units ? num(units) : "–"} />
             <InfoLine label={t.catalog.step} value={step ? fmt(t.catalog.fromQty, { n: num(step.min_qty) }) : "–"} />
           </div>
