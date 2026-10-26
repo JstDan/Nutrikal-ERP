@@ -959,6 +959,8 @@ await fails('a line cannot be linked to a formula before the payment', async () 
   const l = await one('admin', `select id from sales_order_lines where calc_offer_id = $1`, [calcA.id]);
   await as('admin', 'select link_order_line_formula($1, $2)', [l.id, calcV.id]);
 }, 'confirm the payment');
+await fails('an unpaid order has no invoice', () =>
+  as('sales', 'select create_order_invoice($1)', [calcOrder.id]), 'payment is confirmed');
 await ok('admin confirms the payment: paid in full', async () => {
   await as('admin', `update sales_orders set status = 'confirmed' where id = $1`, [calcOrder.id]);
   const o = await one('admin', 'select status, deposit_received_on, balance_received_on from sales_orders where id = $1', [calcOrder.id]);
@@ -990,6 +992,50 @@ await ok('production sees no calculator orders', async () => {
   eq((await as('production', 'select * from sales_order_lines')).length, 0, 'lines');
   eq((await as('production', 'select * from sales_order_overview')).length, 0, 'overview');
 });
+
+console.log('\nInvoices');
+let inv;
+await ok('a paid order gets one draft invoice with its lines, opened again on the second call', async () => {
+  inv = (await one('sales', 'select create_order_invoice($1) as id', [calcOrder.id])).id;
+  eq((await one('sales', 'select create_order_invoice($1) as id', [calcOrder.id])).id, inv, 'same draft');
+  const i = await one('sales', 'select status, number, vat_pct::float as vat, tax_point_date is not null as tp from invoices where id = $1', [inv]);
+  eq(i.status, 'draft', 'status'); eq(i.number, null, 'no number yet'); eq(i.vat, 20, 'vat'); eq(i.tp, true, 'tax point');
+  const lines = await as('sales', 'select kind, quantity::int as q, amount::float as a from invoice_lines where invoice_id = $1 order by sort_order', [inv]);
+  eq(lines.map(l => `${l.kind}:${l.q}:${l.a}`).join(','), 'calc_offer:1000:4500,calc_offer:500:3000,service:1:300', 'lines');
+});
+await fails('nobody writes invoices directly', () =>
+  as('admin', `update invoices set vat_pct = 0 where id = $1`, [inv]), 'permission denied');
+await fails('sales cannot issue with another number than the next one', async () => {
+  await as('admin', `update number_series set next_number = 1000000041 where key = 'invoice'`);
+  await as('sales', `select issue_invoice($1, '1000000050', current_date)`, [inv]);
+}, 'only admin');
+await fails('admin confirms a number that is not the next one', () =>
+  as('admin', `select issue_invoice($1, '1000000050', current_date)`, [inv]), 'confirm it');
+await fails('the number has 10 digits', () =>
+  as('sales', `select issue_invoice($1, '41', current_date)`, [inv]), '10 digits');
+await ok('sales issues with the next number: totals fixed, series moves on', async () => {
+  eq((await one('sales', `select issue_invoice($1, next_invoice_number(), current_date) as n`, [inv])).n, '1000000041', 'number');
+  const i = await one('sales', 'select status, subtotal::float as s, vat_amount::float as v, total::float as t, buyer ->> \'name\' as buyer from invoices where id = $1', [inv]);
+  eq(i.status, 'issued', 'status'); eq(i.s, 7800, 'subtotal'); eq(i.v, 1560, 'vat'); eq(i.t, 9360, 'total'); eq(!!i.buyer, true, 'buyer');
+  eq((await one('sales', 'select next_invoice_number() as n')).n, '1000000042', 'next');
+});
+await fails('an issued invoice cannot be changed', () =>
+  as('admin', `select issue_invoice($1, '1000000042', current_date)`, [inv]), 'already issued');
+await fails('an issued invoice is locked even for the database owner', () =>
+  db.query(`update invoices set total = 1 where id = $1`, [inv]), 'credit or debit note');
+await fails('an invoice number is never used twice', async () => {
+  const o = (await db.query(`insert into sales_orders (client_id) values ($1) returning id`, [client.id])).rows[0];
+  const d = (await db.query(`insert into invoices (order_id, client_id, currency, seller, buyer) values ($1, $2, 'EUR', '{}', '{}') returning id`, [o.id, client.id])).rows[0];
+  await db.query(`insert into invoice_lines (invoice_id, kind, description, quantity, unit_price, amount) values ($1, 'service', 'X', 1, 1, 1)`, [d.id]);
+  await as('admin', `select issue_invoice($1, '1000000041', current_date, true)`, [d.id]);
+}, 'already used');
+await ok('production sees no invoices', async () => {
+  eq((await as('production', 'select * from invoices')).length, 0, 'invoices');
+  eq((await as('production', 'select * from invoice_lines')).length, 0, 'lines');
+  eq((await one('production', 'select next_invoice_number() as n')).n, null, 'series');
+});
+await fails('production cannot open an invoice', () =>
+  as('production', 'select create_order_invoice($1)', [calcOrder.id]), 'not allowed');
 
 console.log('\nExpected deliveries and stock counts');
 let edItem, edSupplier, edReq, ed1, ed2, edLot;

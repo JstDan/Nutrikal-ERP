@@ -4,7 +4,7 @@ import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice, getDict, type Locale } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
-import { Wordmark } from "@/components/logo";
+import { SalesDocument } from "@/components/sales-document";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
@@ -58,7 +58,6 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
   const subtotal = lines.reduce((a, x) => a + Number(x.unit_price) * x.quantity, 0);
   const vatPct = Number(o.vat_pct ?? 0);
   const vat = Math.round(subtotal * vatPct) / 100;
-  const grid = "grid-cols-[minmax(0,1fr)_56px_96px_104px]";
   const buyerAddress = o.client_registration
     || [o.client_address, [o.client_postal, o.client_city].filter(Boolean).join(" "), o.client_country].filter(Boolean).join(", ");
 
@@ -113,77 +112,7 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
         <Link href={`/orders/${id}`} className="btn btn-outline">{ui.orders.proforma.back}</Link>
       </div>
 
-      <article lang={l} className="card flex flex-col gap-6 p-6 text-sm sm:p-10 print:border-0 print:p-0">
-        <header className="flex flex-wrap justify-between gap-6">
-          <div className="min-w-0">
-            {s?.logo_data_url
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={s.logo_data_url} alt={s.company_name} className="mb-2 h-[26px] w-auto" />
-              : <Wordmark height={26} className="mb-2" />}
-          </div>
-          <div className="min-w-0 text-right">
-            <h1 className="m-0 text-[28px] font-extrabold tracking-[0.6px]">{P.title}</h1>
-            <div>{P.number} <strong>{o.code}</strong></div>
-            <div>{P.date}: {formatDate(l, o.created_at)}</div>
-          </div>
-        </header>
-
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <section className="flex min-w-0 flex-col gap-1">
-            <h2 className="label m-0">{P.seller}</h2>
-            <div className="font-semibold">{s?.company_name}</div>
-            <div className="text-ink-2 break-words">{s?.company_address}</div>
-            {s?.company_id && <div className="text-ink-2">{P.companyId}: {s.company_id}</div>}
-            {s?.company_vat && <div className="text-ink-2">{P.vatNo}: {s.company_vat}</div>}
-            <div className="text-ink-2 break-all">{[s?.company_email, s?.company_phone].filter(Boolean).join(" · ")}</div>
-          </section>
-          <section className="flex min-w-0 flex-col gap-1">
-            <h2 className="label m-0">{P.buyer}</h2>
-            <div className="font-semibold break-words">{o.client}</div>
-            <div className="text-ink-2 break-words">
-              {buyerAddress}
-            </div>
-            {o.client_company_id && <div className="text-ink-2">{P.companyId}: {o.client_company_id}</div>}
-            {o.client_vat && <div className="text-ink-2">{P.vatNo}: {o.client_vat}</div>}
-            {o.customer_ref && <div className="text-ink-2">{fmt(P.customerRef, { ref: o.customer_ref })}</div>}
-          </section>
-        </div>
-
-        <section className="flex flex-col">
-          <div className={`row ${grid} border-b border-line py-1.5 font-semibold`}>
-            <span>{P.description}</span><span className="text-right">{P.quantity}</span>
-            <span className="text-right">{P.unitPrice}</span><span className="text-right">{P.amount}</span>
-          </div>
-          {lines.map((x, i) => (
-            <div key={i} className={`row ${grid} border-b border-mist py-1.5`}>
-              <span className="min-w-0 break-words">
-                {describe(x)}
-                {x.offer_no && <span className="block text-xs text-ink-2">{fmt(P.accordingTo, { no: x.offer_no })}</span>}
-              </span>
-              <span className="text-right">{formatNumber(l, x.quantity)}</span>
-              <span className="text-right">{money(Number(x.unit_price))}</span>
-              <span className="text-right">{money(Number(x.unit_price) * x.quantity)}</span>
-            </div>
-          ))}
-          <div className="ml-auto flex w-full max-w-[320px] flex-col gap-1 pt-3">
-            <div className="flex justify-between gap-4"><span>{P.subtotal}</span><span>{money(subtotal)}</span></div>
-            <div className="flex justify-between gap-4"><span>{fmt(P.vat, { pct: formatNumber(l, vatPct) })}</span><span>{money(vat)}</span></div>
-            <div className="flex justify-between gap-4 border-t border-line pt-1 text-base font-bold"><span>{P.total}</span><span>{money(subtotal + vat)}</span></div>
-          </div>
-          {vatPct === 0 && <p className="m-0 mt-2 text-xs text-ink-2">{P.zeroVat}</p>}
-        </section>
-
-        <section className="flex flex-col gap-1">
-          <h2 className="label m-0">{P.bank}</h2>
-          <div>{P.bankName}: {s?.bank_name}</div>
-          <div>IBAN: <strong>{s?.bank_iban}</strong></div>
-          <div>BIC: {s?.bank_bic}</div>
-          <div>{fmt(P.reference, { code: o.code })}</div>
-        </section>
-
-        {o.notes && <p className="m-0 whitespace-pre-line">{o.notes}</p>}
-        <p className="m-0 text-xs text-ink-2">{P.note}</p>
-      </article>
+      <SalesDocument model={model} lang={l} sellerName={s?.company_name ?? ""} />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { orderTone } from "@/lib/status";
 import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
-import { addOrderLine, createProductionFromLine, linkOrderLineFormula, removeOrderLine, saveOrder, setOrderStatus } from "@/app/actions";
+import { addOrderLine, createProductionFromLine, linkOrderLineFormula, openOrderInvoice, removeOrderLine, saveOrder, setOrderStatus } from "@/app/actions";
 
 type Overview = { id: string; code: string; status: string; requested_date: string | null; client: string; client_id: string };
 type Line = {
@@ -108,7 +108,14 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
           </span>
         }
         actions={canEdit && o.status !== "cancelled" ? (
-          <Link href={`/orders/${o.id}/proforma`} className="btn btn-primary">{d.exportProforma}</Link>
+          // Paid: the invoice replaces the proforma
+          !["draft", "unpaid"].includes(o.status) ? (
+            <ActionForm action={openOrderInvoice} submitLabel={d.exportInvoice} resetOnSuccess={false}>
+              <input type="hidden" name="order_id" value={o.id} />
+            </ActionForm>
+          ) : (
+            <Link href={`/orders/${o.id}/proforma`} className="btn btn-primary">{d.exportProforma}</Link>
+          )
         ) : undefined}
       />
 
