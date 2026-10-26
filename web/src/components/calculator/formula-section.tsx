@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { CalcResult } from "@/lib/calculator/calc";
+import { isUnmatched, needsCheck } from "@/lib/calculator/catalogToCustom";
 import { defaultUnitFor } from "@/lib/calculator/form";
 import { parseNum } from "@/lib/calculator/numbers";
 import { CAPSULE_SIZES, DOSE_UNITS, isCapsule, type CapsuleSize, type FormulaRow, type RawMaterial } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
+import { fmt } from "@/lib/i18n";
 import { Chip } from "@/components/ui";
 import type { SectionProps } from "./client-sections";
 import { Field, InfoLine, Notice, NumberField, RemoveButton, Section, SummaryBox, useCalcText } from "./kit";
@@ -15,17 +17,20 @@ const materialText = (m: RawMaterial) => m.name;
 const materialKey = (m: RawMaterial) => m.id;
 
 /** Search-as-you-type list of active raw materials. */
-function MaterialSearch({ materials, inFormula, onPick }: { materials: RawMaterial[]; inFormula: Set<string>; onPick: (m: RawMaterial) => void }) {
+function MaterialSearch({ materials, inFormula, onPick, id = "material-search", label, invalid }: {
+  materials: RawMaterial[]; inFormula: Set<string>; onPick: (m: RawMaterial) => void; id?: string; label?: string; invalid?: boolean;
+}) {
   const { t, eur } = useCalcText();
   return (
     <SearchCombobox
-      id="material-search"
+      id={id}
       items={materials}
       searchText={materialText}
       optionKey={materialKey}
       onPick={onPick}
       placeholder={t.formula.searchPlaceholder}
-      listLabel={t.formula.search}
+      listLabel={label ?? t.formula.search}
+      invalid={invalid}
       noResults={t.formula.noResults}
       renderOption={(m) => (
         <>
@@ -61,6 +66,8 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
     return counts;
   }, [form.rows]);
   const inFormula = useMemo(() => new Set(idCounts.keys()), [idCounts]);
+  /** Row whose material is being changed (a matched catalog ingredient). */
+  const [changing, setChanging] = useState<string | null>(null);
 
   const staleRows = form.rows.filter((r) => {
     const m = r.materialId ? byId.get(r.materialId) : undefined;
@@ -83,6 +90,11 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
 
   const updateRow = (key: string, patch: Partial<FormulaRow>) =>
     setForm((f) => ({ ...f, rows: f.rows.map((r) => (r.key === key ? { ...r, ...patch } : r)) }));
+  /** Raw material for an ingredient taken from a catalog product (checked by hand from now on). */
+  const setMaterial = (key: string, m: RawMaterial) => {
+    updateRow(key, { materialId: m.id, name: m.name, pricePerKg: m.price_eur_per_kg, regulatoryNote: m.regulatory_note, catalogName: undefined });
+    setChanging((s) => (s === key ? null : s));
+  };
   const removeRow = (key: string) => setForm((f) => ({ ...f, rows: f.rows.filter((r) => r.key !== key) }));
   const refreshPrices = () =>
     setForm((f) => ({
@@ -134,19 +146,49 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
             const dup = !!row.materialId && (idCounts.get(row.materialId) ?? 0) > 1;
             const removed = !!row.materialId && byId.get(row.materialId)?.active === false;
             const amountInvalid = row.amount.trim() !== "" && (parseNum(row.amount) ?? 0) <= 0;
+            const unmatched = isUnmatched(row);
+            const check = needsCheck(row);
             return (
               <li
                 key={row.key}
                 className={`grid items-center gap-3 rounded-sm border p-3 [grid-template-areas:'name_name_remove'_'amount_unit_unit'_'price_cost_cost'] grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:[grid-template-areas:'name_amount_unit_price_cost_remove'] md:grid-cols-[minmax(0,1fr)_130px_88px_96px_104px_44px] ${
-                  dup ? "border-amber bg-amber-tint/40" : "border-line"
+                  unmatched ? "border-red" : dup ? "border-amber bg-amber-tint/40" : "border-line"
                 }`}
               >
                 <div className="min-w-0 [grid-area:name]">
                   <div className="text-sm font-semibold break-words">{row.name}</div>
-                  {(row.regulatoryNote || dup || removed) && (
-                    <div className="mt-1 flex flex-wrap gap-1.5">
+                  {(row.regulatoryNote || dup || removed || unmatched || check) && (
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {unmatched && <Chip tone="red">{t.formula.notInList}</Chip>}
+                      {check && <Chip tone="amber">{t.formula.checkMatch}</Chip>}
                       {dup && <Chip tone="amber">{t.formula.duplicate}</Chip>}
                       {removed && <Chip tone="red">{t.formula.removedFromList}</Chip>}
+                    </div>
+                  )}
+                  {check && row.catalogName && (
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-ink-2">
+                      <span className="min-w-0 break-words">{fmt(t.formula.fromCatalog, { name: row.catalogName })}</span>
+                      <button
+                        type="button"
+                        onClick={() => setChanging((s) => (s === row.key ? null : row.key))}
+                        aria-expanded={changing === row.key}
+                        className="min-h-11 cursor-pointer font-semibold text-ink underline"
+                      >
+                        {t.formula.changeMaterial}
+                      </button>
+                    </div>
+                  )}
+                  {(unmatched || changing === row.key) && (
+                    <div className="mt-2">
+                      <label htmlFor={`material-${row.key}`} className="sr-only">{fmt(t.formula.materialFor, { name: row.catalogName ?? row.name })}</label>
+                      <MaterialSearch
+                        id={`material-${row.key}`}
+                        label={fmt(t.formula.materialFor, { name: row.catalogName ?? row.name })}
+                        materials={active}
+                        inFormula={inFormula}
+                        onPick={(m) => setMaterial(row.key, m)}
+                        invalid={unmatched && !!rowsError}
+                      />
                     </div>
                   )}
                   {row.regulatoryNote && (

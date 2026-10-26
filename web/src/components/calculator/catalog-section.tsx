@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { catalogMinQty, catalogPrice } from "@/lib/calculator/catalogImport";
 import { CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, catalogTiersFor, offerServings, standardCapsules } from "@/lib/calculator/catalogCapsules";
+import { catalogToCustom } from "@/lib/calculator/catalogToCustom";
 import { parsePositiveInt } from "@/lib/calculator/numbers";
-import type { CatalogProduct, FormulaMode, OfferForm } from "@/lib/calculator/types";
+import type { CatalogProduct, FormulaMode, OfferForm, RawMaterial } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
 import { fmt } from "@/lib/i18n";
 import { Chip } from "@/components/ui";
@@ -53,7 +54,7 @@ const sameTiers = (a: OfferForm["catalog"], b: CatalogProduct) =>
   !!a && a.name === b.name && JSON.stringify(a.tiers) === JSON.stringify(b.tiers);
 
 /** Catalog mode, step 3: pick the product (search like raw materials); shows its price steps. */
-export function CatalogProductSection({ form, setForm, errorFor, touch, catalog }: SectionProps & { catalog: CatalogProduct[] }) {
+export function CatalogProductSection({ form, setForm, errorFor, touch, catalog, materials }: SectionProps & { catalog: CatalogProduct[]; materials: RawMaterial[] }) {
   const { t, eur, num } = useCalcText();
   const c = t.catalog;
   const error = errorFor("catalogProduct");
@@ -65,12 +66,24 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog 
   const std = standardCapsules(form);
   const servings = offerServings(form);
   const capsError = errorFor("catalogCapsules");
+  const [confirmEdit, setConfirmEdit] = useState(false);
+  const activeMaterials = useMemo(() => materials.filter((m) => m.active), [materials]);
 
   const pick = (p: CatalogProduct) => {
     const { active: _active, ...snapshot } = p;
     // Another product starts from its standard capsules per jar
     setForm((f) => ({ ...f, catalog: snapshot, catalogCapsules: f.catalog?.code === p.code ? f.catalogCapsules : "" }));
     touch("catalogProduct");
+  };
+
+  /** Custom formula from this product's ingredients, then scroll to them. */
+  const editIngredients = () => {
+    setConfirmEdit(false);
+    setForm((f) => catalogToCustom(f, activeMaterials));
+    // Capsules: glass or plastic jar is still to be chosen
+    if (picked?.capsules_per_serving && !form.productType?.startsWith("capsules")) touch("productType");
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(() => document.getElementById(fieldId("rows"))?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" }), 0);
   };
 
   return (
@@ -173,6 +186,29 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog 
               </div>
               <p className="m-0 mt-1 text-xs text-ink-2">{c.compositionHint}</p>
             </details>
+          )}
+          {picked.composition && picked.composition.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={form.rows.length ? () => setConfirmEdit(true) : editIngredients}
+                  aria-expanded={form.rows.length ? confirmEdit : undefined}
+                  aria-describedby="edit-ingredients-hint"
+                  className="btn btn-outline whitespace-normal!"
+                >
+                  {c.editIngredients}
+                </button>
+                <span id="edit-ingredients-hint" className="min-w-0 flex-[1_1_240px] text-xs text-ink-2">{c.editIngredientsHint}</span>
+              </div>
+              {confirmEdit && (
+                <div role="alertdialog" aria-label={c.editConfirm} className="flex flex-wrap items-center gap-3 rounded-sm border border-amber-line bg-amber-tint px-4 py-3">
+                  <span className="min-w-0 flex-[1_1_240px] text-sm font-semibold text-amber-ink">{c.editConfirm}</span>
+                  <button type="button" autoFocus onClick={() => setConfirmEdit(false)} className="btn btn-outline">{t.cancel}</button>
+                  <button type="button" onClick={editIngredients} className="btn btn-primary">{c.replace}</button>
+                </div>
+              )}
+            </div>
           )}
           {current && !sameTiers(picked, current) && (
             <Notice action={<button type="button" onClick={() => pick(current)} className="btn btn-outline whitespace-normal!">{c.updatePrices}</button>}>

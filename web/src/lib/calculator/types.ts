@@ -154,6 +154,8 @@ export interface FormulaRow {
   regulatoryNote: string | null;
   amount: string;
   unit: DoseUnit;
+  /** Row taken from a catalog product's composition: the ingredient's name there, until the material is checked. */
+  catalogName?: string;
 }
 
 /** Everything the calculator form holds. Numeric inputs are kept as strings so "1,5" can be typed. */
