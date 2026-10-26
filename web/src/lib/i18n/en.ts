@@ -892,6 +892,7 @@ export const en = {
         cancelled: "Cancel order",
       },
       depositWarning: "Production starts after the deposit is received.",
+      productionSteps: "The order goes to In production by itself when one of its manufacturing orders is sent to Production: link each product to an approved formula, press Plan production, then in the manufacturing order reserve the materials, schedule it and send it to Production. Production sees only manufacturing orders sent to it.",
       balanceWarning: "With balance before dispatch, the order is dispatched after the balance is received.",
       exportProforma: "Export proforma",
       calcOffer: "Offer {no}",

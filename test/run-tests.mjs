@@ -515,10 +515,10 @@ await fails('an order cannot skip steps', () =>
   as('sales', `update sales_orders set status = 'dispatched' where id = $1`, [order.id]), 'cannot go from confirmed to dispatched');
 await fails('production does not start before the deposit', () =>
   as('sales', `update sales_orders set status = 'in_production' where id = $1`, [order.id]), 'deposit');
-await ok('with the deposit received, production starts; project follows', async () => {
-  await as('sales', `update sales_orders set deposit_received_on = current_date, status = 'in_production' where id = $1`, [order.id]);
-  eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'production', 'project stage');
-});
+await fails('with the deposit received, the order is not in production until Production has a manufacturing order', async () => {
+  await as('sales', `update sales_orders set deposit_received_on = current_date where id = $1`, [order.id]);
+  await as('admin', `update sales_orders set status = 'in_production' where id = $1`, [order.id]);
+}, 'sent to production yet');
 await ok('production sees no orders', async () => {
   eq((await as('production', 'select * from sales_order_overview')).length, 0, 'overview');
   eq((await as('production', 'select * from sales_order_line_overview')).length, 0, 'lines');
@@ -576,9 +576,16 @@ await ok('stock arrives at the production; everything gets reserved; sent to the
   lots.caps = await recv(caps.id, 70000, 'PF-PACK');
   lots.jar = await recv(jar.id, 1100, 'PF-PACK');
   await as('admin', 'select reserve_mo_materials($1)', [mo.id]);
+  eq((await one('admin', 'select status from sales_orders where id = $1', [order.id])).status, 'confirmed', 'order before');
   await as('admin', 'select release_mo($1)', [mo.id]);
   eq((await one('admin', 'select status from manufacturing_orders where id = $1', [mo.id])).status, 'released', 'status');
 });
+await ok('sending it to Production puts the sales order in production; project follows', async () => {
+  eq((await one('admin', 'select status from sales_orders where id = $1', [order.id])).status, 'in_production', 'order');
+  eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'production', 'project stage');
+});
+await fails('an order that Production has cannot go back to confirmed', () =>
+  as('admin', `update sales_orders set status = 'confirmed' where id = $1`, [order.id]), 'cannot go back to confirmed');
 await ok('production sees the order by project code only and the materials without free stock', async () => {
   const rows = await as('production', 'select * from production_manufacturing_orders');
   eq(rows.length, 1, 'orders'); eq(rows[0].project_code, 'NK-P-0001', 'project code');

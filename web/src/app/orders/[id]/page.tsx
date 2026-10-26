@@ -28,7 +28,8 @@ type OfferOption = { offer_id: string; code: string; product: string; product_bg
 const NEXT: Record<string, string[]> = {
   draft: ["confirmed", "cancelled"],
   unpaid: ["confirmed", "cancelled"],
-  confirmed: ["in_production", "draft", "cancelled"],
+  // in_production comes by itself when a manufacturing order is sent to Production (release_mo)
+  confirmed: ["draft", "cancelled"],
   in_production: ["ready", "cancelled"],
   ready: ["dispatched"],
   dispatched: ["closed"],
@@ -228,7 +229,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
           {canEdit && next.length > 0 && (
             <Card title={d.nextStep} id="next-h">
               {o.status === "unpaid" && <p className="m-0 text-sm text-ink-2">{isAdmin ? d.unpaidNote : d.unpaidSales}</p>}
-              {o.status === "confirmed" && <p className="m-0 text-sm text-ink-2">{d.depositWarning}</p>}
+              {o.status === "confirmed" && <p className="m-0 text-sm text-ink-2">{d.productionSteps}</p>}
               {o.status === "ready" && <p className="m-0 text-sm text-ink-2">{d.balanceWarning}</p>}
               {next.map((s) => (
                 <ActionForm key={s} action={setOrderStatus} submitLabel={o.status === "unpaid" && s === "confirmed" ? d.confirmPayment : d.toStatus[s as "confirmed"]} resetOnSuccess={false}>
