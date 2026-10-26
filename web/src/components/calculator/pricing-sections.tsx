@@ -41,15 +41,21 @@ export function QuantitySection({ form, setForm, errorFor, touch, result }: Sect
             invalid={!!error}
           />
         </Field>
-        <SummaryBox>
-          {capsule && (
-            <InfoLine label={t.quantity.dosesPerBottle} value={result.dosesPerUnit !== null ? num(result.dosesPerUnit, 2) : "–"} />
-          )}
-          {form.productType === "powder" && (
-            <InfoLine label={t.quantity.netWeight} value={result.netWeightPerPouchG !== null ? `${num(result.netWeightPerPouchG, 2)} g` : "–"} />
-          )}
-          {!form.productType && <p className="my-2 text-sm text-ink-2">{t.quantity.selectType}</p>}
-        </SummaryBox>
+        {/* Label above a box as tall as the input, so it lines up with the field on the left */}
+        {form.productType ? (
+          <div className="field">
+            <span id="quantity-result">{capsule ? t.quantity.dosesPerBottle : t.quantity.netWeight}</span>
+            <output aria-labelledby="quantity-result" className="flex min-h-11 items-center rounded-sm bg-canvas px-4 text-sm font-bold tabular-nums">
+              {capsule
+                ? result.dosesPerUnit !== null ? num(result.dosesPerUnit, 2) : "–"
+                : result.netWeightPerPouchG !== null ? `${num(result.netWeightPerPouchG, 2)} g` : "–"}
+            </output>
+          </div>
+        ) : (
+          <SummaryBox>
+            <p className="my-2 text-sm text-ink-2">{t.quantity.selectType}</p>
+          </SummaryBox>
+        )}
       </div>
       {notWhole && <Notice tone="warning">{t.quantity.notWhole}</Notice>}
     </Section>
