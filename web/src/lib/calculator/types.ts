@@ -1,6 +1,10 @@
 export type ProductType = 'capsules_glass' | 'capsules_plastic' | 'powder';
 export const PRODUCT_TYPES: ProductType[] = ['capsules_glass', 'capsules_plastic', 'powder'];
 
+/** Capsule jar and its lid. A glass jar comes with its own lid. */
+export type JarType = 'plastic' | 'glass';
+export type LidType = 'plastic' | 'aluminium';
+
 export type DoseUnit = 'mcg' | 'mg' | 'g';
 export const DOSE_UNITS: DoseUnit[] = ['mcg', 'mg', 'g'];
 
@@ -154,6 +158,8 @@ export interface FormulaRow {
   regulatoryNote: string | null;
   amount: string;
   unit: DoseUnit;
+  /** Row taken from a catalog product's composition: the ingredient's name there, until the material is checked. */
+  catalogName?: string;
 }
 
 /** Everything the calculator form holds. Numeric inputs are kept as strings so "1,5" can be typed. */
@@ -165,6 +171,14 @@ export interface OfferForm {
   catalog: Omit<CatalogProduct, 'active'> | null;
   /** Catalog capsule product: capsules per jar on this offer (the standard count when empty). */
   catalogCapsules: string;
+  /** Capsule jar: plastic (default) or glass, and the lid of a plastic jar. Older offers: plastic jar, plastic lid. */
+  jar: JarType;
+  lid: LidType;
+  /**
+   * Custom formula made from a catalog product: its jar and lid are priced like the catalog's (plastic jar and lid
+   * included, glass jar with aluminium lid +0.40, aluminium lid +0.10). Older offers: false.
+   */
+  catalogPackaging: boolean;
   /** The CRM client the offer is for (receiver and invoice below are a snapshot of its data). Older offers: null. */
   clientId: string | null;
   /** Nutrikal contact person printed on the offer (the sales email comes from Settings). */

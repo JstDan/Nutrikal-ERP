@@ -588,6 +588,34 @@ export async function setOrderStatus(_: ActionState, fd: FormData): Promise<Acti
   return { ok: true, message: t.common.saved };
 }
 
+// ------------------------------------------------------------- invoices
+/** "Export invoice" on a paid order: opens its invoice (a new draft the first time). */
+export async function openOrderInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    id = (await q<{ id: string }>(user.id, "select create_order_invoice($1) as id", [str(fd, "order_id")]))[0].id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/invoices");
+  redirect(`/invoices/${id}`);
+}
+
+/** Issues a draft invoice with its number and date; it is locked afterwards. */
+export async function issueInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, "select issue_invoice($1, $2, $3::date, $4)", [
+      str(fd, "invoice_id"), str(fd, "number"), str(fd, "issue_date"), fd.get("confirm_number") === "on",
+    ]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: t.invoices.issued };
+}
+
 // ------------------------------------------------------------- production
 export async function createProductionFromLine(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user } = await getSession();

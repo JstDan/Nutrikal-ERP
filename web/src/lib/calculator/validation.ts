@@ -1,5 +1,6 @@
 import { catalogMinQty } from './catalogImport';
 import { CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, standardCapsules } from './catalogCapsules';
+import { isUnmatched } from './catalogToCustom';
 import { parseNum, parsePositiveInt } from './numbers';
 import { isCapsule, type OfferForm } from './types';
 
@@ -17,7 +18,7 @@ export type FieldKey =
 
 /** Message keys in the calc.validation dictionary. */
 export type ValidationCode =
-  | 'required' | 'email' | 'client' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq' | 'capsuleRange';
+  | 'required' | 'email' | 'client' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq' | 'capsuleRange' | 'unmatched';
 
 /** Field order = order on the page, used to scroll to the first error. */
 export const FIELD_ORDER: FieldKey[] = [
@@ -60,6 +61,8 @@ export function validateOffer(form: OfferForm): ValidationErrors {
   } else {
     if (!form.productType) errors.productType = 'productType';
     if (!form.rows.some((r) => (parseNum(r.amount) ?? 0) > 0)) errors.rows = 'materials';
+    // Ingredients of a catalog product that are not in the price list have no price yet
+    else if (form.rows.some(isUnmatched)) errors.rows = 'unmatched';
     if (isCapsule(form.productType) && !parsePositiveInt(form.capsulesPerDose)) errors.capsulesPerDose = 'positiveInt';
     if (!parsePositiveInt(form.quantityPerUnit)) errors.quantityPerUnit = 'positiveInt';
     if (!units) errors.numberOfUnits = 'positiveInt';

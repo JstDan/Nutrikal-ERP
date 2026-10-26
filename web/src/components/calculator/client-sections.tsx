@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { fixedCostsFor, packagingExtraCost, usesCatalogPackaging } from "@/lib/calculator/calc";
+import { ALUMINIUM_LID_EUR, GLASS_JAR_EUR } from "@/lib/calculator/catalogCapsules";
 import type { CrmClient } from "@/lib/calculator/db";
 import { SALES_PERSONS } from "@/lib/calculator/salesPersons";
-import { PRODUCT_TYPES, isCapsule, type FixedCosts, type OfferForm, type ProductType } from "@/lib/calculator/types";
+import { PRODUCT_TYPES, isCapsule, type FixedCosts, type LidType, type OfferForm, type ProductType } from "@/lib/calculator/types";
 import { fieldId, type FieldKey } from "@/lib/calculator/validation";
+import { fmt } from "@/lib/i18n";
 import { Field, Section, SubHeading, inputClass, useCalcText } from "./kit";
 import { SearchCombobox } from "./search-combobox";
 
@@ -168,10 +171,17 @@ export function ClientSection({ form, setForm, errorFor, touch, clients }: Secti
   );
 }
 
-/** Step 3: product type (capsules in glass / plastic, or powder) with its fixed cost per unit. */
-export function ProductTypeSection({ form, setForm, errorFor, fixedCosts }: SectionProps & { fixedCosts: FixedCosts }) {
+const LIDS: LidType[] = ["plastic", "aluminium"];
+
+/** Step 3: product type (capsules in glass / plastic, or powder) with its fixed cost per unit; then the lid of a jar. */
+export function ProductTypeSection({ form, setForm, errorFor, fixedCosts: settingsCosts }: SectionProps & { fixedCosts: FixedCosts }) {
   const { t, eur } = useCalcText();
   const error = errorFor("productType");
+  // From a catalog product: jar and lid at the catalog's prices (glass jar = plastic + its extra, with aluminium lid)
+  const catalogPrices = usesCatalogPackaging(form);
+  const fixedCosts = fixedCostsFor({ ...form, productType: "capsules_plastic" }, settingsCosts);
+  const lidChoice = isCapsule(form.productType) && !(catalogPrices && form.productType === "capsules_glass");
+  const alu = packagingExtraCost({ ...form, productType: "capsules_plastic", lid: "aluminium" });
 
   const select = (p: ProductType) =>
     setForm((f) => {
@@ -199,6 +209,7 @@ export function ProductTypeSection({ form, setForm, errorFor, fixedCosts }: Sect
                 <span className="font-semibold">{t.productType[p]}</span>
                 <span className="text-ink-2">{t.productType.packaging}: {t.productType[`packaging_${p}`]}</span>
                 <span className="text-ink-2">{t.productType.fixedCost}: <b className="text-ink">{eur(fixedCosts[p])}</b></span>
+                {form.catalogPackaging && p === "capsules_glass" && <span className="text-ink-2">{fmt(t.productType.glassExtra, { price: eur(GLASS_JAR_EUR) })}</span>}
               </span>
             </label>
           );
@@ -207,6 +218,35 @@ export function ProductTypeSection({ form, setForm, errorFor, fixedCosts }: Sect
       <p id="product-type-msg" className={`m-0 text-xs ${error ? "font-semibold text-red-ink" : "text-ink-2"}`}>
         {error ?? t.productType.fixedCostHint}
       </p>
+      {catalogPrices && (
+        <p className="m-0 text-xs text-ink-2">
+          {fmt(t.productType.catalogPackaging, { lid: eur(ALUMINIUM_LID_EUR), glass: eur(GLASS_JAR_EUR) })}
+        </p>
+      )}
+      {lidChoice && (
+        <fieldset className="m-0 flex min-w-0 flex-col gap-3 border-0 border-t border-mist p-0 pt-4">
+          <legend className="contents">
+            <SubHeading>{t.catalog.lid}</SubHeading>
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {LIDS.map((l) => {
+              const selected = form.lid === l;
+              return (
+                <label
+                  key={l}
+                  className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-sm border-2 p-3 ${selected ? "border-ink bg-canvas" : "border-line hover:border-line-strong"}`}
+                >
+                  <input type="radio" name="custom-lid" value={l} checked={selected} onChange={() => setForm((f) => ({ ...f, lid: l }))} className="mt-1 h-5 w-5 shrink-0 accent-ink" />
+                  <span className="flex min-w-0 flex-col gap-0.5 text-sm">
+                    <span className="font-semibold">{t.catalog[`lid_${l}`]}</span>
+                    <span className="text-ink-2">{l === "aluminium" ? fmt(t.productType.lidCost, { price: eur(alu) }) : t.productType.lidIncluded}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+      )}
     </Section>
   );
 }

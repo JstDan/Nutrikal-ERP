@@ -1,18 +1,20 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { catalogMinQty, catalogPrice } from "@/lib/calculator/catalogImport";
-import { CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, catalogTiersFor, offerServings, standardCapsules } from "@/lib/calculator/catalogCapsules";
+import { ALUMINIUM_LID_EUR, CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, catalogTiersFor, GLASS_JAR_EUR, offerCapsules, packagingExtra, offerServings, standardCapsules } from "@/lib/calculator/catalogCapsules";
+import { catalogToCustom } from "@/lib/calculator/catalogToCustom";
 import { parsePositiveInt } from "@/lib/calculator/numbers";
-import type { CatalogProduct, FormulaMode, OfferForm } from "@/lib/calculator/types";
+import type { CatalogProduct, FormulaMode, LidType, OfferForm, RawMaterial } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
 import { fmt } from "@/lib/i18n";
 import { Chip } from "@/components/ui";
 import type { SectionProps } from "./client-sections";
-import { Field, Notice, NumberField, Section, useCalcText } from "./kit";
+import { Field, Notice, NumberField, Section, Toggle, useCalcText } from "./kit";
 import { SearchCombobox } from "./search-combobox";
 
 const MODES: FormulaMode[] = ["custom", "catalog"];
+const LIDS: LidType[] = ["plastic", "aluminium"];
 
 /** Above the form: custom formula (raw materials) or catalog product. The shared sections keep their data. */
 export function FormulaModeSwitch({ form, setForm }: Pick<SectionProps, "form" | "setForm">) {
@@ -53,7 +55,7 @@ const sameTiers = (a: OfferForm["catalog"], b: CatalogProduct) =>
   !!a && a.name === b.name && JSON.stringify(a.tiers) === JSON.stringify(b.tiers);
 
 /** Catalog mode, step 3: pick the product (search like raw materials); shows its price steps. */
-export function CatalogProductSection({ form, setForm, errorFor, touch, catalog }: SectionProps & { catalog: CatalogProduct[] }) {
+export function CatalogProductSection({ form, setForm, errorFor, touch, catalog, materials }: SectionProps & { catalog: CatalogProduct[]; materials: RawMaterial[] }) {
   const { t, eur, num } = useCalcText();
   const c = t.catalog;
   const error = errorFor("catalogProduct");
@@ -65,12 +67,22 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog 
   const std = standardCapsules(form);
   const servings = offerServings(form);
   const capsError = errorFor("catalogCapsules");
+  const [confirmEdit, setConfirmEdit] = useState(false);
+  const activeMaterials = useMemo(() => materials.filter((m) => m.active), [materials]);
 
   const pick = (p: CatalogProduct) => {
     const { active: _active, ...snapshot } = p;
     // Another product starts from its standard capsules per jar
     setForm((f) => ({ ...f, catalog: snapshot, catalogCapsules: f.catalog?.code === p.code ? f.catalogCapsules : "" }));
     touch("catalogProduct");
+  };
+
+  /** Custom formula from this product's ingredients, then scroll to them. */
+  const editIngredients = () => {
+    setConfirmEdit(false);
+    setForm((f) => catalogToCustom(f, activeMaterials));
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(() => document.getElementById(fieldId("rows"))?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" }), 0);
   };
 
   return (
@@ -135,6 +147,37 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog 
               </div>
             </div>
           )}
+          {std && (
+            <div className="flex flex-col gap-1">
+              <Toggle checked={form.jar === "glass"} onChange={(v) => setForm((f) => ({ ...f, jar: v ? "glass" : "plastic" }))}>
+                {c.glassJar} <span className="text-ink-2">({fmt(c.lidExtra, { price: eur(GLASS_JAR_EUR) })})</span>
+              </Toggle>
+              {/* A glass jar comes with its own lid */}
+              {form.jar !== "glass" && (
+                <fieldset className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0">
+                  <legend className="label mb-1 p-0">{c.lid}</legend>
+                  <div className="flex flex-wrap gap-x-6">
+                    {LIDS.map((l) => (
+                      <label key={l} className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
+                        <input
+                          type="radio"
+                          name="catalog-lid"
+                          value={l}
+                          checked={form.lid === l}
+                          onChange={() => setForm((f) => ({ ...f, lid: l }))}
+                          className="h-5 w-5 shrink-0 accent-ink"
+                        />
+                        <span>
+                          {c[`lid_${l}`]}
+                          {l === "aluminium" && <span className="text-ink-2"> ({fmt(c.lidExtra, { price: eur(ALUMINIUM_LID_EUR) })})</span>}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+            </div>
+          )}
           <div role="table" aria-label={c.steps} className="text-sm">
             <div role="row" className="row hide-sm grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2">
               <span role="columnheader">{c.quantity}</span>
@@ -155,7 +198,8 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog 
           </div>
           <p className="m-0 text-xs text-ink-2">
             {fmt(c.minQty, { n: num(catalogMinQty(picked.tiers)) })}
-            {std && tiers !== picked.tiers && <> · {fmt(c.pricesFor, { n: num(std) })}</>}
+            {std && offerCapsules(form) !== std && <> · {fmt(c.pricesFor, { n: num(std) })}</>}
+            {packagingExtra(form) > 0 && <> · {fmt(form.jar === "glass" ? c.glassIncluded : c.lidIncluded, { price: eur(packagingExtra(form)) })}</>}
           </p>
           {picked.composition && picked.composition.length > 0 && (
             <details className="text-sm">
@@ -173,6 +217,29 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog 
               </div>
               <p className="m-0 mt-1 text-xs text-ink-2">{c.compositionHint}</p>
             </details>
+          )}
+          {picked.composition && picked.composition.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={form.rows.length ? () => setConfirmEdit(true) : editIngredients}
+                  aria-expanded={form.rows.length ? confirmEdit : undefined}
+                  aria-describedby="edit-ingredients-hint"
+                  className="btn btn-outline whitespace-normal!"
+                >
+                  {c.editIngredients}
+                </button>
+                <span id="edit-ingredients-hint" className="min-w-0 flex-[1_1_240px] text-xs text-ink-2">{c.editIngredientsHint}</span>
+              </div>
+              {confirmEdit && (
+                <div role="alertdialog" aria-label={c.editConfirm} className="flex flex-wrap items-center gap-3 rounded-sm border border-amber-line bg-amber-tint px-4 py-3">
+                  <span className="min-w-0 flex-[1_1_240px] text-sm font-semibold text-amber-ink">{c.editConfirm}</span>
+                  <button type="button" autoFocus onClick={() => setConfirmEdit(false)} className="btn btn-outline">{t.cancel}</button>
+                  <button type="button" onClick={editIngredients} className="btn btn-primary">{c.replace}</button>
+                </div>
+              )}
+            </div>
           )}
           {current && !sameTiers(picked, current) && (
             <Notice action={<button type="button" onClick={() => pick(current)} className="btn btn-outline whitespace-normal!">{c.updatePrices}</button>}>

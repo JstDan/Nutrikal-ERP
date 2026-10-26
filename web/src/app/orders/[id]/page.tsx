@@ -7,7 +7,7 @@ import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { orderTone } from "@/lib/status";
 import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
-import { addOrderLine, createProductionFromLine, linkOrderLineFormula, removeOrderLine, saveOrder, setOrderStatus } from "@/app/actions";
+import { addOrderLine, createProductionFromLine, linkOrderLineFormula, openOrderInvoice, removeOrderLine, saveOrder, setOrderStatus } from "@/app/actions";
 
 type Overview = { id: string; code: string; status: string; requested_date: string | null; client: string; client_id: string };
 type Line = {
@@ -28,7 +28,8 @@ type OfferOption = { offer_id: string; code: string; product: string; product_bg
 const NEXT: Record<string, string[]> = {
   draft: ["confirmed", "cancelled"],
   unpaid: ["confirmed", "cancelled"],
-  confirmed: ["in_production", "draft", "cancelled"],
+  // in_production comes by itself when a manufacturing order is sent to Production (release_mo)
+  confirmed: ["draft", "cancelled"],
   in_production: ["ready", "cancelled"],
   ready: ["dispatched"],
   dispatched: ["closed"],
@@ -107,7 +108,14 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
           </span>
         }
         actions={canEdit && o.status !== "cancelled" ? (
-          <Link href={`/orders/${o.id}/proforma`} className="btn btn-primary">{d.exportProforma}</Link>
+          // Paid: the invoice replaces the proforma
+          !["draft", "unpaid"].includes(o.status) ? (
+            <ActionForm action={openOrderInvoice} submitLabel={d.exportInvoice} resetOnSuccess={false}>
+              <input type="hidden" name="order_id" value={o.id} />
+            </ActionForm>
+          ) : (
+            <Link href={`/orders/${o.id}/proforma`} className="btn btn-primary">{d.exportProforma}</Link>
+          )
         ) : undefined}
       />
 
@@ -228,7 +236,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
           {canEdit && next.length > 0 && (
             <Card title={d.nextStep} id="next-h">
               {o.status === "unpaid" && <p className="m-0 text-sm text-ink-2">{isAdmin ? d.unpaidNote : d.unpaidSales}</p>}
-              {o.status === "confirmed" && <p className="m-0 text-sm text-ink-2">{d.depositWarning}</p>}
+              {o.status === "confirmed" && <p className="m-0 text-sm text-ink-2">{d.productionSteps}</p>}
               {o.status === "ready" && <p className="m-0 text-sm text-ink-2">{d.balanceWarning}</p>}
               {next.map((s) => (
                 <ActionForm key={s} action={setOrderStatus} submitLabel={o.status === "unpaid" && s === "confirmed" ? d.confirmPayment : d.toStatus[s as "confirmed"]} resetOnSuccess={false}>

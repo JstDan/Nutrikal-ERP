@@ -7,8 +7,11 @@ import type { CatalogTier, OfferForm } from './types';
 
 export const CATALOG_CAPSULES_MIN = 30;
 export const CATALOG_CAPSULES_MAX = 180;
+/** On top of the catalog price, EUR per jar (owner, Oct 2026): a glass jar, or an aluminium lid on a plastic jar. */
+export const GLASS_JAR_EUR = 0.4;
+export const ALUMINIUM_LID_EUR = 0.1;
 
-type CatalogPart = Pick<OfferForm, 'mode' | 'catalog' | 'catalogCapsules'>;
+type CatalogPart = Pick<OfferForm, 'mode' | 'catalog' | 'catalogCapsules'> & Partial<Pick<OfferForm, 'jar' | 'lid'>>;
 
 /** Standard capsules per jar of the chosen catalog product; null when it is not a capsule product (or an older offer). */
 export function standardCapsules(form: CatalogPart): number | null {
@@ -28,15 +31,31 @@ export function offerServings(form: CatalogPart): number | null {
   return caps && perServing ? caps / perServing : null;
 }
 
-/** The catalog price steps for the capsules on the offer (prices rounded like the offer, 2 decimals half up). */
+/** Catalog capsule product on a plastic jar with an aluminium lid (a glass jar has its own lid). */
+export function hasAluminiumLid(form: CatalogPart): boolean {
+  return !!standardCapsules(form) && form.jar !== 'glass' && form.lid === 'aluminium';
+}
+
+/** Extra EUR per jar for the jar and lid on the offer: glass jar, or aluminium lid on a plastic jar; else 0. */
+export function packagingExtra(form: CatalogPart): number {
+  if (!standardCapsules(form)) return 0;
+  if (form.jar === 'glass') return GLASS_JAR_EUR;
+  return form.lid === 'aluminium' ? ALUMINIUM_LID_EUR : 0;
+}
+
+/**
+ * The catalog price steps for the capsules, jar and lid on the offer (prices rounded like the offer, 2 decimals
+ * half up): in proportion to the capsules per jar, plus the glass jar or the aluminium lid.
+ */
 export function catalogTiersFor(form: CatalogPart): CatalogTier[] {
   const tiers = form.catalog?.tiers ?? [];
   const std = standardCapsules(form);
   const caps = offerCapsules(form);
-  if (!std || !caps || caps === std) return tiers;
+  const extra = packagingExtra(form);
+  if (!std || !caps || (caps === std && !extra)) return tiers;
   return tiers.map((x) => ({
     min_qty: x.min_qty,
-    price: new Decimal(x.price).mul(caps).div(std).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber(),
+    price: new Decimal(x.price).mul(caps).div(std).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).add(extra).toNumber(),
   }));
 }
 

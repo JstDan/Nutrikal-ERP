@@ -235,7 +235,7 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
         {form.mode === "catalog" ? (
           <>
             {/* Catalog product: product instead of type, formula and quantity per pack; numbered 1–5 */}
-            <CatalogProductSection {...sectionProps} catalog={catalog} />
+            <CatalogProductSection {...sectionProps} catalog={catalog} materials={materials} />
             <MarkupSection {...sectionProps} result={result} step={4} />
             <OfferLinesSection {...sectionProps} step={5} />
           </>
