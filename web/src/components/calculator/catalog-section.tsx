@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { catalogMinQty, catalogPrice } from "@/lib/calculator/catalogImport";
-import { ALUMINIUM_LID_EUR, CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, catalogTiersFor, hasAluminiumLid, offerCapsules, offerServings, standardCapsules } from "@/lib/calculator/catalogCapsules";
+import { ALUMINIUM_LID_EUR, CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, catalogTiersFor, GLASS_JAR_EUR, offerCapsules, packagingExtra, offerServings, standardCapsules } from "@/lib/calculator/catalogCapsules";
 import { catalogToCustom } from "@/lib/calculator/catalogToCustom";
 import { parsePositiveInt } from "@/lib/calculator/numbers";
 import type { CatalogProduct, FormulaMode, LidType, OfferForm, RawMaterial } from "@/lib/calculator/types";
@@ -150,7 +150,7 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog,
           {std && (
             <div className="flex flex-col gap-1">
               <Toggle checked={form.jar === "glass"} onChange={(v) => setForm((f) => ({ ...f, jar: v ? "glass" : "plastic" }))}>
-                {c.glassJar}
+                {c.glassJar} <span className="text-ink-2">({fmt(c.lidExtra, { price: eur(GLASS_JAR_EUR) })})</span>
               </Toggle>
               {/* A glass jar comes with its own lid */}
               {form.jar !== "glass" && (
@@ -199,7 +199,7 @@ export function CatalogProductSection({ form, setForm, errorFor, touch, catalog,
           <p className="m-0 text-xs text-ink-2">
             {fmt(c.minQty, { n: num(catalogMinQty(picked.tiers)) })}
             {std && offerCapsules(form) !== std && <> · {fmt(c.pricesFor, { n: num(std) })}</>}
-            {hasAluminiumLid(form) && <> · {fmt(c.lidIncluded, { price: eur(ALUMINIUM_LID_EUR) })}</>}
+            {packagingExtra(form) > 0 && <> · {fmt(form.jar === "glass" ? c.glassIncluded : c.lidIncluded, { price: eur(packagingExtra(form)) })}</>}
           </p>
           {picked.composition && picked.composition.length > 0 && (
             <details className="text-sm">

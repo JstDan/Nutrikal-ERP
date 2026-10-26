@@ -1101,6 +1101,7 @@ export const bg: Dict = {
       lid_aluminium: "Алуминиева",
       lidExtra: "+{price} на бурканче",
       lidIncluded: "вкл. {price} за алуминиевата капачка",
+      glassIncluded: "вкл. {price} за стъкленото бурканче",
       withAluminiumLid: "{jar}, алуминиева капачка",
     },
     catalogTab: {

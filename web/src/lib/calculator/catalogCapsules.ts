@@ -7,7 +7,8 @@ import type { CatalogTier, OfferForm } from './types';
 
 export const CATALOG_CAPSULES_MIN = 30;
 export const CATALOG_CAPSULES_MAX = 180;
-/** Aluminium lid on a plastic jar: EUR per jar on top of the catalog price (owner, Oct 2026). */
+/** On top of the catalog price, EUR per jar (owner, Oct 2026): a glass jar, or an aluminium lid on a plastic jar. */
+export const GLASS_JAR_EUR = 0.4;
 export const ALUMINIUM_LID_EUR = 0.1;
 
 type CatalogPart = Pick<OfferForm, 'mode' | 'catalog' | 'catalogCapsules'> & Partial<Pick<OfferForm, 'jar' | 'lid'>>;
@@ -35,19 +36,26 @@ export function hasAluminiumLid(form: CatalogPart): boolean {
   return !!standardCapsules(form) && form.jar !== 'glass' && form.lid === 'aluminium';
 }
 
+/** Extra EUR per jar for the jar and lid on the offer: glass jar, or aluminium lid on a plastic jar; else 0. */
+export function packagingExtra(form: CatalogPart): number {
+  if (!standardCapsules(form)) return 0;
+  if (form.jar === 'glass') return GLASS_JAR_EUR;
+  return form.lid === 'aluminium' ? ALUMINIUM_LID_EUR : 0;
+}
+
 /**
- * The catalog price steps for the capsules and lid on the offer (prices rounded like the offer, 2 decimals half up):
- * in proportion to the capsules per jar, plus the aluminium lid.
+ * The catalog price steps for the capsules, jar and lid on the offer (prices rounded like the offer, 2 decimals
+ * half up): in proportion to the capsules per jar, plus the glass jar or the aluminium lid.
  */
 export function catalogTiersFor(form: CatalogPart): CatalogTier[] {
   const tiers = form.catalog?.tiers ?? [];
   const std = standardCapsules(form);
   const caps = offerCapsules(form);
-  const lid = hasAluminiumLid(form) ? ALUMINIUM_LID_EUR : 0;
-  if (!std || !caps || (caps === std && !lid)) return tiers;
+  const extra = packagingExtra(form);
+  if (!std || !caps || (caps === std && !extra)) return tiers;
   return tiers.map((x) => ({
     min_qty: x.min_qty,
-    price: new Decimal(x.price).mul(caps).div(std).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).add(lid).toNumber(),
+    price: new Decimal(x.price).mul(caps).div(std).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).add(extra).toNumber(),
   }));
 }
 

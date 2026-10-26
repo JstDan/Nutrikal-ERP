@@ -1099,6 +1099,7 @@ export const en = {
       lid_aluminium: "Aluminium",
       lidExtra: "+{price} per jar",
       lidIncluded: "incl. {price} for the aluminium lid",
+      glassIncluded: "incl. {price} for the glass jar",
       withAluminiumLid: "{jar}, aluminium lid",
     },
     catalogTab: {
