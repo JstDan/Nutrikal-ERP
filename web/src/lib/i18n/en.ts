@@ -1186,6 +1186,8 @@ export const en = {
       fixedCostHint: "Covers labour, waste/scrap and packaging for one finished unit.",
       lidCost: "+{price} per unit, added to the cost before markup",
       lidIncluded: "Included in the fixed cost",
+      glassExtra: "+{price} glass jar with aluminium lid",
+      catalogPackaging: "Made from a catalog product: jar and lid at catalog prices – plastic jar and lid included, aluminium lid +{lid}, glass jar with aluminium lid +{glass} per unit.",
     },
     formula: {
       section: "Raw materials for 1 dose",
@@ -1278,6 +1280,7 @@ export const en = {
       dosesPerUnit: "Doses per unit",
       fixedCostPerUnit: "Fixed cost per unit (labour, waste, packaging)",
       lidCostPerUnit: "Aluminium lid per unit",
+      glassJarPerUnit: "Glass jar with aluminium lid per unit",
       unitCost: "Total cost per unit",
       markupMargin: "Markup / margin",
       totalCost: "Total cost",

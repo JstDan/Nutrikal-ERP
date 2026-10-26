@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { fmt } from '@/lib/i18n';
-import { unitPriceFor, type CalcResult, type OfferLine } from './calc';
+import { hasAluminiumCap, unitPriceFor, type CalcResult, type OfferLine } from './calc';
 import { formatDate, formatNumber, parseNum } from './numbers';
 import { catalogTiersFor, hasAluminiumLid, offerCapsules, offerServings } from './catalogCapsules';
 import { productName } from './offerRecord';
@@ -163,7 +163,7 @@ export function toPdfModel(
       ? `, capsule size ${form.capsuleSize.replace('size', '')}`
       : '';
     packaging.push(
-      `${PDF[`packaging_${type}`]}s${form.lid === 'aluminium' ? ` ${PDF.aluminiumLid}` : ''}, ${perUnit} capsules each${size}.`,
+      `${PDF[`packaging_${type}`]}s${hasAluminiumCap(form) ? ` ${PDF.aluminiumLid}` : ''}, ${perUnit} capsules each${size}.`,
       `Capsules/Serving: ${formatNumber(caps, 2)}`,
       `Servings/Container: ${servings}`,
     );

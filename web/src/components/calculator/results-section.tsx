@@ -1,6 +1,6 @@
 "use client";
 
-import type { CalcResult } from "@/lib/calculator/calc";
+import { hasAluminiumCap, type CalcResult } from "@/lib/calculator/calc";
 import { parseNum } from "@/lib/calculator/numbers";
 import { catalogPrice } from "@/lib/calculator/catalogImport";
 import { catalogTiersFor, hasAluminiumLid, offerCapsules } from "@/lib/calculator/catalogCapsules";
@@ -47,7 +47,9 @@ export function ResultsSection({ form, result: r, valid, busy, onCreate, onInval
             <InfoLine label={t.results.dosesPerUnit} value={r.dosesPerUnit !== null ? num(r.dosesPerUnit, 2) : "–"} />
             <InfoLine label={t.results.rawCostPerUnit} value={eur(r.rawCostPerUnit, 4)} />
             <InfoLine label={t.results.fixedCostPerUnit} value={eur(r.fixedCostPerUnit)} />
-            {r.lidCostPerUnit > 0 && <InfoLine label={t.results.lidCostPerUnit} value={eur(r.lidCostPerUnit)} />}
+            {r.packagingExtraPerUnit > 0 && (
+              <InfoLine label={form.productType === "capsules_glass" ? t.results.glassJarPerUnit : t.results.lidCostPerUnit} value={eur(r.packagingExtraPerUnit)} />
+            )}
             <InfoLine label={t.results.unitCost} value={eur(r.unitCost, 4)} strong />
           </div>
           <div>
@@ -161,7 +163,7 @@ export function ClientSummary({ form, result: r }: { form: OfferForm; result: Ca
             <InfoLine label={t.results.type} value={type ? t.productType[type] : "–"} />
             <InfoLine
               label={t.results.packaging}
-              value={type ? (isCapsule(type) && form.lid === "aluminium" ? fmt(t.catalog.withAluminiumLid, { jar: t.productType[`packaging_${type}`] }) : t.productType[`packaging_${type}`]) : "–"}
+              value={type ? (hasAluminiumCap(form) ? fmt(t.catalog.withAluminiumLid, { jar: t.productType[`packaging_${type}`] }) : t.productType[`packaging_${type}`]) : "–"}
             />
             <InfoLine label={quantityLabel(t, type)} value={form.quantityPerUnit || "–"} />
             {isCapsule(type) && <InfoLine label={t.formula.capsulesPerDose} value={form.capsulesPerDose || "–"} />}

@@ -21,6 +21,7 @@ export function createEmptyForm(settings: Settings, offerNo: string): OfferForm 
     catalogCapsules: '',
     jar: 'plastic',
     lid: 'plastic',
+    catalogPackaging: false,
     clientId: null,
     contact: { name: '', phone: '' },
     receiver: { fullName: '', address: '', city: '', zip: '', country: DEFAULT_COUNTRY, phone: '', email: '' },
@@ -61,6 +62,7 @@ export function normalizeForm(f: OfferForm, settings: Settings): OfferForm {
     catalogCapsules: f.catalogCapsules ?? '',
     jar: f.jar === 'glass' ? 'glass' : 'plastic',
     lid: f.lid === 'aluminium' ? 'aluminium' : 'plastic',
+    catalogPackaging: f.catalogPackaging === true,
     clientId: f.clientId ?? null,
     // Extra services are added to the order now, not to the offer: unsaved drafts drop them (saved offers keep theirs).
     extraItems: f.id ? (f.extraItems ?? []) : [],

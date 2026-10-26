@@ -1,11 +1,39 @@
 import Decimal from 'decimal.js';
 import { catalogPrice } from './catalogImport';
-import { catalogTiersFor } from './catalogCapsules';
+import { ALUMINIUM_LID_EUR, GLASS_JAR_EUR, catalogTiersFor } from './catalogCapsules';
 import { isCapsule, type CatalogTier, type DoseUnit, type FixedCosts, type OfferForm, type ProductType } from './types';
 import { parseNum, parsePositiveInt } from './numbers';
 
 /** Custom formula, capsule jar with an aluminium lid: extra cost per unit, EUR (owner, Oct 2026). */
 export const ALUMINIUM_LID_COST_EUR = 0.2;
+
+type PackagingPart = Pick<OfferForm, 'mode' | 'productType' | 'lid' | 'catalogPackaging'>;
+
+/** Custom formula from a catalog product, capsules: jar and lid at the catalog's prices. */
+export const usesCatalogPackaging = (form: PackagingPart) =>
+  form.mode !== 'catalog' && form.catalogPackaging && isCapsule(form.productType);
+
+/**
+ * Custom formula, capsules: jar and lid cost per unit on top of the fixed cost, EUR. At the catalog's prices
+ * (custom formula from a catalog product): the glass jar with aluminium lid, or the aluminium lid; else the aluminium lid.
+ */
+export function packagingExtraCost(form: PackagingPart): number {
+  if (form.mode === 'catalog' || !isCapsule(form.productType)) return 0;
+  if (usesCatalogPackaging(form)) {
+    if (form.productType === 'capsules_glass') return GLASS_JAR_EUR;
+    return form.lid === 'aluminium' ? ALUMINIUM_LID_EUR : 0;
+  }
+  return form.lid === 'aluminium' ? ALUMINIUM_LID_COST_EUR : 0;
+}
+
+/** Capsule jar closed with an aluminium lid (the catalog's glass jar always is). */
+export const hasAluminiumCap = (form: PackagingPart) =>
+  isCapsule(form.productType) && (form.lid === 'aluminium' || (usesCatalogPackaging(form) && form.productType === 'capsules_glass'));
+
+/** Fixed costs per type; at the catalog's prices the glass jar costs as the plastic one plus its extra. */
+export function fixedCostsFor(form: PackagingPart, fixedCosts: FixedCosts): FixedCosts {
+  return usesCatalogPackaging(form) ? { ...fixedCosts, capsules_glass: fixedCosts.capsules_plastic } : fixedCosts;
+}
 
 const UNIT_TO_KG: Record<DoseUnit, Decimal> = {
   mcg: new Decimal('1e-9'),
@@ -33,8 +61,8 @@ export interface CalcInput {
   discountPct: number | null;
   extraItems: ExtraItemInput[];
   fixedCosts: FixedCosts;
-  /** Extra packaging cost per unit (aluminium lid), added to the unit cost before markup. */
-  lidCost?: number;
+  /** Jar and lid cost per unit on top of the fixed cost (glass jar, aluminium lid), added before markup. */
+  packagingExtra?: number;
   /** Catalog product: unit price per quantity step instead of cost + markup (no formula, no fixed cost). */
   catalogTiers?: CatalogTier[] | null;
 }
@@ -72,8 +100,8 @@ export interface CalcResult {
   dosesPerUnit: number | null;
   netWeightPerPouchG: number | null;
   fixedCostPerUnit: number;
-  /** Aluminium lid, part of the unit cost. */
-  lidCostPerUnit: number;
+  /** Glass jar / aluminium lid on top of the fixed cost, part of the unit cost. */
+  packagingExtraPerUnit: number;
   rawCostPerUnit: number;
   unitCost: number;
   unitPrice: number;
@@ -126,8 +154,8 @@ export function calculate(input: CalcInput): CalcResult {
 
   const fixedCostPerUnit = input.productType ? new Decimal(input.fixedCosts[input.productType] ?? 0) : ZERO;
   const rawCostPerUnit = dosesPerUnit ? costPerDose.mul(dosesPerUnit) : ZERO;
-  const lidCostPerUnit = capsule ? new Decimal(input.lidCost ?? 0) : ZERO;
-  const unitCost = rawCostPerUnit.add(fixedCostPerUnit).add(lidCostPerUnit);
+  const packagingExtraPerUnit = capsule ? new Decimal(input.packagingExtra ?? 0) : ZERO;
+  const unitCost = rawCostPerUnit.add(fixedCostPerUnit).add(packagingExtraPerUnit);
   const markup = new Decimal(input.markupPct ?? 0);
   const unitPrice = catalogStep
     ? new Decimal(catalogStep.price).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
@@ -180,7 +208,7 @@ export function calculate(input: CalcInput): CalcResult {
     dosesPerUnit: dosesPerUnit?.toNumber() ?? null,
     netWeightPerPouchG: netWeightPerPouchG?.toNumber() ?? null,
     fixedCostPerUnit: fixedCostPerUnit.toNumber(),
-    lidCostPerUnit: lidCostPerUnit.toNumber(),
+    packagingExtraPerUnit: packagingExtraPerUnit.toNumber(),
     rawCostPerUnit: rawCostPerUnit.toNumber(),
     unitCost: unitCost.toNumber(),
     unitPrice: complete ? unitPrice.toNumber() : 0,
@@ -232,7 +260,7 @@ export function calcInputFromForm(form: OfferForm, fixedCosts: FixedCosts): Calc
       unit: x.unit,
       price: parseNum(x.price),
     })),
-    fixedCosts: form.fixedCosts ?? fixedCosts,
-    lidCost: !catalog && form.lid === 'aluminium' ? ALUMINIUM_LID_COST_EUR : 0,
+    fixedCosts: fixedCostsFor(form, form.fixedCosts ?? fixedCosts),
+    packagingExtra: packagingExtraCost(form),
   };
 }

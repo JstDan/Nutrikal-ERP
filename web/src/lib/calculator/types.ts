@@ -174,6 +174,11 @@ export interface OfferForm {
   /** Capsule jar: plastic (default) or glass, and the lid of a plastic jar. Older offers: plastic jar, plastic lid. */
   jar: JarType;
   lid: LidType;
+  /**
+   * Custom formula made from a catalog product: its jar and lid are priced like the catalog's (plastic jar and lid
+   * included, glass jar with aluminium lid +0.40, aluminium lid +0.10). Older offers: false.
+   */
+  catalogPackaging: boolean;
   /** The CRM client the offer is for (receiver and invoice below are a snapshot of its data). Older offers: null. */
   clientId: string | null;
   /** Nutrikal contact person printed on the offer (the sales email comes from Settings). */
