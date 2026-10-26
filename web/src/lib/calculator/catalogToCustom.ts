@@ -95,6 +95,8 @@ export function catalogToCustom(form: OfferForm, materials: RawMaterial[]): Offe
     return {
       ...next,
       productType: form.jar === 'glass' ? 'capsules_glass' : 'capsules_plastic',
+      // A glass jar has no lid choice in the catalog: plastic lid, whatever was chosen before
+      lid: form.jar === 'glass' ? 'plastic' : form.lid,
       capsulesPerDose: String(p.capsules_per_serving),
       capsuleSize: size,
       maxFillMg: String(CAPSULE_SIZES[size]),

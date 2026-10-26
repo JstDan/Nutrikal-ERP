@@ -1184,6 +1184,8 @@ export const en = {
       packaging_powder: "Doypack (pouch)",
       fixedCost: "Fixed cost per unit",
       fixedCostHint: "Covers labour, waste/scrap and packaging for one finished unit.",
+      lidCost: "+{price} per unit, added to the cost before markup",
+      lidIncluded: "Included in the fixed cost",
     },
     formula: {
       section: "Raw materials for 1 dose",
@@ -1275,6 +1277,7 @@ export const en = {
       rawCostPerUnit: "Raw material cost per unit",
       dosesPerUnit: "Doses per unit",
       fixedCostPerUnit: "Fixed cost per unit (labour, waste, packaging)",
+      lidCostPerUnit: "Aluminium lid per unit",
       unitCost: "Total cost per unit",
       markupMargin: "Markup / margin",
       totalCost: "Total cost",

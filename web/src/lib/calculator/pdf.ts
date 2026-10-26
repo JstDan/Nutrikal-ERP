@@ -163,7 +163,7 @@ export function toPdfModel(
       ? `, capsule size ${form.capsuleSize.replace('size', '')}`
       : '';
     packaging.push(
-      `${PDF[`packaging_${type}`]}s, ${perUnit} capsules each${size}.`,
+      `${PDF[`packaging_${type}`]}s${form.lid === 'aluminium' ? ` ${PDF.aluminiumLid}` : ''}, ${perUnit} capsules each${size}.`,
       `Capsules/Serving: ${formatNumber(caps, 2)}`,
       `Servings/Container: ${servings}`,
     );

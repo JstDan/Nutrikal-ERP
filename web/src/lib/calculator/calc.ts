@@ -4,6 +4,9 @@ import { catalogTiersFor } from './catalogCapsules';
 import { isCapsule, type CatalogTier, type DoseUnit, type FixedCosts, type OfferForm, type ProductType } from './types';
 import { parseNum, parsePositiveInt } from './numbers';
 
+/** Custom formula, capsule jar with an aluminium lid: extra cost per unit, EUR (owner, Oct 2026). */
+export const ALUMINIUM_LID_COST_EUR = 0.2;
+
 const UNIT_TO_KG: Record<DoseUnit, Decimal> = {
   mcg: new Decimal('1e-9'),
   mg: new Decimal('1e-6'),
@@ -30,6 +33,8 @@ export interface CalcInput {
   discountPct: number | null;
   extraItems: ExtraItemInput[];
   fixedCosts: FixedCosts;
+  /** Extra packaging cost per unit (aluminium lid), added to the unit cost before markup. */
+  lidCost?: number;
   /** Catalog product: unit price per quantity step instead of cost + markup (no formula, no fixed cost). */
   catalogTiers?: CatalogTier[] | null;
 }
@@ -67,6 +72,8 @@ export interface CalcResult {
   dosesPerUnit: number | null;
   netWeightPerPouchG: number | null;
   fixedCostPerUnit: number;
+  /** Aluminium lid, part of the unit cost. */
+  lidCostPerUnit: number;
   rawCostPerUnit: number;
   unitCost: number;
   unitPrice: number;
@@ -119,7 +126,8 @@ export function calculate(input: CalcInput): CalcResult {
 
   const fixedCostPerUnit = input.productType ? new Decimal(input.fixedCosts[input.productType] ?? 0) : ZERO;
   const rawCostPerUnit = dosesPerUnit ? costPerDose.mul(dosesPerUnit) : ZERO;
-  const unitCost = rawCostPerUnit.add(fixedCostPerUnit);
+  const lidCostPerUnit = capsule ? new Decimal(input.lidCost ?? 0) : ZERO;
+  const unitCost = rawCostPerUnit.add(fixedCostPerUnit).add(lidCostPerUnit);
   const markup = new Decimal(input.markupPct ?? 0);
   const unitPrice = catalogStep
     ? new Decimal(catalogStep.price).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
@@ -172,6 +180,7 @@ export function calculate(input: CalcInput): CalcResult {
     dosesPerUnit: dosesPerUnit?.toNumber() ?? null,
     netWeightPerPouchG: netWeightPerPouchG?.toNumber() ?? null,
     fixedCostPerUnit: fixedCostPerUnit.toNumber(),
+    lidCostPerUnit: lidCostPerUnit.toNumber(),
     rawCostPerUnit: rawCostPerUnit.toNumber(),
     unitCost: unitCost.toNumber(),
     unitPrice: complete ? unitPrice.toNumber() : 0,
@@ -224,5 +233,6 @@ export function calcInputFromForm(form: OfferForm, fixedCosts: FixedCosts): Calc
       price: parseNum(x.price),
     })),
     fixedCosts: form.fixedCosts ?? fixedCosts,
+    lidCost: !catalog && form.lid === 'aluminium' ? ALUMINIUM_LID_COST_EUR : 0,
   };
 }

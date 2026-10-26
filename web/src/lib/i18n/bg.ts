@@ -1186,6 +1186,8 @@ export const bg: Dict = {
       packaging_powder: "Дойпак",
       fixedCost: "Фиксиран разход за брой",
       fixedCostHint: "Покрива труд, брак/фира и опаковка за един готов брой.",
+      lidCost: "+{price} на брой, към разхода преди надценката",
+      lidIncluded: "Включена във фиксирания разход",
     },
     formula: {
       section: "Суровини за 1 доза",
@@ -1277,6 +1279,7 @@ export const bg: Dict = {
       rawCostPerUnit: "Разход за суровини за брой",
       dosesPerUnit: "Дози в опаковка",
       fixedCostPerUnit: "Фиксиран разход за брой (труд, фира, опаковка)",
+      lidCostPerUnit: "Алуминиева капачка за брой",
       unitCost: "Общ разход за брой",
       markupMargin: "Надценка / марж",
       totalCost: "Общ разход",

@@ -47,6 +47,7 @@ export function ResultsSection({ form, result: r, valid, busy, onCreate, onInval
             <InfoLine label={t.results.dosesPerUnit} value={r.dosesPerUnit !== null ? num(r.dosesPerUnit, 2) : "–"} />
             <InfoLine label={t.results.rawCostPerUnit} value={eur(r.rawCostPerUnit, 4)} />
             <InfoLine label={t.results.fixedCostPerUnit} value={eur(r.fixedCostPerUnit)} />
+            {r.lidCostPerUnit > 0 && <InfoLine label={t.results.lidCostPerUnit} value={eur(r.lidCostPerUnit)} />}
             <InfoLine label={t.results.unitCost} value={eur(r.unitCost, 4)} strong />
           </div>
           <div>
@@ -158,7 +159,10 @@ export function ClientSummary({ form, result: r }: { form: OfferForm; result: Ca
           <div>
             <InfoLine label={t.results.product} value={form.offer.productName || "–"} />
             <InfoLine label={t.results.type} value={type ? t.productType[type] : "–"} />
-            <InfoLine label={t.results.packaging} value={type ? t.productType[`packaging_${type}`] : "–"} />
+            <InfoLine
+              label={t.results.packaging}
+              value={type ? (isCapsule(type) && form.lid === "aluminium" ? fmt(t.catalog.withAluminiumLid, { jar: t.productType[`packaging_${type}`] }) : t.productType[`packaging_${type}`]) : "–"}
+            />
             <InfoLine label={quantityLabel(t, type)} value={form.quantityPerUnit || "–"} />
             {isCapsule(type) && <InfoLine label={t.formula.capsulesPerDose} value={form.capsulesPerDose || "–"} />}
             <InfoLine label={`${t.results.quantity} (${unitsLabel(t, type).toLowerCase()})`} value={units ? num(units) : "–"} />
