@@ -882,6 +882,7 @@ export const bg: Dict = {
       depositAmount: "Аванс: {amount}",
       depositReceived: "Аванс получен на",
       balanceReceived: "Остатък получен на",
+      datesAdminOnly: "Датите на плащане се въвеждат само от admin.",
       customerRef: "Номер на поръчката на клиента",
       requested: "Желана дата",
       notes: "Бележки",

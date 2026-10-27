@@ -564,7 +564,10 @@ export async function saveOrder(_: ActionState, fd: FormData): Promise<ActionSta
   try {
     await q(
       user.id,
-      `update sales_orders set deposit_pct = $2, deposit_received_on = $3::date, balance_received_on = $4::date,
+      // Payment dates: admin only (the database refuses them from others; sales keeps the stored ones)
+      `update sales_orders set deposit_pct = $2,
+              deposit_received_on = case when has_role('admin') then $3::date else deposit_received_on end,
+              balance_received_on = case when has_role('admin') then $4::date else balance_received_on end,
               requested_date = $5::date, customer_ref = $6, notes = $7
         where id = $1`,
       [str(fd, "order_id"), num(fd, "deposit_pct"), str(fd, "deposit_received_on"), str(fd, "balance_received_on"),
