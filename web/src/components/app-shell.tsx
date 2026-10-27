@@ -45,7 +45,6 @@ export async function AppShell({ children }: { children: ReactNode }) {
           title: t.nav.operations,
           items: [
             { href: "/inventory", label: t.nav.inventory },
-            { href: "/qc", label: t.nav.qc },
             { href: "/formulas", label: t.nav.formulas },
             { href: "/purchasing", label: t.nav.purchasing },
             { href: "/deliveries", label: t.nav.deliveries },

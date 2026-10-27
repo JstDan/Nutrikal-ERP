@@ -179,12 +179,12 @@ await ok('production sees items but no prices or suppliers', async () => {
 
 console.log('\nReceiving, QC and stock');
 let lot;
-await ok('production receives a lot into quarantine at the production facility', async () => {
+await ok('production receives a lot at the production facility, released on receipt', async () => {
   const r = await one('production', `select receive_lot($1, $2, 100, null, 'SUP-778', current_date - 30) as id`,
                       [item.id, L['PF-QUAR']]);
   lot = (await db.query('select * from lots where id = $1', [r.id])).rows[0];
   eq(lot.lot_number, 'LOT-000001', 'lot number');
-  eq(lot.qc_status, 'quarantine', 'status');
+  eq(lot.qc_status, 'released', 'status');
 });
 await ok('expiry is calculated from the 24-month shelf life', async () => {
   const r = await one('admin', `select expires_on = (manufactured_on + interval '24 months')::date as ok from lots where id = $1`, [lot.id]);
@@ -195,8 +195,10 @@ await fails('production cannot receive into the Nutrikal warehouse', () =>
 await ok('transfer quarantine → raw materials store', async () => {
   await as('production', 'select transfer_stock($1, $2, $3, 100)', [lot.id, L['PF-QUAR'], L['PF-RM']]);
 });
-await fails('consumption of an unreleased lot is blocked', () =>
-  as('production', `select post_stock_movement('consumption', $1, $2, 10)`, [lot.id, L['PF-RM']]), 'not released');
+await fails('consumption of a lot admin put in quarantine is blocked', async () => {
+  await as('admin', `select set_lot_qc_status($1, 'quarantine')`, [lot.id]);
+  await as('production', `select post_stock_movement('consumption', $1, $2, 10)`, [lot.id, L['PF-RM']]);
+}, 'not released');
 await fails('production cannot release a lot (Admin only)', () =>
   as('production', `select set_lot_qc_status($1, 'released')`, [lot.id]), 'not allowed');
 await fails('production cannot release a lot by updating it either', () =>
@@ -642,14 +644,14 @@ await fails('a usage more than 5 % away from the reservation needs a reason', as
   reservedBefore = await reserved();
   await as('production', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb)`, [mo.id, consumption()]);
 }, 'enter a reason');
-await ok('production reports the batch: lots used, finished lot in quarantine in PF-QUAR', async () => {
+await ok('production reports the batch: lots used, finished lot released in PF-QUAR', async () => {
   const before = Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [lot.id])).q);
   const items = await as('admin', 'select item_id from mo_material_requirements($1)', [mo.id]);
   const reasons = JSON.stringify(items.map(i => ({ item_id: i.item_id, reason: 'Less needed' })));
   const r = await one('production', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb, $3::jsonb) as lot`,
                       [mo.id, consumption(), reasons]);
   const fg = await one('admin', 'select l.lot_number, l.qc_status, i.type, i.sku from lots l join items i on i.id = l.item_id where l.id = $1', [r.lot]);
-  eq(fg.lot_number, 'B-24001', 'batch number'); eq(fg.qc_status, 'quarantine', 'QC'); eq(fg.type, 'finished_good', 'item type');
+  eq(fg.lot_number, 'B-24001', 'batch number'); eq(fg.qc_status, 'released', 'QC'); eq(fg.type, 'finished_good', 'item type');
   eq(fg.sku, 'FG-NK-P-0001', 'finished goods item');
   eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1 and location_id = $2', [r.lot, L['PF-QUAR']])).q), 990, 'made in quarantine');
   eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [lot.id])).q), before - 22.5, 'magnesium used');
@@ -1151,11 +1153,11 @@ await ok('admin changes the date of an open delivery', async () => {
   eq((await as('admin', `update expected_deliveries set expected_on = current_date - 2 where id = $1 returning id`, [ed1.id])).length, 1, 'updated');
   eq((await one('admin', 'select is_overdue from expected_delivery_overview where id = $1', [ed1.id])).is_overdue, true, 'overdue');
 });
-await ok('a partial receipt makes a quarantine lot at the delivery price and keeps it open', async () => {
+await ok('a partial receipt makes a released lot at the delivery price and keeps it open', async () => {
   edLot = await one('admin', `select receive_expected_delivery($1, $2, 20, 'SUP-ED-1') as id`, [ed1.id, L['NK-WH']]);
   const l = await one('admin', `select l.qc_status, l.expected_delivery_id, c.unit_cost from lots l
                                   left join lot_costs c on c.lot_id = l.id where l.id = $1`, [edLot.id]);
-  eq(l.qc_status, 'quarantine', 'qc');
+  eq(l.qc_status, 'released', 'qc');
   eq(l.expected_delivery_id, ed1.id, 'linked');
   eq(Number(l.unit_cost), 12.5, 'cost');
   const d = await one('admin', 'select status, received, remaining, is_partial from expected_delivery_overview where id = $1', [ed1.id]);
@@ -1246,13 +1248,13 @@ await fails('a file path must start with its delivery', () =>
   as('production', `insert into delivery_attachments (delivery_id, storage_path) values ($1, 'other/x.jpg')`, [pd.id]), 'path_chk');
 await fails('production cannot receive a warehouse delivery', () =>
   as('production', 'select receive_expected_delivery($1, null, 5)', [pdWh.id]), 'not found');
-await ok('production receives with a photo: lot in quarantine in PF-QUAR at the delivery price, admins notified', async () => {
+await ok('production receives with a photo: released lot in PF-QUAR at the delivery price, admins notified', async () => {
   await attach('production', pd.id, 'a.jpg');
   await attach('production', pd.id, 'b.jpg');
   pdLot = await one('production', `select receive_expected_delivery($1, $2, 40, 'SUP-PF-1', null, current_date + 400) as id`, [pd.id, L['PF-RM']]);
   const l = await one('admin', `select l.qc_status, l.supplier_lot, l.expires_on = current_date + 400 as exp, c.unit_cost
                                   from lots l left join lot_costs c on c.lot_id = l.id where l.id = $1`, [pdLot.id]);
-  eq(l.qc_status, 'quarantine', 'quarantine'); eq(l.supplier_lot, 'SUP-PF-1', 'supplier lot'); eq(l.exp, true, 'expiry');
+  eq(l.qc_status, 'released', 'released'); eq(l.supplier_lot, 'SUP-PF-1', 'supplier lot'); eq(l.exp, true, 'expiry');
   eq(Number(l.unit_cost), 9.9, 'cost');
   eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1 and location_id = $2', [pdLot.id, L['PF-QUAR']])).q), 40, 'in PF-QUAR');
   eq((await one('admin', 'select status from expected_deliveries where id = $1', [pd.id])).status, 'received', 'received');
@@ -1567,7 +1569,7 @@ await ok('QC release of the batch ticks "QC освобождаване"', async 
   await db.query(`update manufacturing_orders set status = 'completed', finished_lot_id = $2, completed_at = now() where id = $1`, [tkMoA.id, lot.id]);
   await db.query(`select set_config('nk.mo_transition', 'off', false)`);
   eq(await tkStatus(tkA, 'consumption_reported'), 'done', 'reported');
-  eq(await tkStatus(tkA, 'qc_released'), 'todo', 'in quarantine');
+  eq(await tkStatus(tkA, 'qc_released'), 'done', 'released on receipt');
   await as('admin', `select set_lot_qc_status($1, 'released')`, [lot.id]);
   eq(await tkStatus(tkA, 'qc_released'), 'done', 'released');
   await as('admin', `select set_lot_qc_status($1, 'quarantine')`, [lot.id]);
