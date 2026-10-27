@@ -4,6 +4,13 @@ import { ALUMINIUM_LID_EUR, GLASS_JAR_EUR, catalogTiersFor } from './catalogCaps
 import { isCapsule, type CatalogTier, type DoseUnit, type FixedCosts, type OfferForm, type ProductType } from './types';
 import { parseNum, parsePositiveInt } from './numbers';
 
+/**
+ * Raw-material waste in production, % (owner, Oct 2026): the raw materials cost and the quantities to buy
+ * include it; the dose and fill weights do not. Same default as the waste of a recipe made from an offer.
+ */
+export const WASTE_PCT = 5;
+const WASTE = new Decimal(1).add(new Decimal(WASTE_PCT).div(100));
+
 /** Custom formula, capsule jar with an aluminium lid: extra cost per unit, EUR (owner, Oct 2026). */
 export const ALUMINIUM_LID_COST_EUR = 0.2;
 
@@ -131,7 +138,7 @@ export function calculate(input: CalcInput): CalcResult {
   const capsule = isCapsule(input.productType);
 
   const rowKg = input.rows.map((r) => (r.amount && r.amount > 0 ? new Decimal(r.amount).mul(UNIT_TO_KG[r.unit]) : ZERO));
-  const rowCost = rowKg.map((kg, i) => kg.mul(input.rows[i].pricePerKg || 0));
+  const rowCost = rowKg.map((kg, i) => kg.mul(WASTE).mul(input.rows[i].pricePerKg || 0));
   const doseKg = rowKg.reduce((a, b) => a.add(b), ZERO);
   const costPerDose = rowCost.reduce((a, b) => a.add(b), ZERO);
   const doseWeightMg = doseKg.mul(1e6);
@@ -195,7 +202,7 @@ export function calculate(input: CalcInput): CalcResult {
 
   const orderDoses = dosesPerUnit && units ? dosesPerUnit.mul(units) : ZERO;
   const requirements = input.rows.map((r, i) => {
-    const totalKg = rowKg[i].mul(orderDoses);
+    const totalKg = rowKg[i].mul(WASTE).mul(orderDoses);
     return { name: r.name, totalKg: totalKg.toNumber(), cost: totalKg.mul(r.pricePerKg || 0).toNumber() };
   });
 
