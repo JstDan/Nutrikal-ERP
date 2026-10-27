@@ -20,7 +20,7 @@ type Line = {
   offer_id: string | null; kind: "offer" | "calc_offer" | "service"; calc_offer_id: string | null; calc_offer_no: string | null;
   capsules: number | null;
 };
-type Approved = { id: string; code: string; name: string; name_bg: string | null; version: number };
+type Approved = { id: string; code: string; name: string; name_bg: string | null; version: number; calc_offer_id: string | null };
 type Commercial = {
   currency: string; deposit_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
   deposit_received_on: string | null; balance_received_on: string | null; customer_ref: string | null; notes: string | null;
@@ -85,8 +85,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     // Approved formulas a calculator line can be made from (the client's own or general ones)
     const approved = isAdmin && ["confirmed", "in_production"].includes(o.status) && lines.some((l) => l.kind === "calc_offer" && !l.formula_version_id)
       ? (await tx.query<Approved>(
-          `select v.id, f.code, f.name, f.name_bg, v.version from formula_versions v join formulas f on f.id = v.formula_id
-            where v.status = 'approved' and (f.client_id is null or f.client_id = $1) order by f.client_id is null, f.code`, [o.client_id])).rows
+          `select v.id, f.code, f.name, f.name_bg, v.version, f.calc_offer_id from formula_versions v join formulas f on f.id = v.formula_id
+            where v.status = 'approved' and (f.client_id is null or f.client_id = $1
+                  or f.calc_offer_id in (select calc_offer_id from sales_order_lines where order_id = $2))
+            order by f.client_id is null, f.code`, [o.client_id, o.id])).rows
       : [];
     const meta = (await tx.query<Meta>(
       `select so.created_at::text, cp.full_name as created_by, op.full_name as owner, cl.country_code as country
@@ -240,7 +242,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
                         <ActionForm action={linkOrderLineFormula} submitLabel={d.linkFormula} resetOnSuccess={false}>
                           <input type="hidden" name="line_id" value={l.id} />
                           <label className="field"><span>{d.chooseFormula} *</span>
-                            <select name="formula_version_id" required className="input" defaultValue="">
+                            <select name="formula_version_id" required className="input" defaultValue={approved.find((v) => v.calc_offer_id && v.calc_offer_id === l.calc_offer_id)?.id ?? ""}>
                               <option value="" disabled>—</option>
                               {approved.map((v) => (
                                 <option key={v.id} value={v.id}>{fmt(t.offers.detail.formulaVersion, { code: v.code, n: v.version })} · {productName({ product: v.name, product_bg: v.name_bg })}</option>

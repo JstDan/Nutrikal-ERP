@@ -9,14 +9,14 @@ import { SearchSelect } from "@/components/search-select";
 import { formulaTone } from "@/lib/status";
 import {
   addFormulaClaim, addFormulaLine, addFormulaPackaging, removeFormulaPackaging, approveFormulaVersion, discardFormulaDraft, newFormulaVersion,
-  removeFormulaClaim, removeFormulaLine, saveFormulaVersion,
+  linkPendingLine, removeFormulaClaim, removeFormulaLine, removePendingLine, saveFormulaLine, saveFormulaVersion,
 } from "@/app/actions";
 
 type Formula = {
   id: string; code: string; name: string; name_bg: string | null; product_format: string; serving_size: string;
   serving_unit: "pcs" | "g" | "ml"; servings_per_pack: number | null; description: string | null;
   client: string | null; client_id: string | null; project_code: string | null; project_name: string | null;
-  shell: string | null; shell_bg: string | null;
+  shell: string | null; shell_bg: string | null; calc_offer_id: string | null;
 };
 type Version = {
   id: string; version: number; status: string; shelf_life_months: number | null; change_note: string | null;
@@ -25,7 +25,9 @@ type Version = {
 type Line = {
   id: string; sku: string; name: string; name_bg: string | null; amount: string; unit: string; amount_mg: string;
   overage_pct: string; novel_food_status: string | null; input_mg_per_unit: string | null; kg_per_1000_packs: string | null;
+  item_id: string; base_unit: string; available: string | null;
 };
+type Pending = { id: string; name: string; amount: string; unit: string; material_id: string | null };
 type Checks = {
   line_count: number; novel_not_authorised: number; novel_to_review: number; shelf_life_months: number | null;
   min_item_shelf_life: number | null; shelf_life_exceeds_items: boolean; allergens: string | string[];
@@ -58,7 +60,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
     const formula = (await tx.query<Formula>(
       `select f.id, f.code, f.name, f.name_bg, f.product_format, f.serving_size::text, f.serving_unit, f.servings_per_pack,
               f.description, c.legal_name as client, c.id as client_id, p.code as project_code, p.name as project_name,
-              s.name as shell, s.name_bg as shell_bg
+              s.name as shell, s.name_bg as shell_bg, f.calc_offer_id
          from formulas f
          left join clients c on c.id = f.client_id
          left join projects p on p.id = f.project_id
@@ -76,9 +78,18 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
       versions.find((v) => v.status === "approved") ??
       versions[0];
     const lines = (await tx.query<Line>(
-      `select id, sku, name, name_bg, amount::text, unit, amount_mg::text, overage_pct::text, novel_food_status,
-              input_mg_per_unit::text, kg_per_1000_packs::text
-         from formula_line_details where version_id = $1 order by sort_order, name`, [current.id])).rows;
+      `select d.id, d.sku, d.name, d.name_bg, d.amount::text, d.unit, d.amount_mg::text, d.overage_pct::text, d.novel_food_status,
+              d.input_mg_per_unit::text, d.kg_per_1000_packs::text, d.item_id, i.base_unit, s.available::text
+         from formula_line_details d join items i on i.id = d.item_id
+         left join item_stock_summary s on s.item_id = d.item_id
+        where d.version_id = $1 order by d.sort_order, d.name`, [current.id])).rows;
+    const pending = (await tx.query<Pending>(
+      "select id, name, amount::text, unit, material_id from formula_pending_lines where version_id = $1 order by sort_order, name",
+      [current.id])).rows;
+    const offer = formula.calc_offer_id
+      ? (await tx.query<{ id: string; offer_no: string; units: string | null }>(
+          "select id, offer_no, data ->> 'numberOfUnits' as units from calc_offers where id = $1", [formula.calc_offer_id])).rows[0] ?? null
+      : null;
     const checks = (await tx.query<Checks>(
       `select line_count, novel_not_authorised, novel_to_review, shelf_life_months, min_item_shelf_life, shelf_life_exceeds_items,
               allergens::text[] as allergens, is_vegan, is_vegetarian, fill_mg_per_serving::text, fill_mg_per_unit::text,
@@ -102,10 +113,10 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
         where fp.version_id = $1 order by i.name`, [current.id])).rows;
     const packOptions = (await tx.query<{ id: string; sku: string; name: string; name_bg: string | null }>(
       "select id, sku, name, name_bg from items where is_active and type = 'packaging' order by name")).rows;
-    return { formula, versions, current, lines, checks, nutrients, claims, claimOptions, items, packaging, packOptions };
+    return { formula, versions, current, lines, pending, offer, checks, nutrients, claims, claimOptions, items, packaging, packOptions };
   });
   if (!data) notFound();
-  const { formula: f, versions, current: v, lines, checks: c, nutrients, claims, claimOptions, items, packaging, packOptions } = data;
+  const { formula: f, versions, current: v, lines, pending, offer, checks: c, nutrients, claims, claimOptions, items, packaging, packOptions } = data;
 
   const isDraft = v.status === "draft";
   const editable = isDraft && canEdit;
@@ -135,6 +146,22 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
         : { tone: "neutral", text: fmt(d.fillPerUnit, { mg: formatMass(locale, fillPerUnit) }) },
     );
   }
+  // Stock for the offer quantity (or ?packs=): needed per stock item in its unit (lines of one item add up)
+  const packsParam = Number(sp.packs);
+  const offerUnits = Number(offer?.units);
+  const packs = packsParam > 0 ? Math.round(packsParam) : offerUnits > 0 ? Math.round(offerUnits) : 1000;
+  const stock = new Map<string, { name: string; unit: string; needed: number | null; available: number }>();
+  for (const l of lines) {
+    const kg = l.kg_per_1000_packs != null ? (Number(l.kg_per_1000_packs) * packs) / 1000 : null;
+    const qty = kg == null ? null : l.base_unit === "kg" ? kg : l.base_unit === "g" ? kg * 1000 : null;
+    const row = stock.get(l.item_id);
+    if (row) row.needed = row.needed == null || qty == null ? null : row.needed + qty;
+    else stock.set(l.item_id, { name: bgName(l), unit: l.base_unit, needed: qty, available: Number(l.available ?? 0) });
+  }
+  const itemOptions = (["raw_material", "excipient", "semi_finished"] as const).flatMap((ty) =>
+    items.filter((i) => i.type === ty).map((i) => ({
+      value: i.id, label: `${bgName(i)} · ${i.sku}`, group: t.enums.itemType[ty], keywords: `${i.name} ${i.name_bg ?? ""}`,
+    })));
   const yesNo = (b: boolean | null) => (b == null ? d.unknown : b ? d.yes : d.no);
 
   const lineGrid = editable
@@ -153,6 +180,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
               {f.code} · {fmt(d.versionN, { n: v.version })} · {t.enums.productFormat[f.product_format as "capsule"]}
               {" · "}
               {f.client_id ? <Link href={`/clients/${f.client_id}`} className="text-ink">{f.client}{f.project_code ? ` · ${f.project_code}` : ""}</Link> : t.formulas.stock}
+              {offer && <> · <Link href={`/offers/calc/${offer.id}`} className="text-ink">{fmt(t.formulas.fromOffer, { no: offer.offer_no })}</Link></>}
             </span>
           </span>
         }
@@ -207,9 +235,64 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                       <button type="submit" className="btn btn-outline" aria-label={`${d.remove}: ${bgName(l)}`}>{d.remove}</button>
                     </form>
                   )}
+                  {editable && (
+                    <details className="col-span-full">
+                      <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold">{d.editLine}<span className="sr-only">: {bgName(l)}</span></summary>
+                      <ActionForm action={saveFormulaLine} submitLabel={t.common.save} resetOnSuccess={false}>
+                        <input type="hidden" name="line_id" value={l.id} />
+                        <input type="hidden" name="formula_id" value={f.id} />
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <label className="field"><span>{d.amount} *</span><input name="amount" type="number" min="0.0001" step="any" required defaultValue={Number(l.amount)} className="input" /></label>
+                          <label className="field"><span>{d.unit}</span>
+                            <select name="unit" className="input" defaultValue={l.unit}>
+                              <option value="mg">mg</option><option value="mcg">mcg</option><option value="g">g</option>
+                            </select>
+                          </label>
+                          <label className="field"><span>{d.overagePct}</span>
+                            <input name="overage_pct" type="number" min={0} max={100} step="any" defaultValue={Number(l.overage_pct)} className="input" />
+                          </label>
+                        </div>
+                      </ActionForm>
+                    </details>
+                  )}
                 </div>
               ))}
             </div>
+
+            {pending.length > 0 && (
+              <div className="flex flex-col gap-3 border-t border-mist pt-4">
+                <h3 className="m-0 text-base font-bold">{d.pending}</h3>
+                <p className="m-0 text-[13px] text-ink-2">{d.pendingNote} {isDraft && d.pendingBlocks}</p>
+                {pending.map((p) => (
+                  <div key={p.id} className="flex flex-col gap-2 rounded-sm border border-line p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3 text-sm">
+                      <span className="min-w-0 flex-[1_1_200px] break-words"><span className="font-semibold">{p.name}</span> · {formatNumber(locale, p.amount, 3)} {p.unit}</span>
+                      {editable && (
+                        <form action={removePendingLine}>
+                          <input type="hidden" name="pending_id" value={p.id} />
+                          <input type="hidden" name="formula_id" value={f.id} />
+                          <button type="submit" className="btn btn-outline" aria-label={`${d.remove}: ${p.name}`}>{d.remove}</button>
+                        </form>
+                      )}
+                    </div>
+                    {editable && (
+                      <ActionForm action={linkPendingLine} submitLabel={d.link} resetOnSuccess={false}>
+                        <input type="hidden" name="pending_id" value={p.id} />
+                        <input type="hidden" name="formula_id" value={f.id} />
+                        <label className="field"><span>{d.stockItem} *</span>
+                          <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults} options={itemOptions} />
+                        </label>
+                        {p.material_id && (
+                          <label className="flex min-h-11 items-center gap-2 text-sm">
+                            <input type="checkbox" name="remember" defaultChecked className="size-5" />{d.remember}
+                          </label>
+                        )}
+                      </ActionForm>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {editable && (
               <div className="border-t border-mist pt-4">
@@ -219,11 +302,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                   <input type="hidden" name="formula_id" value={f.id} />
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_100px_minmax(0,1fr)]">
                     <label className="field"><span>{d.item} *</span>
-                      <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
-                        options={(["raw_material", "excipient", "semi_finished"] as const).flatMap((ty) =>
-                          items.filter((i) => i.type === ty).map((i) => ({
-                            value: i.id, label: `${bgName(i)} · ${i.sku}`, group: t.enums.itemType[ty], keywords: `${i.name} ${i.name_bg ?? ""}`,
-                          })))} />
+                      <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults} options={itemOptions} />
                     </label>
                     <label className="field"><span>{d.amount} *</span><input name="amount" type="number" min="0.0001" step="any" required className="input" /></label>
                     <label className="field"><span>{d.unit}</span>
@@ -239,6 +318,46 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                 </ActionForm>
               </div>
             )}
+          </Card>
+
+          <Card title={fmt(d.stockTitle, { n: formatNumber(locale, packs) })} id="stock-h">
+            <p className="m-0 text-[13px] text-ink-2">{d.stockNote}</p>
+            <form method="get" className="flex flex-wrap items-end gap-3">
+              {typeof sp.v === "string" && <input type="hidden" name="v" value={sp.v} />}
+              <label className="field min-w-0 flex-[0_1_200px]"><span>{d.packs}</span>
+                <input name="packs" type="number" min={1} step={1} defaultValue={packs} className="input" />
+              </label>
+              <button type="submit" className="btn btn-outline">{d.show}</button>
+            </form>
+            {f.servings_per_pack == null && <p className="m-0 text-sm font-semibold">{d.noServings}</p>}
+            <div>
+              <div className="row hide-sm border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 md:grid-cols-[minmax(0,1.6fr)_120px_120px_minmax(0,1fr)]">
+                <span>{d.item}</span><span>{d.needed}</span><span>{d.available}</span><span><span className="sr-only">{t.formulas.status}</span></span>
+              </div>
+              {stock.size === 0 && pending.length === 0 && <div className="py-3"><Empty>{d.noLines}</Empty></div>}
+              {[...stock.entries()].map(([itemId, s]) => {
+                const short = s.needed != null ? s.needed - s.available : null;
+                return (
+                  <div key={itemId} className="row grid-cols-2 gap-y-1 border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[minmax(0,1.6fr)_120px_120px_minmax(0,1fr)]">
+                    <span className="col-span-2 min-w-0 font-semibold break-words md:col-span-1">{s.name}</span>
+                    <span><span className="text-ink-2 md:hidden">{d.needed}: </span>{s.needed != null ? formatQty(locale, s.needed, s.unit) : "—"}</span>
+                    <span><span className="text-ink-2 md:hidden">{d.available}: </span>{formatQty(locale, s.available, s.unit)}</span>
+                    <span className="col-span-2 md:col-span-1">
+                      {short == null ? null : short > 0
+                        ? <Chip tone="red">{fmt(d.short, { qty: formatQty(locale, short, s.unit) })}</Chip>
+                        : <Chip tone="green">{d.enough}</Chip>}
+                    </span>
+                  </div>
+                );
+              })}
+              {pending.map((p) => (
+                <div key={p.id} className="row grid-cols-2 gap-y-1 border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[minmax(0,1.6fr)_120px_120px_minmax(0,1fr)]">
+                  <span className="col-span-2 min-w-0 font-semibold break-words md:col-span-1">{p.name}</span>
+                  <span>—</span><span>—</span>
+                  <span className="col-span-2 md:col-span-1"><Chip tone="amber">{d.notLinked}</Chip></span>
+                </div>
+              ))}
+            </div>
           </Card>
 
           <Card title={d.packaging} id="packaging-h">
