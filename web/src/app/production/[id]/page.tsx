@@ -377,7 +377,7 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
                   <Fact label={d.batchNumber}>{mo.batch_number}</Fact>
                   <Fact label={d.produced}>{formatNumber(locale, mo.produced_quantity ?? 0)} {t.common.units}</Fact>
                   <Fact label={d.producedOn}>{formatDate(locale, mo.produced_on)}</Fact>
-                  <Fact label={d.finishedLot}><Link href="/qc" className="text-ink">{mo.finished_lot}</Link></Fact>
+                  <Fact label={d.finishedLot}><Link href="/inventory?type=finished_good" className="text-ink">{mo.finished_lot}</Link></Fact>
                 </div>
               </Card>
             )}

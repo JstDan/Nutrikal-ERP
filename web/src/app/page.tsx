@@ -129,7 +129,7 @@ export default async function Dashboard() {
               <div><div className="font-semibold">{fmt(t.dashboard.pendingAdjustments, { count: data.adjustments })}</div><div className="text-ink-2">{t.dashboard.pendingAdjustmentsNote}</div></div>
             </div>
           )}
-          {(data.quarantine > 0 || data.adjustments > 0) && <Link href="/qc" className="btn btn-outline self-start">{t.dashboard.toQc}</Link>}
+          {(data.quarantine > 0 || data.adjustments > 0) && <Link href="/inventory" className="btn btn-outline self-start">{t.dashboard.toInventory}</Link>}
         </Card>
       </div>
 

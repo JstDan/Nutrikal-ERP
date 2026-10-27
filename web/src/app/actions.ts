@@ -815,19 +815,6 @@ export async function receiveGoods(_: ActionState, fd: FormData): Promise<Action
   }
 }
 
-export async function setLotQc(fd: FormData) {
-  const { user } = await getSession();
-  await q(user.id, "select set_lot_qc_status($1, $2::qc_status, $3)", [str(fd, "lot_id"), str(fd, "status"), str(fd, "notes")]);
-  revalidatePath("/", "layout");
-}
-
-export async function decideAdjustment(fd: FormData) {
-  const { user } = await getSession();
-  await q(user.id, "select decide_stock_adjustment($1, $2)", [str(fd, "request_id"), fd.get("approve") === "true"]);
-  revalidatePath("/", "layout");
-}
-
-
 // -------------------------------------------------------- items (master data)
 const itemFields = (fd: FormData) => {
   const tri = (k: string) => (str(fd, k) === "true" ? true : str(fd, k) === "false" ? false : null);

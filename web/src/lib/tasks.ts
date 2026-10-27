@@ -13,7 +13,7 @@ const linkHref = (type: string, id: string, formulaId: string | null): string | 
     case "formula_version": return formulaId ? `/formulas/${formulaId}` : "/formulas";
     case "purchase_request": return "/purchasing";
     case "expected_delivery": return "/deliveries";
-    case "lot": return "/qc";
+    case "lot": return "/inventory?type=finished_good";
     case "invoice": return `/invoices/${id}`;
     default: return null;
   }
