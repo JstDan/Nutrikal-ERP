@@ -947,6 +947,7 @@ await ok('a calculator offer gets a recipe: matched items become lines, the rest
   rcpVersion = (await one('sales', 'select id from formula_versions where formula_id = $1', [rcpFormula.id])).id;
   const lines = await as('sales', 'select item_id, amount::float as a, unit from formula_lines where version_id = $1', [rcpVersion]);
   eq(lines.map((l) => `${l.item_id === rcpZg.item}:${l.a}${l.unit}`).join(), 'true:15mg', 'lines');
+  eq(Number((await one('sales', 'select overage_pct from formula_lines where version_id = $1', [rcpVersion])).overage_pct), 5, '5 % overage');
   const pend = await as('sales', 'select name, material_id, amount::float as a from formula_pending_lines where version_id = $1', [rcpVersion]);
   eq(pend.map((p) => `${p.name}:${p.a}:${p.material_id === rcpM2.mat}`).join(), `${rcpM2.name}:200:true`, 'pending');
 });
@@ -966,6 +967,7 @@ await ok('sales links the waiting ingredient; the link is remembered and the rec
   await as('sales', 'select link_recipe_pending_line($1, $2)', [p.id, rcpM2.item]);
   eq((await as('sales', 'select id from formula_pending_lines where version_id = $1', [rcpVersion])).length, 0, 'none pending');
   eq((await as('sales', 'select id from formula_lines where version_id = $1', [rcpVersion])).length, 2, 'two lines');
+  eq(Number((await one('sales', 'select overage_pct from formula_lines where version_id = $1 and item_id = $2', [rcpVersion, rcpM2.item])).overage_pct), 5, 'linked line overage');
   eq((await one('sales', 'select item_id from calc_material_items where material_id = $1', [rcpM2.mat])).item_id, rcpM2.item, 'remembered');
   await as('sales', `update formula_lines set amount = 25 where version_id = $1 and item_id = $2`, [rcpVersion, rcpZg.item]);
   await as('sales', 'update calc_offers set data = $2::jsonb where id = $1', [rcpOffer, rcpRows(30)]);
