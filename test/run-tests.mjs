@@ -516,7 +516,7 @@ await fails('an order cannot skip steps', () =>
 await fails('production does not start before the deposit', () =>
   as('sales', `update sales_orders set status = 'in_production' where id = $1`, [order.id]), 'deposit');
 await fails('with the deposit received, the order is not in production until Production has a manufacturing order', async () => {
-  await as('sales', `update sales_orders set deposit_received_on = current_date where id = $1`, [order.id]);
+  await as('admin', `update sales_orders set deposit_received_on = current_date where id = $1`, [order.id]);
   await as('admin', `update sales_orders set status = 'in_production' where id = $1`, [order.id]);
 }, 'sent to production yet');
 await ok('production sees no orders', async () => {
@@ -1226,23 +1226,24 @@ await ok('production sees purchase prices only through the materials of its orde
 await fails('production cannot see the sources of an order not sent to it', () =>
   as('production', 'select * from mo_material_sources($1)', [mo2.id]), 'not allowed');
 
-console.log('\nOpening stock import (Nutrikal Inventory)');
+console.log('\nOpening stock import (Supplements Inventory sheet)');
 await ok('the import loads every ingredient with its opening stock, price and supplier', async () => {
   const before = (await db.query('select count(*)::int as n from items')).rows[0].n;
   await db.exec(readFileSync(join(here, '..', 'supabase', 'import', 'opening_stock.sql'), 'utf8'));
-  eq((await db.query('select count(*)::int as n from items')).rows[0].n - before, 142, 'items');
-  eq((await db.query(`select count(*)::int as n from stock_movements where type = 'opening_balance'`)).rows[0].n, 125, 'opening balances');
+  eq((await db.query('select count(*)::int as n from items')).rows[0].n - before, 163, 'items');
+  eq((await db.query(`select count(*)::int as n from stock_movements where type = 'opening_balance'`)).rows[0].n, 144, 'opening balances');
   const mg = (await db.query(`select s.on_hand, s.available, c.unit_cost, sup.name as supplier
                                 from items i join item_stock_summary s on s.item_id = i.id
                                 join lots l on l.item_id = i.id join lot_costs c on c.lot_id = l.id
                                 left join suppliers sup on sup.id = l.supplier_id
                                where i.name = 'Biotin'`)).rows[0];
-  eq(Number(mg.on_hand), 1.953, 'on hand');
-  eq(Number(mg.available), 1.953, 'released and available');
+  eq(Number(mg.on_hand), 0.378, 'on hand');
+  eq(Number(mg.available), 0.378, 'released and available');
   eq(Number(mg.unit_cost), 18.66, 'lot cost = average purchase price');
   eq(mg.supplier, 'Grherb Biotech Co Ltd', 'supplier');
   eq((await db.query(`select count(*)::int as n from suppliers where lower(name) like 'astron%'`)).rows[0].n, 1, 'supplier spellings merged');
   eq((await db.query(`select type from items where name = 'Magnesium Stearate'`)).rows[0].type, 'excipient', 'excipient');
+  eq((await db.query(`select count(*)::int as n from lots l join items i on i.id = l.item_id where i.name like 'Harpagophytum%'`)).rows[0].n, 0, 'negative quantity: no stock');
 });
 await ok('running the import twice adds nothing', async () => {
   const n = (await db.query('select count(*)::int as n from stock_movements')).rows[0].n;
@@ -1462,9 +1463,18 @@ await ok('admin confirms the final payment: ticked; clearing the date unticks it
   await as('admin', 'select confirm_final_payment($1)', [tkA]);
   eq(await tkStatus(tkA, 'payment_final'), 'done', 'done');
   eq((await one('admin', `select payload from order_task_activity where task_id = $1 and action = 'auto_done'`, [(await tk(tkA, 'payment_final')).id])).payload.source, 'final_payment_confirmed', 'source');
-  await as('sales', 'update sales_orders set balance_received_on = null where id = $1', [tkA]);
+  await as('admin', 'update sales_orders set balance_received_on = null where id = $1', [tkA]);
   eq(await tkStatus(tkA, 'payment_final'), 'todo', 'reversed');
   await as('admin', 'select confirm_final_payment($1)', [tkA]);
+});
+await fails('sales cannot clear a payment date', () =>
+  as('sales', 'update sales_orders set balance_received_on = null where id = $1', [tkA]), 'Only admin enters the payment dates');
+await fails('sales cannot enter a payment date', () =>
+  as('sales', 'update sales_orders set deposit_received_on = current_date - 1 where id = $1', [tkA]), 'Only admin enters the payment dates');
+await ok('sales still edits the rest of the order; the dates stay', async () => {
+  await as('sales', `update sales_orders set notes = 'dates stay', deposit_received_on = deposit_received_on where id = $1`, [tkA]);
+  const o = await one('admin', 'select notes, balance_received_on from sales_orders where id = $1', [tkA]);
+  eq(o.notes, 'dates stay', 'notes'); eq(!!o.balance_received_on, true, 'balance kept');
 });
 await ok('the final invoice: every line less the advance invoiced', async () => {
   const id = (await one('sales', 'select create_order_invoice($1) as id', [tkA])).id;

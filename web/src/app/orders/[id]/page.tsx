@@ -178,6 +178,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         {board && <Fact label={H.progress}>{fmt(T.progress, { done: doneTasks, total: board.tasks.length })}</Fact>}
       </section>
 
+      {canEdit && board && (
+        <TaskBoard orderId={o.id} locale={locale} userId={user.id} isAdmin={isAdmin} data={board} T={T}
+          templates={templates} initialTask={initialTask} realtime={realtime} />
+      )}
+
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-4">
           <Card title={d.lines} id="lines-h">
@@ -326,8 +331,18 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
                 <input type="hidden" name="order_id" value={o.id} />
                 <div className="grid grid-cols-1 gap-3">
                   <label className="field"><span>{d.depositPct}</span><input name="deposit_pct" type="number" min={0} max={100} step="any" defaultValue={c.deposit_pct ?? ""} className="input" /></label>
-                  <label className="field"><span>{d.depositReceived}</span><input name="deposit_received_on" type="date" defaultValue={c.deposit_received_on ?? ""} className="input" /></label>
-                  <label className="field"><span>{d.balanceReceived}</span><input name="balance_received_on" type="date" defaultValue={c.balance_received_on ?? ""} className="input" /></label>
+                  {isAdmin ? (
+                    <>
+                      <label className="field"><span>{d.depositReceived}</span><input name="deposit_received_on" type="date" defaultValue={c.deposit_received_on ?? ""} className="input" /></label>
+                      <label className="field"><span>{d.balanceReceived}</span><input name="balance_received_on" type="date" defaultValue={c.balance_received_on ?? ""} className="input" /></label>
+                    </>
+                  ) : (
+                    <>
+                      <Fact label={d.depositReceived}>{formatDate(locale, c.deposit_received_on)}</Fact>
+                      <Fact label={d.balanceReceived}>{formatDate(locale, c.balance_received_on)}</Fact>
+                      <p className="m-0 text-xs text-ink-2">{d.datesAdminOnly}</p>
+                    </>
+                  )}
                   <label className="field"><span>{d.requested}</span><input name="requested_date" type="date" defaultValue={o.requested_date ?? ""} className="input" /></label>
                   <label className="field"><span>{d.customerRef}</span><input name="customer_ref" defaultValue={c.customer_ref ?? ""} className="input" /></label>
                   <label className="field"><span>{d.notes}</span><textarea name="notes" defaultValue={c.notes ?? ""} className="input" /></label>
@@ -342,15 +357,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         </div>
       </div>
 
-      {canEdit && (
-        board ? (
-          <TaskBoard orderId={o.id} locale={locale} userId={user.id} isAdmin={isAdmin} data={board} T={T}
-            templates={templates} initialTask={initialTask} realtime={realtime} />
-        ) : (
-          <Card title={T.title} id="tasks-h">
-            <Empty>{["draft", "unpaid", "cancelled"].includes(o.status) ? T.placeholder : isAdmin ? T.legacyAdmin : T.legacySales}</Empty>
-          </Card>
-        )
+      {canEdit && !board && (
+        <Card title={T.title} id="tasks-h">
+          <Empty>{["draft", "unpaid", "cancelled"].includes(o.status) ? T.placeholder : isAdmin ? T.legacyAdmin : T.legacySales}</Empty>
+        </Card>
       )}
     </div>
   );

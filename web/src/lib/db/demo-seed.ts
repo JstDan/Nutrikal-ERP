@@ -206,7 +206,8 @@ export async function seedDemo(db: PGlite) {
 
   // ------------------------------------------------------- sales orders
   const soMag = await one(SALES, `select create_order_from_offer($1, 10000, 'ACME-PO-2291', current_date + 21) as id`, [ofMag]);
-  await as(SALES, `update sales_orders set status = 'confirmed', deposit_received_on = current_date - 2 where id = $1`, [soMag]);
+  await as(SALES, `update sales_orders set status = 'confirmed' where id = $1`, [soMag]);
+  await as(ADMIN, `update sales_orders set deposit_received_on = current_date - 2 where id = $1`, [soMag]);
   const soMagLine = (await as<{ id: string }>(SALES, "select id from sales_order_lines where order_id = $1", [soMag]))[0].id;
 
   // ------------------------------------------------------- production

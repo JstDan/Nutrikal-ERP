@@ -880,6 +880,7 @@ export const en = {
       depositAmount: "Deposit: {amount}",
       depositReceived: "Deposit received on",
       balanceReceived: "Balance received on",
+      datesAdminOnly: "Only admin enters the payment dates.",
       customerRef: "Client PO number",
       requested: "Requested date",
       notes: "Notes",
