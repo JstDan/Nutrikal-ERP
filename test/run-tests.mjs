@@ -1302,6 +1302,56 @@ await ok('production sees purchase prices only through the materials of its orde
 await fails('production cannot see the sources of an order not sent to it', () =>
   as('production', 'select * from mo_material_sources($1)', [mo2.id]), 'not allowed');
 
+console.log('\nPurchase orders');
+let poSup, poItem, poId;
+const shortage = async (user = 'admin') => (await as(user, 'select * from purchase_shortages where item_id = $1', [poItem]))[0];
+await ok('an item under its minimum is missing, with its preferred supplier and price', async () => {
+  poSup = (await one('admin', `insert into suppliers (name) values ('PO Test Supplier') returning id`)).id;
+  poItem = (await one('admin', `insert into items (sku, type, name, base_unit, novel_food_status, reorder_level)
+                                values ('PO-RM', 'raw_material', 'PO test material', 'kg', 'not_novel', 10) returning id`)).id;
+  const si = (await one('admin', 'insert into supplier_items (supplier_id, item_id, is_preferred) values ($1, $2, true) returning id', [poSup, poItem])).id;
+  await as('admin', 'insert into supplier_prices (supplier_item_id, price) values ($1, 12)', [si]);
+  const s = await shortage();
+  eq(`${s.source}:${Number(s.quantity)}:${s.supplier_id === poSup}:${Number(s.unit_price)}`, 'low_stock:10:true:12', 'shortage');
+});
+await ok('production does not see missing materials or purchase orders', async () => {
+  eq((await as('production', 'select * from purchase_shortages')).length, 0, 'shortages');
+  eq((await as('production', 'select * from purchase_orders')).length, 0, 'orders');
+  eq((await as('production', 'select * from purchase_order_lines')).length, 0, 'lines');
+});
+await fails('sales cannot generate purchase orders', () =>
+  as('sales', 'select generate_purchase_orders($1::jsonb)', [JSON.stringify([{ item_id: poItem, quantity: 10, supplier_id: poSup }])]), 'not allowed');
+await fails('every chosen line needs a supplier', () =>
+  as('admin', 'select generate_purchase_orders($1::jsonb)', [JSON.stringify([{ item_id: poItem, quantity: 10 }])]), 'supplier');
+await ok('admin generates a draft purchase order per supplier; the item is no longer missing', async () => {
+  const ids = (await one('admin', 'select generate_purchase_orders($1::jsonb) as ids',
+    [JSON.stringify([{ item_id: poItem, quantity: 10, supplier_id: poSup, unit_price: 12 }])])).ids;
+  eq(ids.length, 1, 'one order'); poId = ids[0];
+  const po = await one('admin', 'select code, status, supplier_id from purchase_orders where id = $1', [poId]);
+  eq(/^PO-\d{5}$/.test(po.code) && po.status === 'draft' && po.supplier_id === poSup, true, `draft ${po.code}`);
+  eq(await shortage(), undefined, 'not missing while on a draft');
+});
+await ok('admin changes the draft and sends it: every line becomes an expected delivery with the order number', async () => {
+  await as('admin', 'update purchase_order_lines set quantity = 15 where purchase_order_id = $1', [poId]);
+  await as('admin', `update purchase_orders set expected_on = current_date + 14 where id = $1`, [poId]);
+  await as('admin', 'select send_purchase_order($1)', [poId]);
+  const po = await one('admin', 'select code, status from purchase_orders where id = $1', [poId]);
+  eq(po.status, 'sent', 'sent');
+  const d = await one('admin', `select d.quantity, d.po_reference, d.supplier_id, d.unit_price from purchase_order_lines l
+                                 join expected_deliveries d on d.id = l.expected_delivery_id where l.purchase_order_id = $1`, [poId]);
+  eq(`${Number(d.quantity)}:${d.po_reference === po.code}:${d.supplier_id === poSup}:${Number(d.unit_price)}`, '15:true:true:12', 'delivery');
+  eq(await shortage(), undefined, 'on the way, not missing');
+});
+await fails('a sent purchase order is locked', () =>
+  as('admin', 'update purchase_order_lines set quantity = 1 where purchase_order_id = $1', [poId]), 'cannot be changed');
+await fails('a sent purchase order cannot be cancelled here', () => as('admin', 'select cancel_purchase_order($1)', [poId]), 'Only a draft');
+await ok('admin cancels a draft', async () => {
+  const id = (await one('admin', 'select (generate_purchase_orders($1::jsonb))[1] as id',
+    [JSON.stringify([{ item_id: poItem, quantity: 1, supplier_id: poSup }])])).id;
+  await as('admin', 'select cancel_purchase_order($1)', [id]);
+  eq((await one('admin', 'select status from purchase_orders where id = $1', [id])).status, 'cancelled', 'cancelled');
+});
+
 console.log('\nOpening stock import (Supplements Inventory sheet)');
 await ok('the import loads every ingredient with its opening stock, price and supplier', async () => {
   const before = (await db.query('select count(*)::int as n from items')).rows[0].n;

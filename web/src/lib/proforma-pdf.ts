@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { loadAssets, loadImage } from '@/lib/calculator/pdf';
 
-// Proforma of an order as a PDF file (downloaded in the browser). All text comes in the model,
+// Proforma, invoice or purchase order as a PDF file (downloaded in the browser). All text comes in the model,
 // already in the client's language; Roboto is used throughout because it has Cyrillic letters.
 
 export interface ProformaPdfModel {
@@ -124,15 +124,17 @@ export async function downloadProformaPdf(model: ProformaPdfModel): Promise<void
     y = block([m.vatNote], L, y + 1, R - L) + 1;
   }
 
-  // Bank details
-  ensure(28);
-  y += 3;
-  write(m.bank.heading.toUpperCase(), L, y, { bold: true, size: 8, color: NAVY });
-  for (const line of m.bank.lines) {
-    y += 4.6;
-    write(line, L, y);
+  // Bank details (none on a purchase order)
+  if (m.bank.heading) {
+    ensure(28);
+    y += 3;
+    write(m.bank.heading.toUpperCase(), L, y, { bold: true, size: 8, color: NAVY });
+    for (const line of m.bank.lines) {
+      y += 4.6;
+      write(line, L, y);
+    }
+    y += 2;
   }
-  y += 2;
 
   if (m.notes) {
     ensure(10);
