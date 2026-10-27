@@ -10,6 +10,7 @@ import { cancelDelivery, createDeliveries, receiveDelivery, updateDelivery } fro
 import { PhotoInput } from "@/components/photo-input";
 import { SearchSelect } from "@/components/search-select";
 import { FileGallery, type DeliveryFile } from "@/components/file-gallery";
+import { PurchaseShortages, type Shortage } from "@/components/purchase-shortages";
 
 type Row = {
   id: string; code: string; status: string; item_id: string; sku: string; name: string; name_bg: string | null; base_unit: string;
@@ -101,6 +102,12 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
                 "select id, code, item_id, quantity::text, needed_by::text from purchase_requests where id = $1 and status in ('open', 'ordered')",
                 [requestId])).rows[0]
             : undefined,
+          shortages: tab === "open"
+            ? (await tx.query<Shortage>(
+                `select source, purchase_request_id, request_code, item_id, sku, name, name_bg, base_unit, quantity::text,
+                        reorder_level::text, available::text, supplier_id, unit_price::text
+                   from purchase_shortages order by source = 'request' desc, name`)).rows
+            : [],
         }
       : undefined;
     return { canSee, rows, lots, files, photoRule, form };
@@ -246,9 +253,15 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
       <PageHeader
         title={D.title}
         subtitle={D.subtitle}
-        actions={canEdit && <a href="#new" className="btn btn-primary">{D.new}</a>}
+        actions={canEdit && (
+          <>
+            <Link href="/deliveries/orders" className="btn btn-outline">{t.purchaseOrders.open}</Link>
+            <a href="#new" className="btn btn-primary">{D.new}</a>
+          </>
+        )}
       />
       {!canEdit && <p className="m-0 text-sm text-ink-2">{D.readOnly}</p>}
+      {form && tab === "open" && <PurchaseShortages rows={form.shortages} suppliers={form.suppliers} locale={locale} t={t} />}
 
       <nav aria-label={D.status} className="flex flex-wrap gap-1">
         {TABS.map((s) => (
