@@ -232,7 +232,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                     <form action={removeFormulaLine} className="col-span-2 md:col-span-1">
                       <input type="hidden" name="line_id" value={l.id} />
                       <input type="hidden" name="formula_id" value={f.id} />
-                      <button type="submit" className="btn btn-outline" aria-label={`${d.remove}: ${bgName(l)}`}>{d.remove}</button>
+                      <button type="submit" className="inline-flex min-h-11 cursor-pointer items-center border-0 bg-transparent p-0 text-[13px] text-ink underline underline-offset-2" aria-label={`${d.remove}: ${bgName(l)}`}>{d.remove}</button>
                     </form>
                   )}
                   {editable && (
@@ -271,7 +271,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                         <form action={removePendingLine}>
                           <input type="hidden" name="pending_id" value={p.id} />
                           <input type="hidden" name="formula_id" value={f.id} />
-                          <button type="submit" className="btn btn-outline" aria-label={`${d.remove}: ${p.name}`}>{d.remove}</button>
+                          <button type="submit" className="inline-flex min-h-11 cursor-pointer items-center border-0 bg-transparent p-0 text-[13px] text-ink underline underline-offset-2" aria-label={`${d.remove}: ${p.name}`}>{d.remove}</button>
                         </form>
                       )}
                     </div>
@@ -371,7 +371,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                   <form action={removeFormulaPackaging}>
                     <input type="hidden" name="packaging_id" value={p.id} />
                     <input type="hidden" name="formula_id" value={f.id} />
-                    <button type="submit" className="btn btn-outline" aria-label={`${d.remove}: ${bgName(p)}`}>{d.remove}</button>
+                    <button type="submit" className="inline-flex min-h-11 cursor-pointer items-center border-0 bg-transparent p-0 text-[13px] text-ink underline underline-offset-2" aria-label={`${d.remove}: ${bgName(p)}`}>{d.remove}</button>
                   </form>
                 )}
               </div>
