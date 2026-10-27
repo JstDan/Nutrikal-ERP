@@ -162,6 +162,16 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
     items.filter((i) => i.type === ty).map((i) => ({
       value: i.id, label: `${bgName(i)} · ${i.sku}`, group: t.enums.itemType[ty], keywords: `${i.name} ${i.name_bg ?? ""}`,
     })));
+  // "Промени" opens the amount form of one line (?edit=line); the link again closes it
+  const editing = typeof sp.edit === "string" ? sp.edit : null;
+  const editHref = (line: string | null) => {
+    const p = new URLSearchParams();
+    if (typeof sp.v === "string") p.set("v", sp.v);
+    if (typeof sp.packs === "string") p.set("packs", sp.packs);
+    if (line) p.set("edit", line);
+    const qs = p.toString();
+    return `/formulas/${f.id}${qs ? `?${qs}` : ""}`;
+  };
   const yesNo = (b: boolean | null) => (b == null ? d.unknown : b ? d.yes : d.no);
 
   const lineGrid = editable
@@ -229,15 +239,23 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                   <span className="hide-md">{l.input_mg_per_unit != null ? formatMass(locale, l.input_mg_per_unit) : "—"}</span>
                   <span className="hide-md">{l.kg_per_1000_packs != null ? formatQty(locale, l.kg_per_1000_packs, "kg") : "—"}</span>
                   {editable && (
-                    <form action={removeFormulaLine} className="col-span-2 md:col-span-1">
-                      <input type="hidden" name="line_id" value={l.id} />
-                      <input type="hidden" name="formula_id" value={f.id} />
-                      <button type="submit" className="inline-flex min-h-11 cursor-pointer items-center border-0 bg-transparent p-0 text-[13px] text-ink underline underline-offset-2" aria-label={`${d.remove}: ${bgName(l)}`}>{d.remove}</button>
-                    </form>
+                    <div className="col-span-2 flex flex-col items-start md:col-span-1 md:items-end">
+                      <form action={removeFormulaLine}>
+                        <input type="hidden" name="line_id" value={l.id} />
+                        <input type="hidden" name="formula_id" value={f.id} />
+                        <button type="submit" title={d.remove} aria-label={`${d.remove}: ${bgName(l)}`}
+                          className="inline-flex size-11 cursor-pointer items-center justify-center rounded-sm border-0 bg-transparent p-0 text-ink hover:bg-mist">
+                          <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                        </button>
+                      </form>
+                      <Link href={editHref(editing === l.id ? null : l.id)} scroll={false} aria-expanded={editing === l.id}
+                        className="inline-flex min-h-11 items-center text-[13px] text-ink underline underline-offset-2">
+                        {editing === l.id ? t.common.cancel : d.editLine}<span className="sr-only">: {bgName(l)}</span>
+                      </Link>
+                    </div>
                   )}
-                  {editable && (
-                    <details className="col-span-full">
-                      <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold">{d.editLine}<span className="sr-only">: {bgName(l)}</span></summary>
+                  {editable && editing === l.id && (
+                    <div className="col-span-full">
                       <ActionForm action={saveFormulaLine} submitLabel={t.common.save} resetOnSuccess={false}>
                         <input type="hidden" name="line_id" value={l.id} />
                         <input type="hidden" name="formula_id" value={f.id} />
@@ -253,7 +271,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                           </label>
                         </div>
                       </ActionForm>
-                    </details>
+                    </div>
                   )}
                 </div>
               ))}
