@@ -37,7 +37,7 @@ function flag(i: Item, t: Dict, locale: Locale, warnDays: number): { tone: Tone;
   return { tone: "green", text: f.ok };
 }
 
-const COLS = "md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_140px] lg:grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))_minmax(0,1fr)_150px] xl:grid-cols-[minmax(0,2.2fr)_repeat(5,minmax(0,1fr))_minmax(0,1fr)_150px]";
+const COLS = "md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_140px] lg:grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))_150px] xl:grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))_150px]";
 
 export default async function InventoryPage({ searchParams }: PageProps<"/inventory">) {
   const { user, locale, t } = await requireStaff();
@@ -126,11 +126,9 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
         <div className={`row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${COLS}`}>
           <span>{t.inventory.item}</span>
           <span className="text-right">{t.inventory.onHand}</span>
-          <span className="hide-md text-right">{t.inventory.quarantine}</span>
           <span className="hide-md text-right">{t.inventory.reserved}</span>
           <span className="text-right">{t.inventory.available}</span>
           <span className="hidden text-right xl:block">{t.inventory.incoming}</span>
-          <span className="hide-md">{t.inventory.nextExpiry}</span>
           <span>{t.inventory.status}</span>
         </div>
         {data.items.length === 0 && <div className="py-4"><Empty>{t.inventory.empty}</Empty></div>}
@@ -153,11 +151,9 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                   </div>
                 </div>
                 <span className="hide-sm text-right">{q(i.on_hand, i.base_unit)}</span>
-                <span className="hide-md text-right">{q(i.quarantine, i.base_unit)}</span>
                 <span className="hide-md text-right">{q(i.reserved, i.base_unit)}</span>
                 <span className="hide-sm text-right font-bold">{q(i.available, i.base_unit)}</span>
                 <span className="hidden text-right xl:block">{Number(i.incoming) > 0 ? q(i.incoming, i.base_unit) : "—"}</span>
-                <span className="hide-md">{formatDate(locale, i.next_expiry, { month: "short", year: "numeric" })}</span>
                 <Chip tone={f.tone}>{f.text}</Chip>
               </summary>
 
