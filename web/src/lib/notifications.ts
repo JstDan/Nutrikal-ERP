@@ -29,6 +29,10 @@ export function notificationText(n: NotificationRow, t: Dict, locale: Locale): s
     case "delivery_ordered":
       return fmt(K.delivery_ordered, { code: s("code"), qty: formatQty(locale, s("quantity"), s("unit")), item })
         + (p.expected_on ? ` · ${formatDate(locale, s("expected_on"))}` : "");
+    case "task_mention":
+      return fmt(K.task_mention, { by: s("by"), order: s("order"), task: locale === "en" && p.task_en ? s("task_en") : s("task") });
+    case "materials_short":
+      return fmt(K.materials_short, { by: s("by"), item, order: s("order") });
     default:
       return n.kind;
   }

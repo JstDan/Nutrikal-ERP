@@ -1531,6 +1531,31 @@ await ok('a column with tasks is deleted only after moving them; an empty one di
 });
 await fails('a system column is never deleted', async () =>
   as('admin', 'select delete_order_task_column($1)', [(await tk(tkA, 'dispatch')).column_id]), 'hide them');
+await fails('sales cannot delete a task of the template', async () =>
+  as('sales', 'select delete_order_task($1)', [(await tk(tkB, 'labels_received')).id]), 'only admin');
+await fails('sales cannot delete an automatic task', async () =>
+  as('sales', 'select delete_order_task($1)', [(await tk(tkB, 'packaging_reserved')).id]), 'only admin');
+await ok('sales deletes a task they added; admin one added by someone else', async () => {
+  const col = (await tk(tkB, 'labels_received')).column_id;
+  const mine = (await one('sales', 'select add_order_task($1, $2) as id', [col, 'Mine'])).id;
+  await as('sales', 'select delete_order_task($1)', [mine]);
+  eq((await as('admin', 'select id from order_tasks where id = $1', [mine])).length, 0, 'own task deleted');
+  const other = (await one('sales', 'select add_order_task($1, $2) as id', [col, 'Theirs'])).id;
+  await as('admin', 'select delete_order_task($1)', [other]);
+  eq((await as('admin', 'select id from order_tasks where id = $1', [other])).length, 0, 'deleted by admin');
+});
+await ok('admin deletes a template task and an automatic one: logged, the template keeps them', async () => {
+  for (const key of ['labels_received', 'packaging_reserved']) {
+    const t = await tk(tkB, key);
+    await as('admin', 'select delete_order_task($1)', [t.id]);
+    eq(await tk(tkB, key), undefined, `${key} gone from the board`);
+    eq((await one('admin', `select old_data->>'title' as title from audit_log where table_name = 'order_tasks' and row_id = $1`, [t.id])).title, t.title, `${key} logged`);
+  }
+  const tpl = (await one('admin', 'select template_id from order_task_boards where id = $1', [boardB])).template_id;
+  eq((await as('admin', `select key from order_task_template_items where template_id = $1 and key in ('labels_received', 'packaging_reserved')`, [tpl])).length, 2, 'template unchanged');
+});
+await fails('production cannot delete tasks', async () =>
+  as('production', 'select delete_order_task($1)', [(await tk(tkB, 'client_info')).id]));
 await fails('sales cannot save a column to the template', () =>
   as('sales', `select add_order_task_column($1, 'X', null, 'grey', null, true)`, [boardA]), 'not allowed');
 await ok('admin saves a column to the template: future boards only', async () => {
