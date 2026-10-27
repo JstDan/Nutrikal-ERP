@@ -62,10 +62,14 @@ async function connect(): Promise<{ client: ClientBase; done: () => void }> {
   return { client, done: () => client.release() };
 }
 
-async function pgTransaction<T>(fn: (c: ClientBase) => Promise<T>): Promise<T> {
+/**
+ * One transaction. `setup` (statements without parameters) is sent with
+ * "begin" in a single round trip: the database is far away (≈100 ms each).
+ */
+async function pgTransaction<T>(fn: (c: ClientBase) => Promise<T>, setup = ""): Promise<T> {
   const { client, done } = await connect();
   try {
-    await client.query("begin");
+    await client.query(`begin;${setup}`);
     const out = await fn(client);
     await client.query("commit");
     return out;
@@ -139,14 +143,12 @@ async function init(): Promise<PGlite> {
 /** Run fn inside a transaction as the given user (RLS applies). */
 export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
   if (usesSupabaseDb()) {
-    return pgTransaction(async (c) => {
-      await c.query(
-        "select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claims', $2, true)",
-        [userId, JSON.stringify({ sub: userId, role: "authenticated" })],
-      );
-      await c.query("set local role authenticated");
-      return fn(c as unknown as Tx);
-    });
+    // The user and the role in the same round trip as "begin" (values inlined: the id is checked to be a uuid)
+    if (!/^[0-9a-f-]{36}$/i.test(userId)) throw new Error("Invalid user");
+    const claims = JSON.stringify({ sub: userId, role: "authenticated" }).replaceAll("'", "''");
+    return pgTransaction((c) => fn(c as unknown as Tx),
+      `select set_config('request.jwt.claim.sub', '${userId}', true), set_config('request.jwt.claims', '${claims}', true);` +
+      "set local role authenticated;");
   }
   const db = await getDb();
   return db.transaction(async (tx) => {
