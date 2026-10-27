@@ -18,7 +18,13 @@ type Item = {
 type Lot = { lot_id: string; item_id: string; location_id: string; lot_number: string; location: string; quantity: string; qc_status: string; expires_on: string | null; supplier_lot: string | null; is_expired: boolean; unit_cost: string | null };
 type Res = { item_id: string; code: string; client: string | null; quantity: string };
 
-const TYPES = ["raw_material", "excipient", "packaging", "semi_finished", "finished_good"] as const;
+// Filter tabs (owner, Oct 2026): raw materials (with excipients and semi-finished goods), packaging, finished goods
+const TYPES = ["raw_material", "packaging", "finished_good"] as const;
+const TAB_TYPES: Record<(typeof TYPES)[number], string[]> = {
+  raw_material: ["raw_material", "excipient", "semi_finished"],
+  packaging: ["packaging"],
+  finished_good: ["finished_good"],
+};
 
 function flag(i: Item, t: Dict, locale: Locale, warnDays: number): { tone: Tone; text: string } {
   const f = t.inventory.flags;
@@ -36,7 +42,7 @@ const COLS = "md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_140px] lg:
 export default async function InventoryPage({ searchParams }: PageProps<"/inventory">) {
   const { user, locale, t } = await requireStaff();
   const sp = await searchParams;
-  const type = typeof sp.type === "string" && (TYPES as readonly string[]).includes(sp.type) ? sp.type : "";
+  const type = (TYPES as readonly string[]).includes(String(sp.type)) ? (sp.type as (typeof TYPES)[number]) : "raw_material";
   const term = typeof sp.q === "string" ? sp.q.trim() : "";
   const canReceive = user.role === "admin";
 
@@ -50,14 +56,14 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
          from item_stock_summary s
          join items i on i.id = s.item_id
          left join lateral (select min(b.expires_on) as next_expiry from stock_balances b where b.item_id = s.item_id and b.quantity > 0) e on true
-        where ($1 = '' or s.type::text = $1)
+        where s.type::text = any($1::text[])
           and ($2 = '' or s.name ilike '%' || $2 || '%' or i.name_bg ilike '%' || $2 || '%' or s.sku ilike '%' || $2 || '%'
                -- our lot number or the supplier's batch of a lot in stock
                or exists (select 1 from stock_balances b join lots lo on lo.id = b.lot_id
                            where b.item_id = s.item_id and b.quantity > 0
                              and (lo.lot_number ilike '%' || $2 || '%' or lo.supplier_lot ilike '%' || $2 || '%')))
         order by s.type, s.name`,
-      [type, term],
+      [TAB_TYPES[type], term],
     )).rows;
     const lots = (await tx.query<Lot>(
       // lot_costs is visible only to users who may see purchase prices (RLS); others get null
@@ -98,19 +104,19 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
 
       <div className="flex flex-wrap items-center gap-3">
         <nav aria-label={t.inventory.filter} className="flex flex-wrap gap-1">
-          {(["", ...TYPES] as const).map((ty) => (
+          {TYPES.map((ty) => (
             <Link
-              key={ty || "all"}
-              href={`/inventory?${new URLSearchParams({ ...(ty && { type: ty }), ...(term && { q: term }) })}`}
+              key={ty}
+              href={`/inventory?${new URLSearchParams({ type: ty, ...(term && { q: term }) })}`}
               aria-current={type === ty ? "page" : undefined}
               className={`flex min-h-10 items-center rounded-full border px-3.5 text-[13px] no-underline ${type === ty ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}
             >
-              {ty ? t.enums.itemType[ty] : t.inventory.allTypes}
+              {t.enums.itemType[ty]}
             </Link>
           ))}
         </nav>
         <form method="get" role="search" className="flex min-w-0 flex-[1_1_220px] justify-end">
-          {type && <input type="hidden" name="type" value={type} />}
+          <input type="hidden" name="type" value={type} />
           <label htmlFor="inv-q" className="sr-only">{t.topbar.search}</label>
           <input id="inv-q" name="q" type="search" defaultValue={term} placeholder={t.inventory.searchPlaceholder} className="input max-w-[320px]" />
         </form>

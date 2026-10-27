@@ -221,7 +221,6 @@ export const en = {
     title: "Inventory",
     subtitle: "All stock is Nutrikal-owned · quantities in each item's base unit",
     receive: "Receive goods",
-    allTypes: "All",
     allLocations: "All locations",
     location: "Location",
     searchPlaceholder: "Search item, SKU or lot",
