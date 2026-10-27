@@ -589,12 +589,12 @@ export async function setOrderStatus(_: ActionState, fd: FormData): Promise<Acti
 }
 
 // ------------------------------------------------------------- invoices
-/** "Export invoice" on a paid order: opens its invoice (a new draft the first time). */
+/** "Export invoice" on a paid order: opens its invoice of that purpose (full, advance or final; a new draft the first time). */
 export async function openOrderInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user } = await getSession();
   let id: string;
   try {
-    id = (await q<{ id: string }>(user.id, "select create_order_invoice($1) as id", [str(fd, "order_id")]))[0].id;
+    id = (await q<{ id: string }>(user.id, "select create_order_invoice($1, $2) as id", [str(fd, "order_id"), str(fd, "purpose")]))[0].id;
   } catch (e) {
     return { error: errorText(e) };
   }

@@ -39,7 +39,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
       <PageHeader
         title={t.orders.title}
         subtitle={t.orders.subtitle}
-        actions={seesPrices ? <Link href="/orders/new" className="btn btn-primary">+ {t.orders.newOrder}</Link> : undefined}
+        actions={seesPrices ? (
+          <span className="flex flex-wrap gap-2">
+            {user.role === "admin" && <Link href="/orders/templates" className="btn btn-outline">{t.tasks.templates.title}</Link>}
+            <Link href="/orders/new" className="btn btn-primary">+ {t.orders.newOrder}</Link>
+          </span>
+        ) : undefined}
       />
       {seesPrices && <p className="m-0 text-sm text-ink-2">{t.orders.fromOffer} <Link href="/offers" className="text-ink">{t.nav.offers}</Link></p>}
       <nav aria-label={t.orders.status} className="flex flex-wrap gap-1">

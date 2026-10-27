@@ -12,8 +12,15 @@
 -- ids), currency, issue and tax point dates, lines, VAT rate and totals,
 -- payment means.
 --
--- Flow: create_order_invoice(order) opens the order's draft (one invoice
--- per order) with the lines of the order; issue_invoice(draft, number,
+-- Owner, Oct 2026: an order paid with an advance gets two invoices — the
+-- advance invoice (the advance %, once the first payment is confirmed),
+-- then the final (balance) invoice: every line of the order less the
+-- advance invoiced, printable once the final payment is confirmed. An
+-- order paid 100 % at once gets one full invoice. Advance = a deposit
+-- between 0 and 100 % on the order.
+--
+-- Flow: create_order_invoice(order, purpose) opens the order's draft of
+-- that purpose (one each) with its lines; issue_invoice(draft, number,
 -- date) takes the number, fixes seller, buyer and totals and locks it.
 --
 --                    admin   sales   production
@@ -31,6 +38,7 @@ create table public.invoices (
   id              uuid primary key default gen_random_uuid(),
   kind            public.invoice_kind not null default 'invoice',
   status          public.invoice_status not null default 'draft',
+  purpose         text not null default 'full' check (purpose in ('full', 'advance', 'final')),
   number          text unique check (number ~ '^[0-9]{10}$'),
   order_id        uuid not null references public.sales_orders (id),
   client_id       uuid not null references public.clients (id),
@@ -52,20 +60,21 @@ create table public.invoices (
   updated_at      timestamptz not null default now(),
   check (status = 'draft' or (number is not null and issue_date is not null and total is not null))
 );
-create unique index invoices_one_per_order on public.invoices (order_id) where kind = 'invoice';
+create unique index invoices_one_per_order on public.invoices (order_id, purpose) where kind = 'invoice';
 create index invoices_client_idx on public.invoices (client_id);
 
 create table public.invoice_lines (
   id           uuid primary key default gen_random_uuid(),
   invoice_id   uuid not null references public.invoices (id) on delete cascade,
   sort_order   integer not null default 0,
-  kind         text not null check (kind in ('offer', 'calc_offer', 'service')),
+  kind         text not null check (kind in ('offer', 'calc_offer', 'service', 'advance')),   -- advance: the advance, or its deduction
   description  text not null,
   offer_no     text,                          -- "according to offer No …"
   capsules     integer,                       -- capsules per jar, for the description
   quantity     numeric(14, 3) not null check (quantity > 0),
-  unit_price   numeric(12, 4) not null check (unit_price >= 0),
-  amount       numeric(14, 2) not null
+  unit_price   numeric(12, 4) not null,
+  amount       numeric(14, 2) not null,
+  check (kind = 'advance' or unit_price >= 0)
 );
 create index invoice_lines_invoice_idx on public.invoice_lines (invoice_id, sort_order);
 
@@ -126,36 +135,87 @@ as $$
 $$;
 revoke execute on function public.invoice_parties(uuid) from public, anon, authenticated;
 
-/** The invoice of a paid order: the existing one, or a new draft with the order's lines. */
-create or replace function public.create_order_invoice(p_order uuid)
+/** True when the order is paid with an advance and a balance (two invoices). */
+create or replace function public.order_paid_in_two(p_order uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select coalesce((select deposit_pct > 0 and deposit_pct < 100 from public.sales_orders where id = p_order), false)
+$$;
+revoke execute on function public.order_paid_in_two(uuid) from public, anon;
+
+/**
+ * An invoice of a paid order: the existing one of that purpose, or a new draft.
+ * p_purpose: 'full' (paid at once), 'advance' or 'final'; null = the one due now.
+ */
+create or replace function public.create_order_invoice(p_order uuid, p_purpose text default null)
 returns uuid
 language plpgsql security definer set search_path = public
 as $$
 declare
-  so    public.sales_orders;
-  v_id  uuid;
-  p     record;
+  so      public.sales_orders;
+  v_two   boolean;
+  v_id    uuid;
+  v_loc   text;
+  v_base  numeric;
+  adv     public.invoices;
+  p       record;
 begin
   perform public.require_role('admin', 'sales');
   select * into so from public.sales_orders where id = p_order;
   if not found then
     raise exception 'Order not found';
   end if;
-  select id into v_id from public.invoices where order_id = p_order and kind = 'invoice';
+  v_two := public.order_paid_in_two(p_order);
+  select * into adv from public.invoices where order_id = p_order and kind = 'invoice' and purpose = 'advance';
+  if p_purpose is null then
+    p_purpose := case when not v_two then 'full'
+                      when so.balance_received_on is not null and adv.status = 'issued' then 'final'
+                      else 'advance' end;
+  end if;
+  if p_purpose not in ('full', 'advance', 'final') then
+    raise exception 'Unknown kind of invoice';
+  end if;
+  select id into v_id from public.invoices where order_id = p_order and kind = 'invoice' and purpose = p_purpose;
   if v_id is not null then
     return v_id;
   end if;
   if so.status in ('draft', 'unpaid', 'cancelled') then
     raise exception 'The invoice is issued once the payment is confirmed';
   end if;
+  if (p_purpose = 'full') = v_two then
+    raise exception 'This order is paid with an advance and a final payment';
+  end if;
+  if p_purpose = 'advance' and so.deposit_received_on is null then
+    raise exception 'The advance invoice is issued once the advance is received';
+  end if;
+  if p_purpose = 'final' then
+    if so.balance_received_on is null then
+      raise exception 'The final invoice is issued once the final payment is confirmed';
+    end if;
+    if adv.status is distinct from 'issued' then
+      raise exception 'Issue the advance invoice first';
+    end if;
+  end if;
 
   select * into p from public.invoice_parties(p_order);
-  insert into public.invoices (kind, order_id, client_id, tax_point_date, currency, vat_pct, locale, seller, buyer, notes)
-  select 'invoice', so.id, so.client_id, coalesce(so.balance_received_on, so.deposit_received_on, current_date),
-         so.currency, coalesce(so.vat_pct, 0), case when c.preferred_locale = 'bg' then 'bg' else 'en' end,
-         p.seller, p.buyer, so.notes
-    from public.clients c where c.id = so.client_id
+  select case when c.preferred_locale = 'bg' then 'bg' else 'en' end into v_loc from public.clients c where c.id = so.client_id;
+  insert into public.invoices (kind, purpose, order_id, client_id, tax_point_date, currency, vat_pct, locale, seller, buyer, notes)
+  values ('invoice', p_purpose, so.id, so.client_id,
+          case p_purpose when 'advance' then so.deposit_received_on when 'final' then so.balance_received_on
+                         else coalesce(so.balance_received_on, so.deposit_received_on, current_date) end,
+          so.currency, coalesce(so.vat_pct, 0), v_loc, p.seller, p.buyer, so.notes)
   returning id into v_id;
+
+  if p_purpose = 'advance' then
+    select coalesce(sum(round(l.quantity * l.unit_price, 2)), 0) into v_base from public.sales_order_lines l where l.order_id = p_order;
+    insert into public.invoice_lines (invoice_id, sort_order, kind, description, quantity, unit_price, amount)
+    values (v_id, 0, 'advance',
+            case when v_loc = 'bg' then 'Авансово плащане ' || trim_scale(so.deposit_pct) || '% по поръчка ' || so.code
+                 else 'Advance payment ' || trim_scale(so.deposit_pct) || '% for order ' || so.code end,
+            1, round(v_base * so.deposit_pct / 100, 2), round(v_base * so.deposit_pct / 100, 2));
+    return v_id;
+  end if;
 
   insert into public.invoice_lines (invoice_id, sort_order, kind, description, offer_no, capsules, quantity, unit_price, amount)
   select v_id, l.sort_order, l.kind, coalesce(l.description, f.name, ''), coalesce(co.offer_no, of.code),
@@ -173,6 +233,15 @@ begin
     left join public.formula_versions v on v.id = l.formula_version_id
     left join public.formulas f on f.id = v.formula_id
    where l.order_id = p_order;
+
+  -- The final invoice deducts the advance invoiced
+  if p_purpose = 'final' then
+    insert into public.invoice_lines (invoice_id, sort_order, kind, description, quantity, unit_price, amount)
+    values (v_id, 100000, 'advance',
+            case when v_loc = 'bg' then 'Приспадане на аванс по фактура № ' || adv.number || ' от ' || to_char(adv.issue_date, 'DD.MM.YYYY')
+                 else 'Less advance invoiced, invoice No ' || adv.number || ' of ' || to_char(adv.issue_date, 'DD.MM.YYYY') end,
+            1, -adv.subtotal, -adv.subtotal);
+  end if;
   return v_id;
 end
 $$;
@@ -253,8 +322,8 @@ create policy invoice_lines_select on public.invoice_lines for select to authent
 revoke insert, update, delete, truncate, references, trigger on public.invoices, public.invoice_lines from anon, authenticated;
 grant select on public.invoices, public.invoice_lines to authenticated;
 
-revoke execute on function public.create_order_invoice(uuid) from public, anon;
-grant execute on function public.create_order_invoice(uuid) to authenticated;
+revoke execute on function public.create_order_invoice(uuid, text) from public, anon;
+grant execute on function public.create_order_invoice(uuid, text) to authenticated;
 revoke execute on function public.next_invoice_number() from public, anon;
 grant execute on function public.next_invoice_number() to authenticated;
 revoke execute on function public.issue_invoice(uuid, text, date, boolean) from public, anon;

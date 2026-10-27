@@ -1255,6 +1255,418 @@ await ok('production sees imported items but not their prices or suppliers', asy
   eq((await as('production', `select * from lot_costs`)).length, 0, 'lot costs');
 });
 
+console.log('\nOrder tasks');
+let tkClient, tkItem, tkJar, tkVer, tkA, tkB, boardA, boardB;
+const tk = (order, key) => one('admin', `select t.* from order_tasks t join order_task_boards b on b.id = t.board_id
+                                           where b.sales_order_id = $1 and t.template_key = $2`, [order, key]);
+const tkStatus = async (order, key) => (await tk(order, key))?.status;
+await ok('setup: a client, a recipe with one raw material and a jar, two unpaid orders', async () => {
+  tkClient = await one('sales', `insert into clients (legal_name, country_code, owner_id) values ('Task Client Ltd', 'DE', $1) returning id`, [U.sales]);
+  tkItem = await one('admin', `insert into items (sku, type, name, base_unit, novel_food_status, shelf_life_months)
+                               values ('RM-TK', 'raw_material', 'Task powder', 'kg', 'not_novel', 24) returning id`);
+  tkJar = await one('admin', `insert into items (sku, type, name, base_unit) values ('PK-TKJ', 'packaging', 'Task jar', 'pcs') returning id`);
+  const f = await one('admin', `insert into formulas (name, product_format, serving_size, servings_per_pack) values ('Task blend', 'capsule', 1, 30) returning id`);
+  tkVer = await one('admin', 'select id from formula_versions where formula_id = $1', [f.id]);
+  await as('admin', `insert into formula_lines (version_id, item_id, amount) values ($1, $2, 1000)`, [tkVer.id, tkItem.id]);
+  await as('admin', `insert into formula_packaging (version_id, item_id, qty_per_pack) values ($1, $2, 1)`, [tkVer.id, tkJar.id]);
+  await as('admin', 'update formula_versions set shelf_life_months = 12 where id = $1', [tkVer.id]);
+  await as('admin', 'select approve_formula_version($1)', [tkVer.id]);
+  const oa = await calcOffer('NK-T-TKA', tkClient.id, 100, 10);
+  const ob = await calcOffer('NK-T-TKB', tkClient.id, 100, 10);
+  tkA = (await one('sales', `select create_order_from_calc_offers($1, $2, $3::jsonb, 20) as id`, [tkClient.id, [oa.id],
+    JSON.stringify([{ description: 'Free Sale Certificate', quantity: 1, unit_price: 300 }, { description: 'Express courier', quantity: 1, unit_price: 50 }])])).id;
+  tkB = (await one('sales', 'select create_order_from_calc_offers($1, $2) as id', [tkClient.id, [ob.id]])).id;
+});
+await ok('an unpaid order has no tasks; the default template is Private label', async () => {
+  eq((await as('admin', 'select * from order_task_boards where sales_order_id = $1', [tkA])).length, 0, 'board');
+  eq((await one('sales', 'select name_bg from order_task_templates where is_default')).name_bg, 'Private label — нова поръчка', 'default');
+  eq((await as('sales', 'select * from order_task_templates order by name_bg')).length, 3, 'templates');
+});
+await fails('sales cannot confirm the first payment', () =>
+  as('sales', `select confirm_order_payment($1, 'advance')`, [tkA]), 'not allowed');
+await fails('production cannot confirm the first payment', () =>
+  as('production', `select confirm_order_payment($1, 'advance')`, [tkA]), 'not allowed');
+await ok('admin confirms an advance of 50 %: the board is made in the same step, "Аванс 50%" is done', async () => {
+  boardA = (await one('admin', `select confirm_order_payment($1, 'advance', 50) as id`, [tkA])).id;
+  const o = await one('admin', 'select status, deposit_pct::int as pct, deposit_received_on, balance_received_on from sales_orders where id = $1', [tkA]);
+  eq(o.status, 'confirmed', 'status'); eq(o.pct, 50, 'deposit'); eq(!!o.deposit_received_on, true, 'deposit received');
+  eq(o.balance_received_on, null, 'balance open');
+  const cols = await as('admin', 'select system_key from order_task_columns where board_id = $1 order by position', [boardA]);
+  eq(cols.map(c => c.system_key).join(','), 'payments,formula,design,materials,production,dispatch', 'columns');
+  const first = await tk(tkA, 'payment_first');
+  eq(first.title, 'Аванс 50%', 'title'); eq(first.title_en, 'Advance 50%', 'title en'); eq(first.status, 'done', 'done');
+  eq(first.completed_by, U.admin, 'by admin');
+  const act = await one('admin', 'select actor_id, action, payload from order_task_activity where task_id = $1', [first.id]);
+  eq(act.actor_id, U.admin, 'actor'); eq(act.payload.source, 'payment_confirmed', 'source');
+  eq(!!(await tk(tkA, 'payment_final')), true, 'final payment task'); eq(await tk(tkA, 'invoice_full'), undefined, 'no single invoice');
+});
+await ok('confirming again never makes a second board', async () => {
+  eq((await one('admin', `select confirm_order_payment($1, 'full') as id`, [tkA])).id, boardA, 'same board');
+  eq((await as('admin', 'select id from order_task_boards where sales_order_id = $1', [tkA])).length, 1, 'one board');
+  eq((await one('admin', 'select balance_received_on from sales_orders where id = $1', [tkA])).balance_received_on, null, 'payment unchanged');
+});
+await ok('services: Free Sale Certificate gets its task, an unknown service its own, label design none', async () => {
+  eq(!!(await tk(tkA, 'free_sale')), true, 'free sale');
+  eq(await tk(tkA, 'label_design'), undefined, 'no label design ordered');
+  const s = await tk(tkA, 'service');
+  eq(s.title, 'Express courier', 'other service');
+  eq((await one('admin', 'select system_key from order_task_columns where id = $1', [s.column_id])).system_key, 'dispatch', 'column');
+  const ck = await as('admin', 'select text from order_task_checklist_items where task_id = $1 order by position', [(await tk(tkA, 'label_check')).id]);
+  eq(ck.length, 6, 'regulatory checklist'); eq(ck[0].text, 'Здравни претенции (Рег. 1924/2006)', 'first item');
+});
+await ok('admin confirms 100 % on the other order: "Плащане 100%", no final payment task', async () => {
+  boardB = (await one('admin', `select confirm_order_payment($1, 'full') as id`, [tkB])).id;
+  eq((await tk(tkB, 'payment_first')).title, 'Плащане 100%', 'title');
+  eq(await tk(tkB, 'payment_final'), undefined, 'no final payment'); eq(await tk(tkB, 'invoice_advance'), undefined, 'no advance invoice');
+  eq(!!(await tk(tkB, 'invoice_full')), true, 'one invoice');
+  eq(await tk(tkB, 'free_sale'), undefined, 'no service, no task');
+  const o = await one('admin', 'select deposit_pct::int as pct, balance_received_on from sales_orders where id = $1', [tkB]);
+  eq(o.pct, 100, 'paid in full'); eq(!!o.balance_received_on, true, 'balance');
+});
+await ok('dispatch waits for the final payment, the QC release and the client information', async () => {
+  const d = await tk(tkA, 'dispatch');
+  const deps = await as('admin', `select t.template_key from order_task_dependencies x join order_tasks t on t.id = x.depends_on_task_id
+                                   where x.task_id = $1 order by 1`, [d.id]);
+  eq(deps.map(r => r.template_key).join(','), 'client_info,payment_final,qc_released', 'waits for');
+  const d2 = await tk(tkB, 'dispatch');
+  eq((await as('admin', 'select * from order_task_dependencies where task_id = $1', [d2.id])).length, 2, 'no final payment at 100 %');
+});
+await fails('a blocked task cannot be done', async () =>
+  as('sales', `select set_order_task_status($1, 'done')`, [(await tk(tkA, 'dispatch')).id]), 'blocked');
+await fails('an automatic task is not ticked by hand', async () =>
+  as('sales', `select set_order_task_status($1, 'done')`, [(await tk(tkA, 'recipes_approved')).id]), 'ticks itself');
+await fails('sales cannot mark an automatic task by hand', async () =>
+  as('sales', `select override_order_task($1, true, 'Checked by phone')`, [(await tk(tkA, 'coa')).id]), 'not allowed');
+await fails('admin needs a reason to mark an automatic task by hand', async () =>
+  as('admin', `select override_order_task($1, true, ' ')`, [(await tk(tkA, 'coa')).id]), 'reason');
+await ok('admin marks it by hand with a reason and takes it back', async () => {
+  const t = await tk(tkA, 'coa');
+  await as('admin', `select override_order_task($1, true, 'COA sent by e-mail')`, [t.id]);
+  eq((await tk(tkA, 'coa')).status, 'done', 'done');
+  await as('admin', 'select clear_order_task_override($1)', [t.id]);
+  const x = await tk(tkA, 'coa'); eq(x.status, 'todo', 'the rule decides again'); eq(x.override, false, 'override');
+  eq((await as('admin', `select action from order_task_activity where task_id = $1 order by id`, [t.id])).map(a => a.action).join(','),
+     'override,override_cleared,auto_undone', 'logged');
+});
+await fails('automatic tasks stay in their column', async () =>
+  as('sales', 'select move_order_task($1, $2)', [(await tk(tkA, 'recipes_approved')).id, (await tk(tkA, 'dispatch')).column_id]), 'stay in their column');
+await ok('sales adds a manual task, assigns it, moves it to another column and ticks it', async () => {
+  const col = (await tk(tkA, 'label_approved')).column_id;
+  const id = (await one('sales', 'select add_order_task($1, $2) as id', [col, 'Send samples'])).id;
+  await as('sales', 'select save_order_task($1, $2, $3, $4)', [id, 'Send samples', 'Two jars by courier', U.sales]);
+  const disp = (await tk(tkA, 'dispatch')).column_id;
+  await as('sales', 'select move_order_task($1, $2, 1)', [id, disp]);
+  const t = await one('sales', 'select column_id, position, assignee_id from order_tasks where id = $1', [id]);
+  eq(t.column_id, disp, 'moved'); eq(t.position, 1, 'on top'); eq(t.assignee_id, U.sales, 'assignee');
+  await as('sales', `select set_order_task_status($1, 'done')`, [id]);
+  eq((await one('sales', 'select status, completed_by from order_tasks where id = $1', [id])).completed_by, U.sales, 'done by');
+  eq((await as('sales', 'select action from order_task_activity where task_id = $1 order by id', [id])).map(a => a.action).join(','),
+     'created,assigned,described,moved,status', 'activity');
+});
+await fails('tasks are assigned to admin or sales users only', async () =>
+  as('sales', 'select save_order_task($1, $2, $3, $4)', [(await tk(tkA, 'client_info')).id, 'x', '', U.production]), 'admin or sales');
+await fails('tasks cannot wait for each other in a circle', async () => {
+  const a = await tk(tkA, 'client_info'); const d = await tk(tkA, 'dispatch');
+  await as('sales', 'select set_order_task_dependency($1, $2)', [a.id, d.id]);
+}, 'wait for each other');
+
+console.log('\nOrder tasks: automatic rules');
+const reqA = async () => Number((await db.query(`select required from version_required_materials($1, 100) where item_id = $2`, [tkVer.id, tkItem.id])).rows[0].required);
+let tkNeed, tkLineA, tkLineB, tkMoA;
+await ok('linking the recipe ticks "Рецептури одобрени" and takes the first availability snapshot', async () => {
+  tkLineA = await one('admin', `select id from sales_order_lines where order_id = $1 and kind = 'calc_offer'`, [tkA]);
+  tkLineB = await one('admin', `select id from sales_order_lines where order_id = $1 and kind = 'calc_offer'`, [tkB]);
+  eq(await tkStatus(tkA, 'recipes_approved'), 'todo', 'before');
+  tkNeed = await reqA();
+  await recv(tkItem.id, tkNeed * 1.5, 'NK-WH');
+  await recv(tkJar.id, 250, 'NK-WH');
+  await as('admin', 'select link_order_line_formula($1, $2)', [tkLineA.id, tkVer.id]);
+  await as('admin', 'select link_order_line_formula($1, $2)', [tkLineB.id, tkVer.id]);
+  eq(await tkStatus(tkA, 'recipes_approved'), 'done', 'after');
+  const act = await one('admin', `select actor_id, payload from order_task_activity where task_id = $1 and action = 'auto_done'`, [(await tk(tkA, 'recipes_approved')).id]);
+  eq(act.actor_id, null, 'system'); eq(act.payload.source, 'recipe_linked', 'source');
+  const link = await one('sales', `select entity_type, label from order_task_links where task_id = $1`, [(await tk(tkA, 'recipes_approved')).id]);
+  eq(link.entity_type, 'formula_version', 'chip');
+  const c = await one('sales', 'select total, ok, lines, recipe_versions from order_task_material_checks where board_id = $1 order by id desc limit 1', [boardB]);
+  eq(c.total, 2, 'materials'); eq(c.ok, 2, 'available'); eq(c.recipe_versions.length, 1, 'recipe checked');
+  eq(await tkStatus(tkB, 'materials_available'), 'done', 'B in stock');
+  eq(await tkStatus(tkB, 'shortfall_delivered'), 'done', 'nothing missing');
+});
+await ok("another order's reservation leaves this one short: snapshot, untick and a notice to its owner", async () => {
+  tkMoA = await one('admin', 'insert into manufacturing_orders (sales_order_line_id, quantity) values ($1, 100) returning id', [tkLineA.id]);
+  eq((await as('admin', 'select * from mo_packaging where mo_id = $1', [tkMoA.id])).length, 1, 'jar from the recipe');
+  await as('sales', 'select reserve_mo_materials($1)', [tkMoA.id]);
+  eq(await tkStatus(tkA, 'materials_reserved'), 'done', 'A reserved');
+  eq(await tkStatus(tkA, 'packaging_reserved'), 'done', 'A packaging');
+  eq(await tkStatus(tkA, 'materials_available'), 'done', 'A locked');
+  const c = await one('sales', 'select total, ok, source, cause_order_id, lines from order_task_material_checks where board_id = $1 order by id desc limit 1', [boardB]);
+  eq(c.source, 'reservation', 'source'); eq(c.cause_order_id, tkA, 'cause'); eq(c.ok, 1, 'one short');
+  const short = c.lines.find(l => l.sku === 'RM-TK');
+  eq(short.status, 'short_no_order', 'status'); eq(Number(short.free), Number((tkNeed * 0.5).toFixed(4)), 'free');
+  eq(await tkStatus(tkB, 'materials_available'), 'todo', 'B unticked');
+  eq((await one('admin', `select payload from order_task_activity where task_id = $1 order by id desc limit 1`, [(await tk(tkB, 'materials_available')).id])).payload.source, 'reservation', 'logged');
+  const n = await one('sales', `select params, link from notifications where kind = 'materials_short' and user_id = $1`, [U.sales]);
+  const codeA = (await one('admin', 'select code from sales_orders where id = $1', [tkA])).code;
+  eq(n.params.by, codeA, 'by'); eq(n.params.item, 'Task powder', 'item'); eq(n.link, `/orders/${tkB}`, 'link');
+});
+await ok('an incoming delivery makes it "short, incoming"; requesting what is missing makes a purchase request', async () => {
+  const pr = (await one('sales', 'select create_order_shortfall_requests($1) as n', [tkB])).n;
+  eq(pr, 1, 'one request');
+  const r = await one('admin', 'select quantity::float as q, status from purchase_requests where sales_order_id = $1', [tkB]);
+  eq(r.q, Number((tkNeed * 0.5).toFixed(4)), 'what is missing');
+  eq(await tkStatus(tkB, 'shortfall_delivered'), 'todo', 'requested, not delivered');
+  await as('admin', `select create_expected_delivery($1, $2, null::uuid, current_date + 5)`, [tkItem.id, r.q]);
+  const c = await one('sales', 'select lines from order_task_material_checks where board_id = $1 order by id desc limit 1', [boardB]);
+  eq(c.lines.find(l => l.sku === 'RM-TK').status, 'short_incoming', 'incoming');
+});
+await ok('"check again" always takes a snapshot; production cannot', async () => {
+  const n = (await one('admin', 'select count(*)::int as n from order_task_material_checks where board_id = $1', [boardB])).n;
+  await as('sales', 'select refresh_order_materials($1)', [tkB]);
+  eq((await one('admin', 'select count(*)::int as n from order_task_material_checks where board_id = $1', [boardB])).n, n + 1, 'snapshot');
+});
+await fails('production cannot check the materials of an order', () => as('production', 'select refresh_order_materials($1)', [tkB]), 'not allowed');
+await ok('releasing a reservation unticks "Суровини резервирани"; reserving again ticks it', async () => {
+  const r = await one('admin', `select id from stock_reservations where manufacturing_order_id = $1 and item_id = $2 and status = 'active'`, [tkMoA.id, tkItem.id]);
+  await as('sales', `select close_reservation($1, 'released')`, [r.id]);
+  eq(await tkStatus(tkA, 'materials_reserved'), 'todo', 'unticked');
+  eq((await one('admin', `select action from order_task_activity where task_id = $1 order by id desc limit 1`, [(await tk(tkA, 'materials_reserved')).id])).action, 'auto_undone', 'logged');
+  await as('sales', 'select reserve_mo_materials($1)', [tkMoA.id]);
+  eq(await tkStatus(tkA, 'materials_reserved'), 'done', 'ticked again');
+});
+await ok('sent to production, back and again; started', async () => {
+  await as('admin', 'select schedule_mo($1, current_date + 3)', [tkMoA.id]);
+  await as('admin', 'select release_mo($1)', [tkMoA.id]);
+  eq(await tkStatus(tkA, 'sent_to_production'), 'done', 'sent');
+  await as('admin', `select revert_mo_status($1, 'Wrong date')`, [tkMoA.id]);
+  eq(await tkStatus(tkA, 'sent_to_production'), 'todo', 'taken back');
+  await as('admin', 'select release_mo($1)', [tkMoA.id]);
+  await as('production', 'select start_production($1)', [tkMoA.id]);
+  eq(await tkStatus(tkA, 'in_production'), 'done', 'started by production');
+  eq((await tk(tkA, 'in_production')).note.key, 'batch_in_production', 'note');
+  eq(await tkStatus(tkA, 'consumption_reported'), 'todo', 'not reported');
+});
+await fails('sales cannot confirm the final payment', () => as('sales', 'select confirm_final_payment($1)', [tkA]), 'not allowed');
+await fails('the final invoice waits for the final payment', () =>
+  as('sales', `select create_order_invoice($1, 'final')`, [tkA]), 'final payment is confirmed');
+let tkAdv;
+await ok('the advance invoice: 50 % of the order, issuing it ticks "Фактура за аванс"', async () => {
+  tkAdv = (await one('sales', 'select create_order_invoice($1) as id', [tkA])).id;
+  const i = await one('sales', 'select purpose from invoices where id = $1', [tkAdv]);
+  eq(i.purpose, 'advance', 'purpose');
+  const l = await as('sales', 'select kind, amount::float as a from invoice_lines where invoice_id = $1', [tkAdv]);
+  eq(l.map(x => `${x.kind}:${x.a}`).join(','), 'advance:675', 'half of 1350');
+  await as('sales', `select issue_invoice($1, next_invoice_number(), current_date)`, [tkAdv]);
+  eq(await tkStatus(tkA, 'invoice_advance'), 'done', 'ticked');
+});
+await ok('admin confirms the final payment: ticked; clearing the date unticks it', async () => {
+  await as('admin', 'select confirm_final_payment($1)', [tkA]);
+  eq(await tkStatus(tkA, 'payment_final'), 'done', 'done');
+  eq((await one('admin', `select payload from order_task_activity where task_id = $1 and action = 'auto_done'`, [(await tk(tkA, 'payment_final')).id])).payload.source, 'final_payment_confirmed', 'source');
+  await as('sales', 'update sales_orders set balance_received_on = null where id = $1', [tkA]);
+  eq(await tkStatus(tkA, 'payment_final'), 'todo', 'reversed');
+  await as('admin', 'select confirm_final_payment($1)', [tkA]);
+});
+await ok('the final invoice: every line less the advance invoiced', async () => {
+  const id = (await one('sales', 'select create_order_invoice($1) as id', [tkA])).id;
+  eq((await one('sales', 'select purpose from invoices where id = $1', [id])).purpose, 'final', 'purpose');
+  const l = await as('sales', 'select kind, amount::float as a from invoice_lines where invoice_id = $1 order by sort_order', [id]);
+  eq(l.map(x => `${x.kind}:${x.a}`).join(','), 'calc_offer:1000,service:300,service:50,advance:-675', 'lines');
+  eq((await one('sales', `select issue_invoice($1, next_invoice_number(), current_date) as n`, [id])).n.length, 10, 'issued');
+  eq(Number((await one('sales', 'select subtotal from invoices where id = $1', [id])).subtotal), 675, 'balance');
+  eq(await tkStatus(tkA, 'invoice_final'), 'done', 'ticked');
+});
+await fails('an order paid at once has no advance invoice', () => as('sales', `select create_order_invoice($1, 'advance')`, [tkB]), 'paid with an advance|advance and a final');
+await ok('QC release of the batch ticks "QC освобождаване"', async () => {
+  const lot = await one('admin', 'select receive_lot($1, $2, 1) as id', [tkJar.id, L['NK-WH']]);
+  // the finished batch of the order (complete_production is tested above; here only its lot matters)
+  await db.query(`select set_config('nk.mo_transition', 'on', false)`);
+  await db.query(`update manufacturing_orders set status = 'completed', finished_lot_id = $2, completed_at = now() where id = $1`, [tkMoA.id, lot.id]);
+  await db.query(`select set_config('nk.mo_transition', 'off', false)`);
+  eq(await tkStatus(tkA, 'consumption_reported'), 'done', 'reported');
+  eq(await tkStatus(tkA, 'qc_released'), 'todo', 'in quarantine');
+  await as('admin', `select set_lot_qc_status($1, 'released')`, [lot.id]);
+  eq(await tkStatus(tkA, 'qc_released'), 'done', 'released');
+  await as('admin', `select set_lot_qc_status($1, 'quarantine')`, [lot.id]);
+  eq(await tkStatus(tkA, 'qc_released'), 'todo', 'back in quarantine');
+});
+await ok('Repeat order: the recipe the client already ordered ticks "Финални формули потвърдени"', async () => {
+  const rep = await one('sales', `select id from order_task_templates where name_bg = 'Повторна поръчка'`);
+  const oc = await calcOffer('NK-T-TKC', tkClient.id, 100, 10);
+  const c = (await one('sales', 'select create_order_from_calc_offers($1, $2) as id', [tkClient.id, [oc.id]])).id;
+  await as('admin', `select confirm_order_payment($1, 'full', null, $2)`, [c, rep.id]);
+  eq(await tkStatus(c, 'formulas_confirmed'), 'todo', 'before the recipe is linked');
+  const l = await one('admin', `select id from sales_order_lines where order_id = $1 and kind = 'calc_offer'`, [c]);
+  await as('admin', 'select link_order_line_formula($1, $2)', [l.id, tkVer.id]);
+  eq(await tkStatus(c, 'formulas_confirmed'), 'done', 'same recipe as before');
+  eq(await tkStatus(tkA, 'formulas_confirmed'), 'todo', 'the default template does not');
+});
+await ok('Export outside the EU adds Transport before Documents & dispatch', async () => {
+  const exp = await one('sales', `select id from order_task_templates where name_bg = 'Износ извън ЕС'`);
+  const cols = await as('sales', 'select coalesce(system_key, name_bg) as k from order_task_template_columns where template_id = $1 order by position', [exp.id]);
+  eq(cols.map(c => c.k).join(','), 'payments,formula,design,materials,production,Транспорт,dispatch', 'columns');
+  eq((await as('sales', `select key from order_task_template_items i join order_task_template_columns c on c.id = i.column_id
+                         where c.template_id = $1 and c.system_key is null`, [exp.id])).length, 3, 'transport tasks');
+});
+
+console.log('\nOrder tasks: columns, chat, files');
+await ok('a new column goes before Documents & dispatch by default', async () => {
+  const id = (await one('sales', `select add_order_task_column($1, 'Мостри', 'Samples', 'teal') as id`, [boardA])).id;
+  const cols = await as('sales', 'select id, coalesce(system_key, name_bg) as k from order_task_columns where board_id = $1 order by position', [boardA]);
+  eq(cols.map(c => c.k).join(','), 'payments,formula,design,materials,production,Мостри,dispatch', 'order');
+  await as('sales', 'select move_order_task_column($1, 1)', [id]);
+  eq((await one('sales', 'select position from order_task_columns where id = $1', [id])).position, 1, 'moved first');
+});
+await ok('a column with tasks is deleted only after moving them; an empty one directly', async () => {
+  const id = (await one('sales', `select add_order_task_column($1, 'Временна') as id`, [boardA])).id;
+  const t = (await one('sales', 'select add_order_task($1, $2) as id', [id, 'Temporary task'])).id;
+  let refused = false;
+  try { await as('sales', 'select delete_order_task_column($1)', [id]); } catch (e) { refused = /choose a column/i.test(e.message); }
+  eq(refused, true, 'refused while it has tasks');
+  const to = (await tk(tkA, 'client_info')).column_id;
+  await as('sales', 'select delete_order_task_column($1, $2)', [id, to]);
+  eq((await one('sales', 'select column_id from order_tasks where id = $1', [t])).column_id, to, 'task moved');
+  const e = (await one('sales', `select add_order_task_column($1, 'Празна') as id`, [boardA])).id;
+  await as('sales', 'select delete_order_task_column($1)', [e]);
+  eq((await as('sales', 'select id from order_task_columns where id = $1', [e])).length, 0, 'deleted');
+});
+await fails('a system column is never deleted', async () =>
+  as('admin', 'select delete_order_task_column($1)', [(await tk(tkA, 'dispatch')).column_id]), 'hide them');
+await fails('sales cannot delete a task of the template', async () =>
+  as('sales', 'select delete_order_task($1)', [(await tk(tkB, 'labels_received')).id]), 'only admin');
+await fails('sales cannot delete an automatic task', async () =>
+  as('sales', 'select delete_order_task($1)', [(await tk(tkB, 'packaging_reserved')).id]), 'only admin');
+await ok('sales deletes a task they added; admin one added by someone else', async () => {
+  const col = (await tk(tkB, 'labels_received')).column_id;
+  const mine = (await one('sales', 'select add_order_task($1, $2) as id', [col, 'Mine'])).id;
+  await as('sales', 'select delete_order_task($1)', [mine]);
+  eq((await as('admin', 'select id from order_tasks where id = $1', [mine])).length, 0, 'own task deleted');
+  const other = (await one('sales', 'select add_order_task($1, $2) as id', [col, 'Theirs'])).id;
+  await as('admin', 'select delete_order_task($1)', [other]);
+  eq((await as('admin', 'select id from order_tasks where id = $1', [other])).length, 0, 'deleted by admin');
+});
+await ok('admin deletes a template task and an automatic one: logged, the template keeps them', async () => {
+  for (const key of ['labels_received', 'packaging_reserved']) {
+    const t = await tk(tkB, key);
+    await as('admin', 'select delete_order_task($1)', [t.id]);
+    eq(await tk(tkB, key), undefined, `${key} gone from the board`);
+    eq((await one('admin', `select old_data->>'title' as title from audit_log where table_name = 'order_tasks' and row_id = $1`, [t.id])).title, t.title, `${key} logged`);
+  }
+  const tpl = (await one('admin', 'select template_id from order_task_boards where id = $1', [boardB])).template_id;
+  eq((await as('admin', `select key from order_task_template_items where template_id = $1 and key in ('labels_received', 'packaging_reserved')`, [tpl])).length, 2, 'template unchanged');
+});
+await fails('production cannot delete tasks', async () =>
+  as('production', 'select delete_order_task($1)', [(await tk(tkB, 'client_info')).id]));
+await fails('sales cannot save a column to the template', () =>
+  as('sales', `select add_order_task_column($1, 'X', null, 'grey', null, true)`, [boardA]), 'not allowed');
+await ok('admin saves a column to the template: future boards only', async () => {
+  await as('admin', `select add_order_task_column($1, 'Проби', 'Trials', 'purple', null, true)`, [boardA]);
+  const tpl = (await one('admin', 'select template_id from order_task_boards where id = $1', [boardA])).template_id;
+  eq((await as('admin', `select id from order_task_template_columns where template_id = $1 and name_bg = 'Проби'`, [tpl])).length, 1, 'in the template');
+  eq((await as('admin', `select id from order_task_columns where board_id = $1 and name_bg = 'Проби'`, [boardB])).length, 0, 'other boards unchanged');
+});
+await fails('sales cannot change templates', () =>
+  as('sales', `insert into order_task_templates (name_bg) values ('Моят шаблон')`), 'row-level security');
+await ok('admin edits templates directly', async () => {
+  const t = await one('admin', `insert into order_task_templates (name_bg, name_en) values ('Проба', 'Trial') returning id`);
+  const c = await one('admin', `insert into order_task_template_columns (template_id, name_bg, position) values ($1, 'Етап', 1) returning id`, [t.id]);
+  await as('admin', `insert into order_task_template_items (template_id, column_id, key, title_bg) values ($1, $2, 'step', 'Стъпка')`, [t.id, c.id]);
+  await as('admin', 'delete from order_task_templates where id = $1', [t.id]);
+});
+await fails('a system column of a template is never deleted', () =>
+  as('admin', `delete from order_task_template_columns where system_key = 'payments'`), 'hide them');
+let tkMsg;
+await ok('a message with a mention notifies admin; it is unread until admin opens the task', async () => {
+  const t = await tk(tkA, 'client_info');
+  tkMsg = (await one('sales', 'select post_order_task_comment($1, $2, $3) as id', [t.id, 'Address confirmed @admin', [U.admin, U.production]])).id;
+  const m = await one('sales', 'select mentions from order_task_comments where id = $1', [tkMsg]);
+  eq(m.mentions.join(','), U.admin, 'production is never mentioned');
+  const n = await one('admin', `select params, link from notifications where kind = 'task_mention' and user_id = $1`, [U.admin]);
+  eq(n.params.task, 'Информация за клиента', 'task'); eq(n.link.includes(`?task=${t.id}`), true, 'link');
+  eq((await as('admin', 'select * from order_task_reads where task_id = $1', [t.id])).length, 0, 'unread for admin');
+  eq((await as('sales', 'select * from order_task_reads where task_id = $1', [t.id])).length, 1, 'read by the author');
+  await as('admin', 'select mark_order_task_read($1)', [t.id]);
+  eq((await as('admin', 'select * from order_task_reads where task_id = $1', [t.id])).length, 1, 'read');
+});
+await fails('only the author edits a message', () => as('admin', 'select edit_order_task_comment($1, $2)', [tkMsg, 'Changed']), 'own messages');
+await ok('the author edits; admin deletes any message (soft: the text goes)', async () => {
+  await as('sales', 'select edit_order_task_comment($1, $2)', [tkMsg, 'Address confirmed']);
+  eq(!!(await one('sales', 'select edited_at from order_task_comments where id = $1', [tkMsg])).edited_at, true, 'edited');
+  await as('admin', 'select delete_order_task_comment($1)', [tkMsg]);
+  const c = await one('sales', 'select body, deleted_at, deleted_by from order_task_comments where id = $1', [tkMsg]);
+  eq(c.body, '', 'text removed'); eq(!!c.deleted_at, true, 'kept as deleted'); eq(c.deleted_by, U.admin, 'by');
+});
+await ok('files: recorded under {order}/{task}/{uuid}-{name}, removed by the uploader', async () => {
+  const t = await tk(tkA, 'label_approved');
+  const path = `${tkA}/${t.id}/00000000-0000-0000-0000-000000000001-label.pdf`;
+  eq((await one('sales', 'select can_access_order_task_path($1) as ok', [path])).ok, true, 'sales may use the path');
+  eq((await one('production', 'select can_access_order_task_path($1) as ok', [path])).ok, false, 'production may not');
+  const f = (await one('sales', `select add_order_task_file($1, $2, 'label.pdf', 1200, 'application/pdf') as id`, [t.id, path])).id;
+  eq((await one('sales', 'select delete_order_task_file($1) as p', [f])).p, path, 'path returned');
+  eq((await as('sales', `select action from order_task_activity where task_id = $1 order by id`, [t.id])).map(a => a.action).join(','), 'file_added,file_removed', 'logged');
+});
+await fails('a file over 25 MB is refused', async () => {
+  const t = await tk(tkA, 'label_approved');
+  await as('sales', `select add_order_task_file($1, $2, 'big.pdf', 26214401, 'application/pdf')`, [t.id, `${tkA}/${t.id}/00000000-0000-0000-0000-000000000002-big.pdf`]);
+}, '25 MB');
+await fails('a program file is refused', async () => {
+  const t = await tk(tkA, 'label_approved');
+  await as('sales', `select add_order_task_file($1, $2, 'run.exe', 10, null)`, [t.id, `${tkA}/${t.id}/00000000-0000-0000-0000-000000000003-run.exe`]);
+}, 'not allowed');
+await fails('a file path of another order is refused', async () => {
+  const t = await tk(tkA, 'label_approved');
+  await as('sales', `select add_order_task_file($1, $2, 'a.pdf', 10, null)`, [t.id, `${tkB}/${t.id}/00000000-0000-0000-0000-000000000004-a.pdf`]);
+}, 'invalid file path');
+await ok('production sees no table of the task manager', async () => {
+  const tables = ['order_task_templates', 'order_task_template_columns', 'order_task_template_items', 'order_task_boards',
+    'order_task_columns', 'order_tasks', 'order_task_checklist_items', 'order_task_dependencies', 'order_task_links',
+    'order_task_material_checks', 'order_task_comments', 'order_task_files', 'order_task_reads', 'order_task_activity'];
+  for (const t of tables) {
+    eq((await as('production', `select * from ${t}`)).length, 0, t);
+    eq((await as('admin', `select count(*)::int as n from ${t}`))[0].n >= 0, true, t);
+  }
+  eq((await as('sales', 'select * from order_tasks where board_id = $1', [boardA])).length > 20, true, 'sales sees them');
+});
+await ok('production cannot write any table of the task manager', async () => {
+  const t = await tk(tkA, 'client_info');
+  const attempts = [
+    [`insert into order_task_templates (name_bg) values ('X')`, []],
+    [`update order_tasks set title = 'X' where id = $1`, [t.id]],
+    [`delete from order_task_comments`, []],
+    [`insert into order_task_reads (task_id, user_id) values ($1, $2)`, [t.id, U.production]],
+    [`delete from order_task_template_items`, []],
+  ];
+  for (const [sql, params] of attempts) {
+    let blocked = false;
+    try { const r = await as('production', sql + (sql.startsWith('delete') || sql.startsWith('update') ? ' returning 1' : ''), params); blocked = r.length === 0; }
+    catch (e) { blocked = /permission denied|row-level security/i.test(e.message); }
+    eq(blocked, true, sql);
+  }
+  eq((await one('admin', 'select title from order_tasks where id = $1', [t.id])).title, 'Информация за клиента', 'unchanged');
+});
+await ok('production cannot call any function of the task manager', async () => {
+  const t = await tk(tkA, 'client_info');
+  const calls = [
+    ['add_order_task($1, $2)', [t.column_id, 'X']], ['save_order_task($1, $2, $3, null)', [t.id, 'X', '']],
+    ['set_order_task_status($1, \'done\')', [t.id]], ['move_order_task($1, $2)', [t.id, t.column_id]],
+    ['delete_order_task($1)', [t.id]], ['override_order_task($1, true, $2)', [t.id, 'x']], ['clear_order_task_override($1)', [t.id]],
+    ['add_order_task_checklist_item($1, $2)', [t.id, 'X']], ['set_order_task_dependency($1, $2)', [t.id, t.id]],
+    ['add_order_task_link($1, \'sales_order\', $2)', [t.id, tkA]], ['post_order_task_comment($1, $2)', [t.id, 'Hi']],
+    ['mark_order_task_read($1)', [t.id]], ['add_order_task_column($1, $2)', [boardA, 'X']],
+    ['confirm_final_payment($1)', [tkA]], ['create_order_shortfall_requests($1)', [tkA]],
+    ['delete_order_task_file($1)', [t.id]], ['add_order_task_file($1, $2, \'a.pdf\', 1, null)', [t.id, `${tkA}/${t.id}/x-a.pdf`]],
+  ];
+  for (const [fn, params] of calls) {
+    let refused = false;
+    try { await as('production', `select ${fn}`, params); } catch (e) { refused = /not allowed|permission denied/i.test(e.message); }
+    eq(refused, true, fn);
+  }
+  for (const fn of ['order_tasks_sync($1, null)', 'order_tasks_refresh($1, \'x\')', 'order_material_check($1, \'manual\')']) {
+    let refused = false;
+    try { await as('sales', `select ${fn}`, [tkA]); } catch (e) { refused = /permission denied/i.test(e.message); }
+    eq(refused, true, `internal ${fn}`);
+  }
+});
+
 console.log('\nRead-only views');
 await ok('production cannot change a project through production_projects', async () => {
   const before = (await db.query('select id, status from projects limit 1')).rows[0];
