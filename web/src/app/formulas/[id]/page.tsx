@@ -311,7 +311,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                       </select>
                     </label>
                     <label className="field"><span>{d.overagePct}</span>
-                      <input name="overage_pct" type="number" min={0} max={100} step="any" className="input" aria-describedby="overage-hint" />
+                      <input name="overage_pct" type="number" min={0} max={100} step="any" defaultValue={5} className="input" aria-describedby="overage-hint" />
                     </label>
                   </div>
                   <small id="overage-hint" className="-mt-2 text-xs text-ink-2">{d.overageHint}</small>
