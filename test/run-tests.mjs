@@ -923,6 +923,78 @@ await ok('a calculator offer is for a CRM client; sales records the registered a
   eq((await as('production', 'select id from clients where id = $1', [c.id])).length, 0, 'production');
 });
 
+console.log('\nRecipes from calculator offers');
+let rcpZg, rcpM2, rcpOffer, rcpFormula, rcpVersion;
+const rcpRows = (zgAmount) => JSON.stringify({
+  productType: 'capsules_glass', capsulesPerDose: '2', quantityPerUnit: '60', numberOfUnits: '1000',
+  rows: [{ name: 'Zinc Glycinate', amount: String(zgAmount), unit: 'mg', materialId: rcpZg.mat },
+         { name: rcpM2.name, amount: '200', unit: 'mg', materialId: rcpM2.mat }],
+});
+await ok('a calculator offer gets a recipe: matched items become lines, the rest waits for a stock item', async () => {
+  rcpZg = { mat: (await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`)).id };
+  rcpZg.item = (await one('admin', `insert into items (sku, type, name, base_unit, novel_food_status, shelf_life_months)
+                                    values ('RCP-ZG', 'raw_material', 'Zinc Glycinate', 'kg', 'not_novel', 24) returning id`)).id;
+  const m2 = await one('admin', `select id, name from calc_raw_materials c where name <> 'Zinc Glycinate'
+                                   and not exists (select 1 from items i where lower(i.name) = lower(c.name)) order by name limit 1`);
+  rcpM2 = { mat: m2.id, name: m2.name };
+  rcpOffer = (await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, product_type, data, results)
+                                  values ('NK-T-RCP', 'Client', '', $1, 'Recipe Test', 'capsules_glass', $2::jsonb, '{}') returning id`,
+    [client.id, rcpRows(15)])).id;
+  rcpFormula = await one('sales', 'select * from formulas where calc_offer_id = $1', [rcpOffer]);
+  eq(rcpFormula.name, 'Recipe Test', 'name'); eq(rcpFormula.product_format, 'capsule', 'format');
+  eq(Number(rcpFormula.serving_size), 2, 'capsules per serving'); eq(rcpFormula.servings_per_pack, 30, 'servings');
+  eq(rcpFormula.client_id, client.id, 'client');
+  rcpVersion = (await one('sales', 'select id from formula_versions where formula_id = $1', [rcpFormula.id])).id;
+  const lines = await as('sales', 'select item_id, amount::float as a, unit from formula_lines where version_id = $1', [rcpVersion]);
+  eq(lines.map((l) => `${l.item_id === rcpZg.item}:${l.a}${l.unit}`).join(), 'true:15mg', 'lines');
+  const pend = await as('sales', 'select name, material_id, amount::float as a from formula_pending_lines where version_id = $1', [rcpVersion]);
+  eq(pend.map((p) => `${p.name}:${p.a}:${p.material_id === rcpM2.mat}`).join(), `${rcpM2.name}:200:true`, 'pending');
+});
+await fails('a recipe with ingredients to link cannot be approved', async () => {
+  await as('admin', 'update formula_versions set shelf_life_months = 24 where id = $1', [rcpVersion]);
+  await as('admin', `update formula_versions set status = 'approved' where id = $1`, [rcpVersion]);
+}, 'Link every ingredient');
+await ok('saving the offer again rebuilds an untouched recipe', async () => {
+  await as('sales', 'update calc_offers set data = $2::jsonb where id = $1', [rcpOffer, rcpRows(20)]);
+  eq((await one('sales', 'select amount::float as a from formula_lines where version_id = $1', [rcpVersion])).a, 20, 'amount');
+  eq((await as('sales', 'select id from formula_pending_lines where version_id = $1', [rcpVersion])).length, 1, 'still pending');
+});
+await ok('sales links the waiting ingredient; the link is remembered and the recipe is no longer rebuilt', async () => {
+  rcpM2.item = (await one('admin', `insert into items (sku, type, name, base_unit, novel_food_status)
+                                    values ('RCP-M2', 'raw_material', 'Recipe test material', 'kg', 'not_novel') returning id`)).id;
+  const p = await one('sales', 'select id from formula_pending_lines where version_id = $1', [rcpVersion]);
+  await as('sales', 'select link_recipe_pending_line($1, $2)', [p.id, rcpM2.item]);
+  eq((await as('sales', 'select id from formula_pending_lines where version_id = $1', [rcpVersion])).length, 0, 'none pending');
+  eq((await as('sales', 'select id from formula_lines where version_id = $1', [rcpVersion])).length, 2, 'two lines');
+  eq((await one('sales', 'select item_id from calc_material_items where material_id = $1', [rcpM2.mat])).item_id, rcpM2.item, 'remembered');
+  await as('sales', `update formula_lines set amount = 25 where version_id = $1 and item_id = $2`, [rcpVersion, rcpZg.item]);
+  await as('sales', 'update calc_offers set data = $2::jsonb where id = $1', [rcpOffer, rcpRows(30)]);
+  eq((await one('sales', 'select amount::float as a from formula_lines where version_id = $1 and item_id = $2', [rcpVersion, rcpZg.item])).a, 25, 'hand edit kept');
+  eq((await one('sales', 'select offer_edited from formulas where id = $1', [rcpFormula.id])).offer_edited, true, 'edited');
+});
+await ok('the next offer with that material finds the stock item by itself; a catalog offer uses its composition', async () => {
+  const o2 = (await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, data, results)
+                                  values ('NK-T-RCP2', 'Client', '', $1::jsonb, '{}') returning id`, [rcpRows(10)])).id;
+  const v2 = (await one('sales', 'select v.id from formula_versions v join formulas f on f.id = v.formula_id where f.calc_offer_id = $1', [o2])).id;
+  eq((await as('sales', 'select id from formula_lines where version_id = $1', [v2])).length, 2, 'both lines');
+  eq((await as('sales', 'select id from formula_pending_lines where version_id = $1', [v2])).length, 0, 'nothing pending');
+  const o3 = (await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, product_type, data, results)
+                                  values ('NK-T-RCP3', 'Client', '', 'powder', $1::jsonb, '{}') returning id`,
+    [JSON.stringify({ mode: 'catalog', productType: 'powder', rows: [], catalog: { servings_per_container: 30, composition: [{ name: 'zinc glycinate', amount: 5, unit: 'g' }] } })])).id;
+  const f3 = await one('sales', 'select id, product_format, serving_size::float as s, serving_unit, servings_per_pack from formulas where calc_offer_id = $1', [o3]);
+  eq(`${f3.product_format}:${f3.s}${f3.serving_unit}:${f3.servings_per_pack}`, 'powder:5g:30', 'powder serving');
+  eq((await one('sales', 'select count(*)::int as n from formula_lines l join formula_versions v on v.id = l.version_id where v.formula_id = $1', [f3.id])).n, 1, 'catalog line');
+});
+await ok('production sees no recipes, links or waiting ingredients', async () => {
+  for (const table of ['formulas', 'formula_lines', 'formula_pending_lines', 'calc_material_items']) {
+    eq((await as('production', `select * from ${table}`)).length, 0, table);
+  }
+});
+await fails('production cannot link ingredients', () =>
+  as('production', 'select link_recipe_pending_line($1, $2)', [rcpVersion, rcpZg.item]), 'not allowed');
+await fails('nobody runs the offer recipe sync directly', () =>
+  as('sales', 'select calc_offer_recipe_sync($1)', [rcpOffer]), 'permission denied');
+
 console.log('\nOrders from calculator offers');
 let calcA, calcB, calcOrder;
 const calcV = await one('admin', `select v.id from formula_versions v join formulas f on f.id = v.formula_id

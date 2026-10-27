@@ -3,10 +3,12 @@ import { q } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
 import { Chip, Empty, PageHeader } from "@/components/ui";
 import { formulaTone } from "@/lib/status";
+import { fmt } from "@/lib/i18n";
 
 type Row = {
   id: string; code: string; name: string; name_bg: string | null; product_format: string;
   client: string | null; client_id: string | null; project_code: string | null; version: number; status: string;
+  offer_no: string | null;
 };
 
 export default async function FormulasPage({ searchParams }: PageProps<"/formulas">) {
@@ -19,8 +21,9 @@ export default async function FormulasPage({ searchParams }: PageProps<"/formula
   const rows = await q<Row>(
     user.id,
     `select f.id, f.code, f.name, f.name_bg, f.product_format, c.legal_name as client, c.id as client_id,
-            p.code as project_code, v.version, v.status
+            p.code as project_code, v.version, v.status, o.offer_no
        from formulas f
+       left join calc_offers o on o.id = f.calc_offer_id
        left join clients c on c.id = f.client_id
        left join projects p on p.id = f.project_id
        cross join lateral (
@@ -28,7 +31,7 @@ export default async function FormulasPage({ searchParams }: PageProps<"/formula
           where formula_id = f.id
           order by status = 'draft' desc, status = 'approved' desc, version desc limit 1) v
       where f.is_active
-        and ($1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%')
+        and ($1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%' or o.offer_no ilike '%' || $1 || '%')
       order by f.code desc`,
     [term],
   );
@@ -59,7 +62,10 @@ export default async function FormulasPage({ searchParams }: PageProps<"/formula
           <div key={f.id} className={`row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3.5 text-sm last:border-0 ${grid}`}>
             <div className="min-w-0 md:contents">
               <Link href={`/formulas/${f.id}`} className="font-semibold text-ink">{f.code}</Link>
-              <span className="block min-w-0 break-words md:inline">{locale === "bg" && f.name_bg ? f.name_bg : f.name}</span>
+              <span className="block min-w-0 break-words md:inline">
+                {locale === "bg" && f.name_bg ? f.name_bg : f.name}
+                {f.offer_no && <span className="block text-xs text-ink-2">{fmt(t.formulas.fromOffer, { no: f.offer_no })}</span>}
+              </span>
             </div>
             <span className="hide-sm min-w-0 break-words">
               {f.client_id ? <Link href={`/clients/${f.client_id}`} className="text-ink">{f.client}{f.project_code ? ` · ${f.project_code}` : ""}</Link> : <span className="text-ink-2">{t.formulas.stock}</span>}

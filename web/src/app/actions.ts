@@ -255,6 +255,39 @@ export async function addFormulaLine(_: ActionState, fd: FormData): Promise<Acti
   return { ok: true, message: t.common.saved };
 }
 
+export async function saveFormulaLine(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(
+      user.id,
+      `update formula_lines set amount = $2, unit = coalesce($3, 'mg')::dose_unit, overage_pct = coalesce($4, 0) where id = $1`,
+      [str(fd, "line_id"), num(fd, "amount"), str(fd, "unit"), num(fd, "overage_pct")],
+    );
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+  return { ok: true, message: t.common.saved };
+}
+
+/** An offer ingredient without a stock item: choose the item (remembered for the next offers). */
+export async function linkPendingLine(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, "select link_recipe_pending_line($1, $2, $3)", [str(fd, "pending_id"), str(fd, "item_id"), fd.get("remember") === "on"]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+  return { ok: true, message: t.common.saved };
+}
+
+export async function removePendingLine(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "delete from formula_pending_lines where id = $1", [str(fd, "pending_id")]);
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+}
+
 export async function removeFormulaLine(fd: FormData) {
   const { user } = await getSession();
   await q(user.id, "delete from formula_lines where id = $1", [str(fd, "line_id")]);
