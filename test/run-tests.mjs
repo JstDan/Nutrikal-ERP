@@ -1413,19 +1413,27 @@ await fails('sales cannot confirm the first payment', () =>
   as('sales', `select confirm_order_payment($1, 'advance')`, [tkA]), 'not allowed');
 await fails('production cannot confirm the first payment', () =>
   as('production', `select confirm_order_payment($1, 'advance')`, [tkA]), 'not allowed');
-await ok('admin confirms an advance of 50 %: the board is made in the same step, "Аванс 50%" is done', async () => {
-  boardA = (await one('admin', `select confirm_order_payment($1, 'advance', 50) as id`, [tkA])).id;
-  const o = await one('admin', 'select status, deposit_pct::int as pct, deposit_received_on, balance_received_on from sales_orders where id = $1', [tkA]);
-  eq(o.status, 'confirmed', 'status'); eq(o.pct, 50, 'deposit'); eq(!!o.deposit_received_on, true, 'deposit received');
+await fails('the advance is entered as an amount', () =>
+  as('admin', `select confirm_order_payment($1, 'advance')`, [tkA]), 'Enter the advance received');
+await fails('the advance is less than the order total with VAT (1350 + 20 % = 1620)', () =>
+  as('admin', `select confirm_order_payment($1, 'advance', 1620)`, [tkA]), 'less than the order total');
+await ok('admin confirms an advance of 810 received (VAT included): the board is made in the same step, "Аванс 810,00 €" is done', async () => {
+  boardA = (await one('admin', `select confirm_order_payment($1, 'advance', 810) as id`, [tkA])).id;
+  const o = await one('admin', 'select status, deposit_pct::int as pct, deposit_amount::float as amount, deposit_received_on, balance_received_on from sales_orders where id = $1', [tkA]);
+  eq(o.status, 'confirmed', 'status'); eq(o.pct, 50, 'deposit'); eq(o.amount, 810, 'amount'); eq(!!o.deposit_received_on, true, 'deposit received');
   eq(o.balance_received_on, null, 'balance open');
   const cols = await as('admin', 'select system_key from order_task_columns where board_id = $1 order by position', [boardA]);
   eq(cols.map(c => c.system_key).join(','), 'payments,formula,design,materials,production,dispatch', 'columns');
   const first = await tk(tkA, 'payment_first');
-  eq(first.title, 'Аванс 50%', 'title'); eq(first.title_en, 'Advance 50%', 'title en'); eq(first.status, 'done', 'done');
+  eq(first.title, 'Аванс 810,00 €', 'title'); eq(first.title_en, 'Advance 810.00 €', 'title en'); eq(first.status, 'done', 'done');
   eq(first.completed_by, U.admin, 'by admin');
   const act = await one('admin', 'select actor_id, action, payload from order_task_activity where task_id = $1', [first.id]);
   eq(act.actor_id, U.admin, 'actor'); eq(act.payload.source, 'payment_confirmed', 'source');
   eq(!!(await tk(tkA, 'payment_final')), true, 'final payment task'); eq(await tk(tkA, 'invoice_full'), undefined, 'no single invoice');
+  const pay = await as('admin', `select t.template_key from order_tasks t join order_task_columns c on c.id = t.column_id
+                                   where t.board_id = $1 and c.system_key = 'payments' order by t.position`, [boardA]);
+  eq(pay.map(x => x.template_key).join(','), 'payment_first,invoice_advance,proforma_final,payment_final,invoice_final', 'proforma before the final payment');
+  eq((await tk(tkA, 'proforma_final')).title, 'Проформа за финално плащане', 'proforma title');
 });
 await ok('confirming again never makes a second board', async () => {
   eq((await one('admin', `select confirm_order_payment($1, 'full') as id`, [tkA])).id, boardA, 'same board');
@@ -1444,7 +1452,7 @@ await ok('services: Free Sale Certificate gets its task, an unknown service its 
 await ok('admin confirms 100 % on the other order: "Плащане 100%", no final payment task', async () => {
   boardB = (await one('admin', `select confirm_order_payment($1, 'full') as id`, [tkB])).id;
   eq((await tk(tkB, 'payment_first')).title, 'Плащане 100%', 'title');
-  eq(await tk(tkB, 'payment_final'), undefined, 'no final payment'); eq(await tk(tkB, 'invoice_advance'), undefined, 'no advance invoice');
+  eq(await tk(tkB, 'payment_final'), undefined, 'no final payment'); eq(await tk(tkB, 'proforma_final'), undefined, 'no final proforma'); eq(await tk(tkB, 'invoice_advance'), undefined, 'no advance invoice');
   eq(!!(await tk(tkB, 'invoice_full')), true, 'one invoice');
   eq(await tk(tkB, 'free_sale'), undefined, 'no service, no task');
   const o = await one('admin', 'select deposit_pct::int as pct, balance_received_on from sales_orders where id = $1', [tkB]);
@@ -1581,7 +1589,7 @@ await ok('the advance invoice: 50 % of the order, issuing it ticks "Фактур
   const i = await one('sales', 'select purpose from invoices where id = $1', [tkAdv]);
   eq(i.purpose, 'advance', 'purpose');
   const l = await as('sales', 'select kind, amount::float as a from invoice_lines where invoice_id = $1', [tkAdv]);
-  eq(l.map(x => `${x.kind}:${x.a}`).join(','), 'advance:675', 'half of 1350');
+  eq(l.map(x => `${x.kind}:${x.a}`).join(','), 'advance:675', '810 received / 1.2 VAT');
   await as('sales', `select issue_invoice($1, next_invoice_number(), current_date)`, [tkAdv]);
   eq(await tkStatus(tkA, 'invoice_advance'), 'done', 'ticked');
 });

@@ -22,7 +22,7 @@ type Line = {
 };
 type Approved = { id: string; code: string; name: string; name_bg: string | null; version: number; calc_offer_id: string | null };
 type Commercial = {
-  currency: string; deposit_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
+  currency: string; deposit_pct: string | null; deposit_amount: string | null; vat_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
   deposit_received_on: string | null; balance_received_on: string | null; customer_ref: string | null; notes: string | null;
 };
 type Mo = { id: string; code: string; status: string; sales_order_line_id: string; quantity: number };
@@ -66,7 +66,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         where sales_order_line_id in (select id from sales_order_line_overview where order_id = $1) order by code`, [id])).rows;
     const c = canEdit
       ? (await tx.query<Commercial>(
-          `select currency, deposit_pct::text, balance_terms, balance_net_days, deposit_received_on::text, balance_received_on::text,
+          `select currency, deposit_pct::text, deposit_amount::text, vat_pct::text, balance_terms, balance_net_days, deposit_received_on::text, balance_received_on::text,
                   customer_ref, notes from sales_orders where id = $1`, [id])).rows[0]
       : undefined;
     const prices = canEdit
@@ -121,12 +121,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const T = t.tasks;
   const H = T.header;
   const depPct = Number(c?.deposit_pct ?? 0);
+  const gross = Math.round(total * (1 + Number(c?.vat_pct ?? 0) / 100) * 100) / 100;
   // Advance + final payment: the board decides once it exists; before that, the deposit % of the order
   const twoPayments = board ? board.board.payment_mode === "split" : depPct > 0 && depPct < 100;
   const paid = !!c?.deposit_received_on && !["draft", "unpaid", "cancelled"].includes(o.status);
   const paymentText = !c ? "" : !paid ? H.notPaid
     : !twoPayments ? H.paidFull
-    : `${fmt(H.advancePaid, { pct: formatNumber(locale, depPct) })} · ${c.balance_received_on ? H.balancePaid : H.balanceDue}`;
+    : `${c.deposit_amount != null ? fmt(H.advancePaidAmount, { amount: money(c.deposit_amount) }) : fmt(H.advancePaid, { pct: formatNumber(locale, depPct) })} · ${c.balance_received_on ? H.balancePaid : H.balanceDue}`;
   const invoiceOf = (p: OrderInvoice["purpose"]) => invoices.find((x) => x.purpose === p);
   const doneTasks = board ? board.tasks.filter((x) => x.status === "done").length : 0;
   const realtime = supabaseConfigured()
@@ -303,7 +304,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             <Card title={d.nextStep} id="next-h">
               {o.status === "unpaid" && <p className="m-0 text-sm text-ink-2">{isAdmin ? d.unpaidNote : d.unpaidSales}</p>}
               {showFirstPayment && (
-                <ConfirmFirstPayment orderId={o.id} T={T} locale={locale} templates={templates} defaultPct={c?.deposit_pct != null ? depPct : null} />
+                <ConfirmFirstPayment orderId={o.id} T={T} locale={locale} templates={templates} defaultPct={c?.deposit_pct != null ? depPct : null}
+                  gross={gross} currency={c?.currency ?? "EUR"} />
               )}
               {showFinalPayment && (
                 <>
@@ -326,7 +328,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           {c ? (
             <Card title={d.payments} id="payments-h">
               <p className="m-0 text-sm">
-                {c.deposit_pct != null && Number(c.deposit_pct) > 0 && <>{fmt(d.depositAmount, { amount: money(total * Number(c.deposit_pct) / 100) })} · </>}
+                {c.deposit_amount != null ? <>{fmt(d.depositAmount, { amount: money(c.deposit_amount) })} · </>
+                  : c.deposit_pct != null && Number(c.deposit_pct) > 0 && <>{fmt(d.depositAmount, { amount: money(total * Number(c.deposit_pct) / 100) })} · </>}
                 {balanceText}
               </p>
               <ActionForm action={saveOrder} submitLabel={t.common.save} resetOnSuccess={false}>
