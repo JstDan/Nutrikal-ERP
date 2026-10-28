@@ -7,6 +7,7 @@ import { issueInvoice } from "@/app/actions";
 import { ActionForm } from "@/components/action-form";
 import { Card, Chip, PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
+import { VatToggle } from "@/components/vat-toggle";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import { SalesDocument } from "@/components/sales-document";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
@@ -38,10 +39,11 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
          from invoice_lines where invoice_id = $1 order by sort_order`, [id])).rows;
     const next = (await tx.query<{ n: string | null }>("select next_invoice_number() as n")).rows[0]?.n ?? "";
     const seller = (await tx.query<Seller>("select logo_data_url from calc_settings limit 1")).rows[0];
-    return { inv, lines, next, logo: seller?.logo_data_url ?? null };
+    const rate = (await tx.query<{ r: string }>("select order_vat_rate($1)::text as r", [inv.order_id])).rows[0]?.r;
+    return { inv, lines, next, logo: seller?.logo_data_url ?? null, rate: Number(rate ?? 20) };
   });
   if (!data) notFound();
-  const { inv: x, lines, next, logo } = data;
+  const { inv: x, lines, next, logo, rate } = data;
   const draft = x.status === "draft";
 
   // The document is in the client's language
@@ -130,6 +132,8 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
         <div className="print:hidden">
           <Card title={I.issueTitle} id="issue-h">
             <p className="m-0 text-sm text-ink-2">{I.draftNote}</p>
+            <VatToggle checked={vatPct > 0} invoiceId={x.id}
+              label={fmt(t.common.withVat, { pct: formatNumber(locale, vatPct > 0 ? vatPct : rate) })} />
             <ActionForm action={issueInvoice} submitLabel={I.issue} resetOnSuccess={false}>
               <input type="hidden" name="invoice_id" value={x.id} />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

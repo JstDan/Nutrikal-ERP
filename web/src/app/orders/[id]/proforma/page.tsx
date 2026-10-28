@@ -4,6 +4,7 @@ import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice, getDict, type Locale } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
+import { VatToggle } from "@/components/vat-toggle";
 import { SalesDocument } from "@/components/sales-document";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
@@ -20,10 +21,14 @@ type Seller = {
   bank_name: string; bank_iban: string; bank_bic: string; logo_data_url: string | null;
 };
 
-/** The proforma of an order as the client receives it: the client's language; print or save as PDF from the browser. */
-export default async function ProformaPage({ params }: PageProps<"/orders/[id]/proforma">) {
+/**
+ * The proforma of an order as the client receives it: the client's language; print or save as PDF from the browser.
+ * With or without VAT is ticked here (?vat=1 / ?vat=0; default: the order's VAT).
+ */
+export default async function ProformaPage({ params, searchParams }: PageProps<"/orders/[id]/proforma">) {
   const { id } = await params;
-  const { user, t: ui } = await requireRole("admin", "sales");
+  const sp = await searchParams;
+  const { user, locale, t: ui } = await requireRole("admin", "sales");
 
   const data = await withUser(user.id, async (tx) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
@@ -46,17 +51,19 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
     const seller = (await tx.query<Seller>(
       `select company_name, company_id, company_vat, company_address, company_email, company_phone, bank_name, bank_iban, bank_bic, logo_data_url
          from calc_settings limit 1`)).rows[0];
-    return { doc, lines, seller };
+    const rate = (await tx.query<{ r: string }>("select order_vat_rate($1)::text as r", [id])).rows[0]?.r;
+    return { doc, lines, seller, rate: Number(rate ?? 20) };
   });
   if (!data) notFound();
-  const { doc: o, lines, seller: s } = data;
+  const { doc: o, lines, seller: s, rate } = data;
 
   const l = o.locale === "bg" ? "bg" : "en";
   const P = getDict(l).orders.proforma;
   const money = (n: number | string) => formatPrice(l, n, o.currency);
   const describe = (x: Line) => (x.capsules ? fmt(P.withCapsules, { name: x.description, n: formatNumber(l, x.capsules) }) : x.description);
   const subtotal = lines.reduce((a, x) => a + Number(x.unit_price) * x.quantity, 0);
-  const vatPct = Number(o.vat_pct ?? 0);
+  const withVat = sp.vat === "1" ? true : sp.vat === "0" ? false : Number(o.vat_pct ?? 0) > 0;
+  const vatPct = withVat ? rate : 0;
   const vat = Math.round(subtotal * vatPct) / 100;
   const buyerAddress = o.client_registration
     || [o.client_address, [o.client_postal, o.client_city].filter(Boolean).join(" "), o.client_country].filter(Boolean).join(", ");
@@ -110,6 +117,9 @@ export default async function ProformaPage({ params }: PageProps<"/orders/[id]/p
         <ProformaPdfButton model={model} label={ui.orders.proforma.download} errorText={ui.orders.proforma.downloadFailed} />
         <PrintButton label={ui.orders.proforma.printNow} variant="outline" />
         <Link href={`/orders/${id}`} className="btn btn-outline">{ui.orders.proforma.back}</Link>
+      </div>
+      <div className="print:hidden">
+        <VatToggle checked={withVat} label={fmt(ui.common.withVat, { pct: formatNumber(locale, rate) })} />
       </div>
 
       <SalesDocument model={model} lang={l} sellerName={s?.company_name ?? ""} />

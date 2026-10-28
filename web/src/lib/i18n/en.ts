@@ -1,6 +1,7 @@
 export const en = {
   common: {
     save: "Save",
+    withVat: "With VAT ({pct}%)",
     cancel: "Cancel",
     create: "Create",
     add: "Add",
