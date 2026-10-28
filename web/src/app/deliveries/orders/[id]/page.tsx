@@ -221,12 +221,14 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
           {isAdmin && draft && (
             <Card>
               <p className="m-0 text-sm text-ink-2">{P.sendNote}</p>
-              <ActionForm action={sendPurchaseOrder} submitLabel={P.send} resetOnSuccess={false}>
-                <input type="hidden" name="po_id" value={po.id} />
-              </ActionForm>
-              <ActionForm action={cancelPurchaseOrder} submitLabel={P.cancel} resetOnSuccess={false}>
-                <input type="hidden" name="po_id" value={po.id} />
-              </ActionForm>
+              <div className="btn-stack">
+                <ActionForm action={sendPurchaseOrder} submitLabel={P.send} resetOnSuccess={false}>
+                  <input type="hidden" name="po_id" value={po.id} />
+                </ActionForm>
+                <ActionForm action={cancelPurchaseOrder} submitLabel={P.cancel} resetOnSuccess={false}>
+                  <input type="hidden" name="po_id" value={po.id} />
+                </ActionForm>
+              </div>
             </Card>
           )}
           {po.status === "sent" && <Card><p className="m-0 text-sm">{fmt(P.sentOn, { date: formatDate(locale, po.sent_at) })} <Link href="/deliveries" className="text-ink">{P.back}</Link></p></Card>}
