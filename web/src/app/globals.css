@@ -127,6 +127,10 @@ body {
 .btn-outline { background: var(--color-white); color: var(--color-ink); }
 .btn-outline:hover { background: var(--color-canvas); }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
+/* Buttons one under the other: all as wide as the one with the longest label */
+.btn-stack { display: grid; width: fit-content; max-width: 100%; gap: 12px; }
+.btn-stack .btn { width: 100%; }
+.btn-stack [role="status"]:empty { display: none; }
 
 .card { background: var(--color-white); border: 1px solid var(--color-line); border-radius: 4px; }
 .label { font-size: 12px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--color-ink-2); }

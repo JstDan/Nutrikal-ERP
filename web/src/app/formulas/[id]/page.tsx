@@ -515,18 +515,20 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
 
           {canEdit && (
             <Card>
-              {isDraft && isAdmin && (
-                <ActionForm action={approveFormulaVersion} submitLabel={d.approve} resetOnSuccess={false}>
-                  <input type="hidden" name="version_id" value={v.id} />
-                </ActionForm>
-              )}
               {isDraft && !isAdmin && <p className="m-0 text-sm text-ink-2">{d.adminApproves}</p>}
               {isDraft && (
-                <form action={discardFormulaDraft}>
-                  <input type="hidden" name="version_id" value={v.id} />
-                  <input type="hidden" name="formula_id" value={f.id} />
-                  <button type="submit" className="btn btn-outline">{d.discard}</button>
-                </form>
+                <div className="btn-stack">
+                  {isAdmin && (
+                    <ActionForm action={approveFormulaVersion} submitLabel={d.approve} resetOnSuccess={false}>
+                      <input type="hidden" name="version_id" value={v.id} />
+                    </ActionForm>
+                  )}
+                  <form action={discardFormulaDraft}>
+                    <input type="hidden" name="version_id" value={v.id} />
+                    <input type="hidden" name="formula_id" value={f.id} />
+                    <button type="submit" className="btn btn-primary">{d.discard}</button>
+                  </form>
+                </div>
               )}
               {!isDraft && <p className="m-0 text-sm text-ink-2">{d.lockedNote}</p>}
               {!hasDraft && (
