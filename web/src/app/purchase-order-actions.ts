@@ -44,6 +44,21 @@ export async function generatePurchaseOrders(_: ActionState, fd: FormData): Prom
   return { ok: true, message: fmt(P.generated, { n: ids.length }) };
 }
 
+/** An empty draft for a supplier (lines are added on the order). */
+export async function createPurchaseOrder(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    id = (await q<{ id: string }>(user.id,
+      "insert into purchase_orders (supplier_id, location_id) values ($1, (select id from locations where code = 'NK-WH')) returning id",
+      [str(fd, "supplier_id")]))[0].id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/deliveries", "layout");
+  redirect(path(id));
+}
+
 export async function savePurchaseOrder(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   const id = str(fd, "po_id");

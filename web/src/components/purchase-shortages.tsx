@@ -21,6 +21,7 @@ export function PurchaseShortages({ rows, suppliers, locale, t }: {
       <p className="m-0 text-[13px] text-ink-2">{P.shortagesNote}</p>
       {rows.length === 0 ? <Empty>{P.noShortages}</Empty> : (
         <ActionForm action={generatePurchaseOrders} submitLabel={P.generate} resetOnSuccess={false}>
+          <button type="submit" className="btn btn-primary self-start">{P.generate}</button>
           <div className="flex flex-col">
             {rows.map((r, i) => (
               <div key={`${r.item_id}-${r.purchase_request_id ?? ""}`} className="flex flex-col gap-2 border-b border-mist py-3 last:border-0">
