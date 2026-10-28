@@ -1590,9 +1590,18 @@ await ok('the advance invoice: 50 % of the order, issuing it ticks "Фактур
   eq(i.purpose, 'advance', 'purpose');
   const l = await as('sales', 'select kind, amount::float as a from invoice_lines where invoice_id = $1', [tkAdv]);
   eq(l.map(x => `${x.kind}:${x.a}`).join(','), 'advance:675', '810 received / 1.2 VAT');
+  // Without VAT the whole amount received is the base; with VAT again the order's 20 %
+  await as('sales', 'select set_invoice_vat($1, false)', [tkAdv]);
+  let v = await one('sales', 'select i.vat_pct::float as pct, l.amount::float as a from invoices i join invoice_lines l on l.invoice_id = i.id where i.id = $1', [tkAdv]);
+  eq(`${v.pct}:${v.a}`, '0:810', 'without VAT');
+  await as('sales', 'select set_invoice_vat($1, true)', [tkAdv]);
+  v = await one('sales', 'select i.vat_pct::float as pct, l.amount::float as a from invoices i join invoice_lines l on l.invoice_id = i.id where i.id = $1', [tkAdv]);
+  eq(`${v.pct}:${v.a}`, '20:675', 'with VAT');
   await as('sales', `select issue_invoice($1, next_invoice_number(), current_date)`, [tkAdv]);
   eq(await tkStatus(tkA, 'invoice_advance'), 'done', 'ticked');
 });
+await fails('production cannot set the VAT of an invoice', () => as('production', 'select set_invoice_vat($1, false)', [tkAdv]), 'not allowed');
+await fails('an issued invoice keeps its VAT', () => as('sales', 'select set_invoice_vat($1, false)', [tkAdv]), 'cannot be changed');
 await ok('admin confirms the final payment: ticked; clearing the date unticks it', async () => {
   await as('admin', 'select confirm_final_payment($1)', [tkA]);
   eq(await tkStatus(tkA, 'payment_final'), 'done', 'done');

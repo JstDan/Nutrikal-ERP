@@ -3,6 +3,7 @@ import type { Dict } from "./en";
 export const bg: Dict = {
   common: {
     save: "Запази",
+    withVat: "С ДДС ({pct}%)",
     cancel: "Отказ",
     create: "Създай",
     add: "Добави",
