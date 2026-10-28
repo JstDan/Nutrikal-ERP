@@ -256,6 +256,7 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
         actions={canEdit && (
           <>
             <Link href="/deliveries/orders" className="btn btn-outline">{t.purchaseOrders.open}</Link>
+            <Link href="/deliveries/orders#new" className="btn btn-outline">{t.purchaseOrders.newOrder}</Link>
             <a href="#new" className="btn btn-primary">{D.new}</a>
           </>
         )}

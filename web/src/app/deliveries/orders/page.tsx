@@ -2,7 +2,10 @@ import Link from "next/link";
 import { q } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
 import { formatDate, formatPrice } from "@/lib/i18n";
-import { Chip, Empty, PageHeader, type Tone } from "@/components/ui";
+import { Card, Chip, Empty, PageHeader, type Tone } from "@/components/ui";
+import { ActionForm } from "@/components/action-form";
+import { SearchSelect } from "@/components/search-select";
+import { createPurchaseOrder } from "@/app/purchase-order-actions";
 
 type Row = {
   id: string; code: string; status: "draft" | "sent" | "cancelled"; supplier: string; order_date: string;
@@ -23,6 +26,9 @@ export default async function PurchaseOrdersPage() {
        from purchase_orders o join suppliers s on s.id = o.supplier_id
       order by o.status = 'draft' desc, o.order_date desc, o.code desc limit 300`,
   );
+  const suppliers = user.role === "admin"
+    ? await q<{ id: string; name: string }>(user.id, "select id, name from suppliers where is_active order by name")
+    : [];
   const grid = "md:grid-cols-[110px_minmax(0,1.6fr)_110px_120px_130px] lg:grid-cols-[110px_minmax(0,1.6fr)_110px_80px_120px_130px]";
 
   return (
@@ -31,7 +37,9 @@ export default async function PurchaseOrdersPage() {
         crumb={<><Link href="/deliveries" className="text-ink-2">{P.back}</Link> / {P.title}</>}
         title={P.title}
         subtitle={P.subtitle}
+        actions={user.role === "admin" && <a href="#new" className="btn btn-primary">{P.newOrder}</a>}
       />
+      {user.role === "admin" && <p className="m-0 text-sm text-ink-2">{P.fromShortages} <Link href="/deliveries#shortages-h" className="text-ink">{P.shortages}</Link></p>}
       <section aria-label={P.title} className="card px-5 pt-2 pb-3">
         <div className={`row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${grid}`}>
           <span>{P.code}</span><span>{P.supplier}</span><span>{P.date}</span>
@@ -51,6 +59,18 @@ export default async function PurchaseOrdersPage() {
           </div>
         ))}
       </section>
+
+      {user.role === "admin" && (
+        <Card title={P.newOrder} id="new">
+          <p className="m-0 text-[13px] text-ink-2">{P.newOrderNote}</p>
+          <ActionForm action={createPurchaseOrder} submitLabel={P.create}>
+            <label className="field"><span>{P.supplier} *</span>
+              <SearchSelect name="supplier_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
+                options={suppliers.map((s) => ({ value: s.id, label: s.name }))} />
+            </label>
+          </ActionForm>
+        </Card>
+      )}
     </div>
   );
 }
