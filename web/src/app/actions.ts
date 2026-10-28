@@ -790,7 +790,7 @@ export async function addProductionInvoice(_: ActionState, fd: FormData): Promis
 export async function setPurchaseRequestStatus(fd: FormData) {
   const { user } = await getSession();
   await q(user.id, "update purchase_requests set status = $2::purchase_request_status where id = $1", [str(fd, "request_id"), str(fd, "status")]);
-  revalidatePath("/purchasing");
+  revalidatePath("/deliveries");
 }
 
 // -------------------------------------------------------------- inventory
