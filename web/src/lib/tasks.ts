@@ -11,7 +11,7 @@ const linkHref = (type: string, id: string, formulaId: string | null): string | 
     case "sales_order": return `/orders/${id}`;
     case "manufacturing_order": return `/production/${id}`;
     case "formula_version": return formulaId ? `/formulas/${formulaId}` : "/formulas";
-    case "purchase_request": return "/purchasing";
+    case "purchase_request": return "/deliveries?status=requests";
     case "expected_delivery": return "/deliveries";
     case "lot": return "/inventory?type=finished_good";
     case "invoice": return `/invoices/${id}`;
