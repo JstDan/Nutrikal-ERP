@@ -115,10 +115,12 @@ body {
 /* Buttons follow nutrikal.com: uppercase 12px, 600, wide tracking, 2px radius */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  min-height: 44px; padding: 0 20px;
+  min-height: 44px; padding: 6px 20px;
   border: 1px solid var(--color-ink); border-radius: 2px;
   font-size: 12px; font-weight: 600; letter-spacing: 2.4px; text-transform: uppercase;
-  text-decoration: none; cursor: pointer; white-space: nowrap;
+  text-decoration: none; cursor: pointer;
+  /* natural width, never wider than its box: a long label wraps instead of spilling out */
+  flex-shrink: 0; max-width: 100%; text-align: center; text-wrap: balance;
 }
 .btn-primary { background: var(--color-ink); color: var(--color-white); }
 .btn-primary:hover { background: var(--color-ink-strong); }
@@ -129,8 +131,22 @@ body {
 .card { background: var(--color-white); border: 1px solid var(--color-line); border-radius: 4px; }
 .label { font-size: 12px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--color-ink-2); }
 
-.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* Side by side in a grid, fields stretch to the row: a label that wraps to two
+   lines no longer pushes its input below the neighbouring inputs. */
+.field { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; min-width: 0; }
 .field > span { font-size: 13px; font-weight: 600; color: var(--color-ink); }
+/* Forms from 640px, where fields sit side by side: every child of a grid of
+   fields takes three shared rows (label, input, note under it), so the inputs
+   of a row line up even when one label wraps or one field has a note. Other
+   children (buttons, check boxes) sit at the bottom, level with the inputs. */
+@media (min-width: 640px) {
+  .grid:has(> .field) { row-gap: 0; }
+  .grid:has(> .field) > * { grid-row: span 3; margin-bottom: 14px; align-self: end; }
+  .grid:has(> .field) > .field:not(:has(> :nth-child(4))) { display: grid; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); justify-content: normal; row-gap: 0; align-self: stretch; }
+  .grid:has(> .field) > .field:not(:has(> :nth-child(4))) > :first-child { align-self: end; padding-bottom: 6px; }
+  .grid:has(> .field) > .field:not(:has(> :nth-child(4))) > :nth-child(3) { padding-top: 6px; }
+  .grid:has(> .field) > :last-child { margin-bottom: 0; }
+}
 .input {
   height: 44px; padding: 0 12px; width: 100%; min-width: 0;
   border: 1px solid var(--color-line-strong); border-radius: 2px; background: var(--color-white);
@@ -150,8 +166,15 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
    rather than scrolling sideways. */
 .row { display: grid; gap: 12px; align-items: center; }
 /* aligned with Tailwind breakpoints: md = 768px, lg = 1024px */
+/* hide-lg: from 1024px the side menu takes 248px, so wide lists get their full columns only from 1280px */
+@media (max-width: 1279px) { .hide-lg { display: none !important; } }
 @media (max-width: 1023px) { .hide-md { display: none !important; } }
 @media (max-width: 767px)  { .hide-sm { display: none !important; } }
+/* The same by the width of the list's own box (.cq), for lists inside a
+   narrower column of the page (Tailwind @md = 448px, @xl = 576px, @3xl = 768px). */
+.cq { container-type: inline-size; }
+@container (max-width: 447px) { .cq-hide-xs { display: none !important; } }
+@container (max-width: 575px) { .cq-hide-sm { display: none !important; } }
+@container (max-width: 767px) { .cq-hide-md { display: none !important; } }
 
-/* Long button labels wrap on phones instead of pushing the page sideways */
-@media (max-width: 479px) { .btn { white-space: normal; text-align: center; } }
+

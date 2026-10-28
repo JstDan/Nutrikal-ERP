@@ -74,9 +74,10 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
   const isDraft = o.status === "draft";
   const money = (n: string | number | null, frac = 2) => (n == null ? "—" : formatPrice(locale, n, o.currency, frac));
   const incomplete = tiers.some((x) => !x.cost_complete);
+  // columns by the width of the card (.cq), not of the screen
   const tierGrid = isDraft
-    ? "md:grid-cols-[minmax(90px,1fr)_110px_90px_100px_44px] lg:grid-cols-[minmax(90px,1fr)_110px_90px_100px_120px_44px]"
-    : "md:grid-cols-[minmax(90px,1fr)_110px_90px_100px] lg:grid-cols-[minmax(90px,1fr)_110px_90px_100px_120px]";
+    ? "@md:grid-cols-[minmax(70px,1fr)_104px_70px_90px_44px] @3xl:grid-cols-[minmax(80px,1fr)_110px_90px_100px_120px_44px]"
+    : "@md:grid-cols-[minmax(70px,1fr)_104px_70px_90px] @3xl:grid-cols-[minmax(80px,1fr)_110px_90px_100px_120px]";
 
   return (
     <div className="flex flex-col gap-6">
@@ -107,10 +108,10 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
 
           <Card title={d.tiers} id="tiers-h">
             {incomplete && <p role="alert" className="m-0 rounded bg-red-tint px-3 py-2 text-sm font-semibold text-red-ink">{d.incomplete}</p>}
-            <div>
-              <div className={`row hide-sm border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${tierGrid}`}>
+            <div className="cq">
+              <div className={`row cq-hide-xs border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${tierGrid}`}>
                 <span>{d.quantity}</span><span>{d.unitCost}</span><span>{d.margin}</span><span>{d.unitPrice}</span>
-                <span className="hide-md">{d.total}</span>
+                <span className="cq-hide-md">{d.total}</span>
                 {isDraft && <span><span className="sr-only">{d.remove}</span></span>}
               </div>
               {tiers.length === 0 && <div className="py-3"><Empty>{d.noTiers}</Empty></div>}
@@ -121,12 +122,12 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
                       <Link href={`/offers/${o.id}?tier=${x.quantity}#breakdown-h`} className="text-ink">{formatNumber(locale, x.quantity)}</Link>
                     ) : formatNumber(locale, x.quantity)}
                   </span>
-                  <span className="hide-sm">{money(x.unit_cost, 4)}</span>
-                  <span className="hide-sm">{x.margin_pct != null ? `${formatNumber(locale, x.margin_pct)}%` : "—"}{x.price_is_manual && <span className="block text-xs text-ink-2">{d.manual}</span>}</span>
+                  <span className="cq-hide-xs">{money(x.unit_cost, 4)}</span>
+                  <span className="cq-hide-xs">{x.margin_pct != null ? `${formatNumber(locale, x.margin_pct)}%` : "—"}{x.price_is_manual && <span className="block text-xs text-ink-2">{d.manual}</span>}</span>
                   <span className="font-semibold">{money(x.unit_price)}</span>
-                  <span className="hide-md">{x.unit_price ? money(Number(x.unit_price) * x.quantity) : "—"}</span>
+                  <span className="cq-hide-md">{x.unit_price ? money(Number(x.unit_price) * x.quantity) : "—"}</span>
                   {isDraft && (
-                    <form action={removeOfferTier} className="col-start-2 justify-self-end md:col-start-auto">
+                    <form action={removeOfferTier} className="col-start-2 justify-self-end @md:col-start-auto">
                       <input type="hidden" name="tier_id" value={x.id} />
                       <input type="hidden" name="offer_id" value={o.id} />
                       <button type="submit" className="btn btn-outline h-11 w-11 text-base" style={{ padding: 0, letterSpacing: 0 }} aria-label={`${d.remove}: ${x.quantity}`} title={d.remove}>×</button>

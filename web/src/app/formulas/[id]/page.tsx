@@ -174,9 +174,10 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
   };
   const yesNo = (b: boolean | null) => (b == null ? d.unknown : b ? d.yes : d.no);
 
+  // columns by the width of the card (.cq), not of the screen
   const lineGrid = editable
-    ? "md:grid-cols-[minmax(0,1.6fr)_110px_120px_110px] lg:grid-cols-[minmax(0,1.6fr)_110px_120px_110px_120px_110px]"
-    : "md:grid-cols-[minmax(0,1.6fr)_110px_120px] lg:grid-cols-[minmax(0,1.6fr)_110px_120px_120px_110px]";
+    ? "@md:grid-cols-[minmax(0,1fr)_90px_60px_80px] @3xl:grid-cols-[minmax(0,1fr)_100px_70px_100px_100px_88px]"
+    : "@md:grid-cols-[minmax(0,1fr)_90px_60px] @3xl:grid-cols-[minmax(0,1fr)_100px_70px_100px_100px]";
 
   return (
     <div className="flex flex-col gap-6">
@@ -218,10 +219,10 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
               <Fact label={d.servingsPerPack}>{f.servings_per_pack ?? "—"}</Fact>
               <Fact label={d.shell}>{f.shell ? (locale === "bg" && f.shell_bg ? f.shell_bg : f.shell) : "—"}</Fact>
             </div>
-            <div>
-              <div className={`row hide-sm border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${lineGrid}`}>
+            <div className="cq">
+              <div className={`row cq-hide-xs border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${lineGrid}`}>
                 <span>{d.item}</span><span>{d.amount}</span><span>{d.overage}</span>
-                <span className="hide-md">{d.perUnit}</span><span className="hide-md">{d.perPack}</span>
+                <span className="cq-hide-md">{d.perUnit}</span><span className="cq-hide-md">{d.perPack}</span>
                 {editable && <span><span className="sr-only">{d.remove}</span></span>}
               </div>
               {lines.length === 0 && <div className="py-3"><Empty>{d.noLines}</Empty></div>}
@@ -235,11 +236,11 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
                     </div>
                   </div>
                   <span className="font-semibold">{formatNumber(locale, l.amount, 3)} {l.unit}</span>
-                  <span className="hide-sm">{Number(l.overage_pct) ? `${formatNumber(locale, l.overage_pct)}%` : "—"}</span>
-                  <span className="hide-md">{l.input_mg_per_unit != null ? formatMass(locale, l.input_mg_per_unit) : "—"}</span>
-                  <span className="hide-md">{l.kg_per_1000_packs != null ? formatQty(locale, l.kg_per_1000_packs, "kg") : "—"}</span>
+                  <span className="cq-hide-xs">{Number(l.overage_pct) ? `${formatNumber(locale, l.overage_pct)}%` : "—"}</span>
+                  <span className="cq-hide-md">{l.input_mg_per_unit != null ? formatMass(locale, l.input_mg_per_unit) : "—"}</span>
+                  <span className="cq-hide-md">{l.kg_per_1000_packs != null ? formatQty(locale, l.kg_per_1000_packs, "kg") : "—"}</span>
                   {editable && (
-                    <div className="col-span-2 flex flex-col items-start md:col-span-1 md:items-end">
+                    <div className="col-span-2 flex flex-col items-start @md:col-span-1 @md:items-end">
                       <form action={removeFormulaLine}>
                         <input type="hidden" name="line_id" value={l.id} />
                         <input type="hidden" name="formula_id" value={f.id} />
@@ -414,11 +415,11 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
               <Empty>{d.noNutrients}</Empty>
             ) : (
               <div>
-                <div className="row grid-cols-[minmax(0,1fr)_110px_80px] border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2">
+                <div className="row grid-cols-[minmax(0,1fr)_90px_64px] sm:grid-cols-[minmax(0,1fr)_110px_80px] border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2">
                   <span>{d.nutrient}</span><span>{d.perServing}</span><span>{d.nrv}</span>
                 </div>
                 {nutrients.map((n) => (
-                  <div key={n.nutrient_id} className="row grid-cols-[minmax(0,1fr)_110px_80px] border-b border-mist py-2.5 text-sm last:border-0">
+                  <div key={n.nutrient_id} className="row grid-cols-[minmax(0,1fr)_90px_64px] sm:grid-cols-[minmax(0,1fr)_110px_80px] border-b border-mist py-2.5 text-sm last:border-0">
                     <span className="min-w-0 break-words">{bgName(n)}</span>
                     <span>{formatNumber(locale, n.amount, 1)} {n.unit === "mcg" ? "µg" : n.unit}</span>
                     <span className="font-semibold">{n.pct_nrv != null ? `${formatNumber(locale, n.pct_nrv, 0)}%` : "—"}</span>

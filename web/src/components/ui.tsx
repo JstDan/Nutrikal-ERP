@@ -11,7 +11,7 @@ const toneClass: Record<Tone, string> = {
 
 export function Chip({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
   return (
-    <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${toneClass[tone]}`}>
+    <span className={`inline-flex w-fit max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold ${toneClass[tone]}`}>
       {children}
     </span>
   );

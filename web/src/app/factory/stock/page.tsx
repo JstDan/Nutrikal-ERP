@@ -47,25 +47,25 @@ export default async function FactoryStockPage({ searchParams }: PageProps<"/fac
       <PageHeader title={S.title} subtitle={S.subtitle} />
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <section aria-label={S.title} className="card flex flex-col px-5 pt-4 pb-3">
+        <section aria-label={S.title} className="cq card flex flex-col px-5 pt-4 pb-3">
           <form method="get" role="search" className="flex flex-wrap gap-2">
             <label htmlFor="stock-q" className="sr-only">{S.search}</label>
             <input id="stock-q" name="q" type="search" defaultValue={term} placeholder={S.search} className="input min-w-0 flex-[1_1_200px]" />
             <button type="submit" className="btn btn-outline">{S.find}</button>
           </form>
-          <div className="row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 md:grid-cols-[minmax(0,1.6fr)_100px_120px_120px]">
+          <div className="row cq-hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 @xl:grid-cols-[minmax(0,1.6fr)_100px_120px_120px]">
             <span>{t.inventory.item}</span><span>{t.inventory.location}</span><span className="text-right">{t.inventory.qty}</span><span>{t.inventory.qc}</span>
           </div>
           {shown.length === 0 && <div className="py-4"><Empty>{needle ? S.noMatch : S.empty}</Empty></div>}
           {shown.map((s) => (
-            <div key={s.lot_id + s.location_id} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[minmax(0,1.6fr)_100px_120px_120px]">
+            <div key={s.lot_id + s.location_id} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3 text-sm last:border-0 @xl:grid-cols-[minmax(0,1.6fr)_100px_120px_120px]">
               <span className="min-w-0">
                 <span className="font-semibold break-words">{name(s)}</span>
-                <span className="block text-xs text-ink-2">{s.lot_number}{s.supplier_lot ? ` · ${S.supplierLot} ${s.supplier_lot}` : ""} · {t.enums.itemType[s.item_type as "raw_material"]} · {t.inventory.expires} {formatDate(locale, s.expires_on)}<span className="md:hidden"> · {s.location}</span></span>
+                <span className="block text-xs text-ink-2">{s.lot_number}{s.supplier_lot ? ` · ${S.supplierLot} ${s.supplier_lot}` : ""} · {t.enums.itemType[s.item_type as "raw_material"]} · {t.inventory.expires} {formatDate(locale, s.expires_on)}<span className="@xl:hidden"> · {s.location}</span></span>
               </span>
-              <span className="hide-sm">{s.location}</span>
+              <span className="cq-hide-sm">{s.location}</span>
               <span className="text-right font-semibold">{formatQty(locale, s.quantity, s.base_unit)}</span>
-              <span className="hide-sm"><Chip tone={qcTone(s.qc_status)}>{t.enums.qcStatus[s.qc_status as "released"]}</Chip></span>
+              <span className="cq-hide-sm"><Chip tone={qcTone(s.qc_status)}>{t.enums.qcStatus[s.qc_status as "released"]}</Chip></span>
             </div>
           ))}
         </section>
