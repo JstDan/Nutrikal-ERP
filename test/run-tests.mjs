@@ -1417,7 +1417,7 @@ await fails('the advance is entered as an amount', () =>
   as('admin', `select confirm_order_payment($1, 'advance')`, [tkA]), 'Enter the advance received');
 await fails('the advance is less than the order total with VAT (1350 + 20 % = 1620)', () =>
   as('admin', `select confirm_order_payment($1, 'advance', 1620)`, [tkA]), 'less than the order total');
-await ok('admin confirms an advance of 810 received (VAT included): the board is made in the same step, "Аванс 810,00 EUR" is done', async () => {
+await ok('admin confirms an advance of 810 received (VAT included): the board is made in the same step, "Аванс 810,00 €" is done', async () => {
   boardA = (await one('admin', `select confirm_order_payment($1, 'advance', 810) as id`, [tkA])).id;
   const o = await one('admin', 'select status, deposit_pct::int as pct, deposit_amount::float as amount, deposit_received_on, balance_received_on from sales_orders where id = $1', [tkA]);
   eq(o.status, 'confirmed', 'status'); eq(o.pct, 50, 'deposit'); eq(o.amount, 810, 'amount'); eq(!!o.deposit_received_on, true, 'deposit received');
@@ -1425,7 +1425,7 @@ await ok('admin confirms an advance of 810 received (VAT included): the board is
   const cols = await as('admin', 'select system_key from order_task_columns where board_id = $1 order by position', [boardA]);
   eq(cols.map(c => c.system_key).join(','), 'payments,formula,design,materials,production,dispatch', 'columns');
   const first = await tk(tkA, 'payment_first');
-  eq(first.title, 'Аванс 810,00 EUR', 'title'); eq(first.title_en, 'Advance 810.00 EUR', 'title en'); eq(first.status, 'done', 'done');
+  eq(first.title, 'Аванс 810,00 €', 'title'); eq(first.title_en, 'Advance 810.00 €', 'title en'); eq(first.status, 'done', 'done');
   eq(first.completed_by, U.admin, 'by admin');
   const act = await one('admin', 'select actor_id, action, payload from order_task_activity where task_id = $1', [first.id]);
   eq(act.actor_id, U.admin, 'actor'); eq(act.payload.source, 'payment_confirmed', 'source');

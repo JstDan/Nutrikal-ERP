@@ -224,8 +224,8 @@ begin
   if new.auto_rule = 'payment_first' then
     select s.* into so from public.order_task_boards b join public.sales_orders s on s.id = b.sales_order_id where b.id = new.board_id;
     if so.deposit_amount is not null then
-      new.title := 'Аванс ' || replace(to_char(so.deposit_amount, 'FM9999999990.00'), '.', ',') || ' ' || so.currency;
-      new.title_en := 'Advance ' || to_char(so.deposit_amount, 'FM9999999990.00') || ' ' || so.currency;
+      new.title := 'Аванс ' || replace(to_char(so.deposit_amount, 'FM9999999990.00'), '.', ',') || ' ' || case so.currency when 'EUR' then '€' else so.currency end;
+      new.title_en := 'Advance ' || to_char(so.deposit_amount, 'FM9999999990.00') || ' ' || case so.currency when 'EUR' then '€' else so.currency end;
     end if;
   end if;
   return new;
