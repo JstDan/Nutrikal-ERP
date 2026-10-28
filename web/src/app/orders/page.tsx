@@ -32,7 +32,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
       : [],
   }));
   const total = new Map(totals.map((x) => [x.id, x]));
-  const grid = "md:grid-cols-[100px_minmax(0,1fr)_minmax(0,1.2fr)_140px] lg:grid-cols-[100px_minmax(0,1fr)_minmax(0,1.2fr)_100px_120px_110px_140px]";
+  const grid = "md:grid-cols-[100px_minmax(0,1fr)_minmax(0,1.2fr)_140px] xl:grid-cols-[100px_minmax(0,1fr)_minmax(0,1.2fr)_100px_120px_110px_140px]";
 
   return (
     <div className="flex flex-col gap-6">
@@ -63,8 +63,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
       <section aria-label={t.orders.title} className="card px-5 pt-2 pb-3">
         <div className={`row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${grid}`}>
           <span>{t.orders.code}</span><span>{t.orders.client}</span><span>{t.orders.products}</span>
-          <span className="hide-md">{t.orders.packs}</span><span className="hide-md">{seesPrices ? t.orders.total : ""}</span>
-          <span className="hide-md">{t.orders.requested}</span><span>{t.orders.status}</span>
+          <span className="hide-lg">{t.orders.packs}</span><span className="hide-lg">{seesPrices ? t.orders.total : ""}</span>
+          <span className="hide-lg">{t.orders.requested}</span><span>{t.orders.status}</span>
         </div>
         {rows.length === 0 && <div className="py-4"><Empty>{t.orders.empty}</Empty></div>}
         {rows.map((o) => {
@@ -76,9 +76,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
                 <span className="block min-w-0 break-words md:inline">{o.client}</span>
               </div>
               <span className="hide-sm min-w-0 break-words">{o.products ?? "—"}</span>
-              <span className="hide-md">{formatNumber(locale, o.total_packs)}</span>
-              <span className="hide-md">{tot ? formatPrice(locale, tot.total, tot.currency) : ""}</span>
-              <span className="hide-md">{formatDate(locale, o.requested_date)}</span>
+              <span className="hide-lg">{formatNumber(locale, o.total_packs)}</span>
+              <span className="hide-lg">{tot ? formatPrice(locale, tot.total, tot.currency) : ""}</span>
+              <span className="hide-lg">{formatDate(locale, o.requested_date)}</span>
               <Chip tone={orderTone(o.status)}>{t.enums.orderStatus[o.status as "draft"]}</Chip>
             </div>
           );
