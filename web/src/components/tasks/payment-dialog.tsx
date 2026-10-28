@@ -1,16 +1,16 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import type { Locale } from "@/lib/i18n";
+import { fmt, formatPrice, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import type { TemplateOption } from "@/lib/tasks-shared";
 import { confirmFinalPayment, confirmFirstPayment } from "@/app/task-actions";
 
 type T = Dict["tasks"];
 
-/** Admin: Confirm first payment (advance % or 100 %) with the task template of the order. */
-export function ConfirmFirstPayment({ orderId, T, locale, templates, defaultPct }: {
-  orderId: string; T: T; locale: Locale; templates: TemplateOption[]; defaultPct: number | null;
+/** Admin: Confirm first payment (the advance received, VAT included, or 100 %) with the task template of the order. */
+export function ConfirmFirstPayment({ orderId, T, locale, templates, defaultPct, gross, currency }: {
+  orderId: string; T: T; locale: Locale; templates: TemplateOption[]; defaultPct: number | null; gross: number; currency: string;
 }) {
   const P = T.payment;
   const [state, action, pending] = useActionState(confirmFirstPayment, {});
@@ -39,9 +39,11 @@ export function ConfirmFirstPayment({ orderId, T, locale, templates, defaultPct 
           {P.advance}
         </label>
         {received === "advance" && (
-          <label className="field ml-8 max-w-[160px]"><span>{P.advancePct}</span>
-            <input name="pct" type="number" min={1} max={99} step={1} required className="input"
-              defaultValue={defaultPct != null && defaultPct > 0 && defaultPct < 100 ? defaultPct : 50} />
+          <label className="field ml-8 max-w-[260px]"><span>{fmt(P.advanceAmount, { currency })}</span>
+            <input name="amount" type="number" min={0.01} max={gross > 0 ? Math.max(0.01, gross - 0.01).toFixed(2) : undefined} step={0.01} required
+              inputMode="decimal" className="input" aria-describedby="pay-first-hint"
+              defaultValue={(Math.round(gross * (defaultPct != null && defaultPct > 0 && defaultPct < 100 ? defaultPct : 50)) / 100).toFixed(2)} />
+            <small id="pay-first-hint" className="text-xs text-ink-2">{fmt(P.advanceHint, { total: formatPrice(locale, gross, currency) })}</small>
           </label>
         )}
         <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">

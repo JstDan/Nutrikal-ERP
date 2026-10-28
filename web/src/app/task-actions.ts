@@ -55,6 +55,12 @@ function num(v: unknown) {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+/** A money amount (2 decimals; a comma is a decimal point too). */
+function amount(v: unknown) {
+  const n = typeof v === "string" && v.trim() !== "" ? Number(v.trim().replace(/\s/g, "").replace(",", ".")) : NaN;
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
 /** One change on an order's board; the page is refreshed afterwards. */
 export async function taskOp(orderId: string, op: TaskOp, args: Args): Promise<TaskResult> {
   const { user } = await getSession();
@@ -111,13 +117,13 @@ export async function uploadTaskFile(fd: FormData): Promise<TaskResult> {
 }
 
 // ------------------------------------------------------------- payments
-/** Admin: the first payment (advance % or 100 %) and the board from the chosen template. */
+/** Admin: the first payment (the advance received, VAT included, or 100 %) and the board from the chosen template. */
 export async function confirmFirstPayment(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   const orderId = uuid(fd.get("order_id"));
   try {
     await q(user.id, "select confirm_order_payment($1, $2, $3, $4)", [
-      orderId, fd.get("received") === "full" ? "full" : "advance", num(fd.get("pct")) ?? 50, uuid(fd.get("template_id")),
+      orderId, fd.get("received") === "full" ? "full" : "advance", amount(fd.get("amount")), uuid(fd.get("template_id")),
     ]);
   } catch (e) {
     return { error: errorText(e) };
