@@ -6,7 +6,7 @@ import { formatDate, formatNumber, parseNum } from './numbers';
 import { hasAluminiumLid, offerCapsules, offerServings } from './catalogCapsules';
 import { productName } from './offerRecord';
 import { offerPriceOptions } from './priceOptions';
-import { CAPSULE_SIZES, isCapsule, type OfferForm, type ProductType, type Settings } from './types';
+import { CAPSULE_SIZE, isCapsule, type OfferForm, type ProductType, type Settings } from './types';
 
 // Client-facing offer, laid out after Nutrikal's offer template (Poppins, two brand marks, customer /
 // supplier blocks, amount per serving table, sales prices table, excl. VAT note, payment terms, terms, footer).
@@ -160,9 +160,7 @@ export function toPdfModel(
       );
     }
   } else if (capsule) {
-    const size = (Object.keys(CAPSULE_SIZES) as (keyof typeof CAPSULE_SIZES)[]).includes(form.capsuleSize)
-      ? `, capsule size ${form.capsuleSize.replace('size', '')}`
-      : '';
+    const size = `, capsule size ${CAPSULE_SIZE.replace('size', '')}`;
     packaging.push(
       `${PDF[`packaging_${type}`]}s${hasAluminiumCap(form) ? ` ${PDF.aluminiumLid}` : ''}, ${perUnit} capsules each${size}.`,
       `Capsules/Serving: ${formatNumber(caps, 2)}`,
