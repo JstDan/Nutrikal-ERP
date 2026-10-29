@@ -1,10 +1,10 @@
 import { calcInputFromForm, calculate, type CalcResult } from './calc';
-import { normalizeForm } from './form';
+import { LEGACY_WASTE_PCT, normalizeForm } from './form';
 import type { FixedCosts, OfferForm, OfferInput, OfferRecord, Settings } from './types';
 
 /** A saved offer as the calculator form and its result, recalculated from the stored snapshot (prices + fixed costs at the time of saving). */
 export function fromOfferRecord(x: OfferRecord, settings: Settings): { form: OfferForm; result: CalcResult } {
-  const form = normalizeForm({ ...x.data, offer: { ...x.data.offer, offerNo: x.offer_no } }, settings);
+  const form = normalizeForm({ ...x.data, waste: x.data.waste ?? LEGACY_WASTE_PCT, offer: { ...x.data.offer, offerNo: x.offer_no } }, settings);
   return { form, result: calculate(calcInputFromForm(form, form.fixedCosts ?? settings.fixed_costs)) };
 }
 

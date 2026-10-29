@@ -215,6 +215,8 @@ export interface OfferForm {
   quantityPerUnit: string;
   numberOfUnits: string;
   markup: string;
+  /** Raw-material waste in production, %, typed by Sales (empty = none). Saved offers from before the field: 5. */
+  waste: string;
   addVat: boolean;
   vatRate: string;
   /** Discount % applied to the product line only. */
