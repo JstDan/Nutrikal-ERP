@@ -1487,7 +1487,7 @@ await ok('production sees imported items but not their prices or suppliers', asy
 });
 
 console.log('\nOrder tasks');
-let tkClient, tkItem, tkJar, tkVer, tkA, tkB, boardA, boardB;
+let tkClient, tkItem, tkJar, tkVer, tkA, tkB, boardA, boardB, tkFinal;
 const tk = (order, key) => one('admin', `select t.* from order_tasks t join order_task_boards b on b.id = t.board_id
                                            where b.sales_order_id = $1 and t.template_key = $2`, [order, key]);
 const tkStatus = async (order, key) => (await tk(order, key))?.status;
@@ -1723,16 +1723,8 @@ await ok('sales still edits the rest of the order; the dates stay', async () => 
   const o = await one('admin', 'select notes, balance_received_on from sales_orders where id = $1', [tkA]);
   eq(o.notes, 'dates stay', 'notes'); eq(!!o.balance_received_on, true, 'balance kept');
 });
-await ok('the final invoice: every line less the advance invoiced', async () => {
-  const id = (await one('sales', 'select create_order_invoice($1) as id', [tkA])).id;
-  eq((await one('sales', 'select purpose from invoices where id = $1', [id])).purpose, 'final', 'purpose');
-  const l = await as('sales', 'select kind, amount::float as a from invoice_lines where invoice_id = $1 order by sort_order', [id]);
-  eq(l.map(x => `${x.kind}:${x.a}`).join(','), 'calc_offer:1000,service:300,service:50,advance:-675', 'lines');
-  eq((await one('sales', `select issue_invoice($1, next_invoice_number(), current_date) as n`, [id])).n.length, 10, 'issued');
-  eq(Number((await one('sales', 'select subtotal from invoices where id = $1', [id])).subtotal), 675, 'balance');
-  eq(await tkStatus(tkA, 'invoice_final'), 'done', 'ticked');
-});
-await fails('an order paid at once has no advance invoice', () => as('sales', `select create_order_invoice($1, 'advance')`, [tkB]), 'paid with an advance|advance and a final');
+await fails('the final invoice waits until every batch of the order is produced', () =>
+  as('sales', 'select create_order_invoice($1)', [tkA]), 'every batch of the order is produced');
 await ok('QC release of the batch ticks "QC освобождаване"', async () => {
   const lot = await one('admin', 'select receive_lot($1, $2, 1) as id', [tkJar.id, L['NK-WH']]);
   // the finished batch of the order (complete_production is tested above; here only its lot matters)
@@ -1746,6 +1738,16 @@ await ok('QC release of the batch ticks "QC освобождаване"', async 
   await as('admin', `select set_lot_qc_status($1, 'quarantine')`, [lot.id]);
   eq(await tkStatus(tkA, 'qc_released'), 'todo', 'back in quarantine');
 });
+await ok('the final invoice: every line less the advance invoiced', async () => {
+  const id = (await one('sales', 'select create_order_invoice($1) as id', [tkA])).id;
+  eq((await one('sales', 'select purpose from invoices where id = $1', [id])).purpose, 'final', 'purpose');
+  const l = await as('sales', 'select kind, amount::float as a from invoice_lines where invoice_id = $1 order by sort_order', [id]);
+  eq(l.map(x => `${x.kind}:${x.a}`).join(','), 'calc_offer:1000,service:300,service:50,advance:-675', 'lines');
+  eq((await one('sales', `select issue_invoice($1, next_invoice_number(), current_date) as n`, [id])).n.length, 10, 'issued');
+  eq(Number((await one('sales', 'select subtotal from invoices where id = $1', [id])).subtotal), 675, 'balance');
+  eq(await tkStatus(tkA, 'invoice_final'), 'done', 'ticked');
+});
+await fails('an order paid at once has no advance invoice', () => as('sales', `select create_order_invoice($1, 'advance')`, [tkB]), 'paid with an advance|advance and a final');
 await ok('Repeat order: the recipe the client already ordered ticks "Финални формули потвърдени"', async () => {
   const rep = await one('sales', `select id from order_task_templates where name_bg = 'Повторна поръчка'`);
   const oc = await calcOffer('NK-T-TKC', tkClient.id, 100, 10);
@@ -1774,6 +1776,45 @@ await ok('admin cancels a payment confirmed by mistake: back to unpaid, board an
   eq((await one('admin', 'select status from sales_orders where id = $1', [d])).status, 'confirmed', 'paid again');
   eq((await as('admin', 'select * from order_task_boards where sales_order_id = $1', [d])).length, 1, 'new board');
 });
+await ok('the final proforma takes the units made once every batch is produced, plus the transport', async () => {
+  const of = await calcOffer('NK-T-FIN', tkClient.id, 1000, 2);
+  const o = (await one('sales', `select create_order_from_calc_offers($1, $2, '[]'::jsonb, 20) as id`, [tkClient.id, [of.id]])).id;
+  await as('admin', `select confirm_order_payment($1, 'advance', 600)`, [o]);
+  const l = await one('admin', 'select id from sales_order_lines where order_id = $1', [o]);
+  await as('admin', 'select link_order_line_formula($1, $2)', [l.id, tkVer.id]);
+  const mo = await one('admin', `insert into manufacturing_orders (sales_order_line_id, quantity)
+                                  select id, quantity from sales_order_line_overview where id = $1 returning id`, [l.id]);
+  const fin = async () => (await as('sales', 'select ordered, produced, quantity, amount::float as a from order_final_lines($1)', [o]))
+    .map((x) => `${x.ordered}:${x.produced}:${x.quantity}:${x.a}`).join();
+  const totals = async () => { const t = await one('sales', 'select net::float as n, gross::float as g from order_totals($1)', [o]); return `${t.n}:${t.g}`; };
+  eq(await fin(), '1000:null:1000:2000', 'as ordered while the batch is open');
+  eq((await one('sales', 'select order_production_done($1) as d', [o])).d, false, 'not done');
+  await as('sales', 'select set_order_transport($1, 150)', [o]);
+  eq(await totals(), '2150:2580', 'with transport');
+  await db.query(`select set_config('nk.mo_transition', 'on', false)`);
+  await db.query(`update manufacturing_orders set status = 'completed', produced_quantity = 1040, completed_at = now() where id = $1`, [mo.id]);
+  await db.query(`select set_config('nk.mo_transition', 'off', false)`);
+  eq(await fin(), '1000:1040:1040:2080', 'the units made');
+  eq(await totals(), '2230:2676', 'units made and transport');
+  await as('sales', `select issue_invoice(create_order_invoice($1, 'advance'), next_invoice_number(), current_date)`, [o]);
+  await as('admin', 'select confirm_final_payment($1)', [o]);
+  const inv = (await one('sales', 'select create_order_invoice($1) as id', [o])).id;
+  const lines = await as('sales', 'select kind, quantity, amount::float as a from invoice_lines where invoice_id = $1 order by sort_order', [inv]);
+  eq(lines.map((x) => `${x.kind}:${Number(x.quantity)}:${x.a}`).join(), 'calc_offer:1040:2080,service:1:150,advance:1:-500', 'final invoice');
+  // Changing the transport makes the draft again
+  await as('sales', 'select set_order_transport($1, 200)', [o]);
+  const inv2 = (await one('sales', 'select create_order_invoice($1) as id', [o])).id;
+  eq((await one('sales', `select amount::float as a from invoice_lines where invoice_id = $1 and kind = 'service'`, [inv2])).a, 200, 'new transport');
+  await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [inv2]);
+  tkFinal = o;
+});
+await fails('the transport of an invoiced order is corrected with a credit or debit note', () =>
+  as('sales', 'select set_order_transport($1, 10)', [tkFinal]), 'credit or debit note');
+await fails('the transport is not negative', () => as('sales', 'select set_order_transport($1, -1)', [tkB]), 'zero or more');
+for (const [what, sql] of [['set the transport', 'select set_order_transport($1, 5)'], ['read the final lines', 'select * from order_final_lines($1)'],
+                           ['read the order totals', 'select * from order_totals($1)']]) {
+  await fails(`production cannot ${what}`, () => as('production', sql, [tkFinal]), 'not allowed');
+}
 await fails('sales cannot cancel a payment', () =>
   as('sales', `select cancel_order_payment($1, 'x')`, [tkB]), 'not allowed');
 await fails('cancelling a payment needs a reason', () =>

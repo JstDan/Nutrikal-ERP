@@ -7,7 +7,7 @@ import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { orderTone } from "@/lib/status";
 import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
-import { addOrderLine, createProductionFromLine, linkOrderLineFormula, openOrderInvoice, removeOrderLine, saveOrder, setOrderStatus } from "@/app/actions";
+import { addOrderLine, createProductionFromLine, linkOrderLineFormula, openOrderInvoice, removeOrderLine, saveOrder, setOrderStatus, setOrderTransport } from "@/app/actions";
 import { loadBoard, loadTemplates } from "@/lib/tasks";
 import { TaskBoard } from "@/components/tasks/board";
 import { CancelPayment, ConfirmFinalPayment, ConfirmFirstPayment } from "@/components/tasks/payment-dialog";
@@ -24,8 +24,10 @@ type Approved = { id: string; code: string; name: string; name_bg: string | null
 type Commercial = {
   currency: string; deposit_pct: string | null; deposit_amount: string | null; vat_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
   deposit_received_on: string | null; balance_received_on: string | null; customer_ref: string | null; notes: string | null;
+  transport_amount: string | null;
 };
-type Mo = { id: string; code: string; status: string; sales_order_line_id: string; quantity: number };
+type Mo = { id: string; code: string; status: string; sales_order_line_id: string; quantity: number; produced_quantity: number | null };
+type FinalLine = { line_id: string; kind: string; ordered: number; produced: number | null; quantity: number };
 type OfferOption = { offer_id: string; code: string; product: string; product_bg: string | null; quantity: number; unit_price: string };
 type Meta = { created_at: string; created_by: string | null; owner: string | null; country: string };
 type OrderInvoice = { id: string; purpose: "full" | "advance" | "final"; status: "draft" | "issued"; number: string | null };
@@ -62,12 +64,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
          from sales_order_line_overview l left join calc_offers co on co.id = l.calc_offer_id
         where l.order_id = $1 order by l.sort_order`, [id])).rows;
     const mos = (await tx.query<Mo>(
-      `select id, code, status, sales_order_line_id, quantity from manufacturing_orders
+      `select id, code, status, sales_order_line_id, quantity, produced_quantity from manufacturing_orders
         where sales_order_line_id in (select id from sales_order_line_overview where order_id = $1) order by code`, [id])).rows;
     const c = canEdit
       ? (await tx.query<Commercial>(
           `select currency, deposit_pct::text, deposit_amount::text, vat_pct::text, balance_terms, balance_net_days, deposit_received_on::text, balance_received_on::text,
-                  customer_ref, notes from sales_orders where id = $1`, [id])).rows[0]
+                  customer_ref, notes, transport_amount::text from sales_orders where id = $1`, [id])).rows[0]
       : undefined;
     const prices = canEdit
       ? (await tx.query<{ id: string; unit_price: string; offer_code: string }>(
@@ -99,13 +101,21 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       ? (await tx.query<OrderInvoice>(
           "select id, purpose, status, number from invoices where order_id = $1 and kind = 'invoice'", [id])).rows
       : [];
+    // The final proforma: the units made once every batch is produced, and transport
+    const final = canEdit
+      ? {
+          lines: (await tx.query<FinalLine>("select line_id, kind, ordered, produced, quantity from order_final_lines($1)", [id])).rows,
+          totals: (await tx.query<{ net: string; gross: string }>("select net::text, gross::text from order_totals($1)", [id])).rows[0],
+          done: (await tx.query<{ done: boolean }>("select order_production_done($1) as done", [id])).rows[0].done,
+        }
+      : null;
     // The task board: admin and sales only (row-level security returns nothing to anyone else)
     const board = canEdit ? await loadBoard(tx, id) : null;
     const templates = canEdit ? await loadTemplates(tx) : [];
-    return { o, lines, mos, c, prices, offerOptions, approved, meta, invoices, board, templates };
+    return { o, lines, mos, c, prices, offerOptions, approved, meta, invoices, board, templates, final };
   });
   if (!data) notFound();
-  const { o, lines, mos, c, prices, offerOptions, approved, meta, invoices, board, templates } = data;
+  const { o, lines, mos, c, prices, offerOptions, approved, meta, invoices, board, templates, final } = data;
   const products = lines.filter((l) => l.kind !== "service");
   const services = lines.filter((l) => l.kind === "service");
   // Payment of the proforma: admin confirms it with Confirm first payment (it also makes the task board)
@@ -129,6 +139,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     : !twoPayments ? H.paidFull
     : `${c.deposit_amount != null ? fmt(H.advancePaidAmount, { amount: money(c.deposit_amount) }) : fmt(H.advancePaid, { pct: formatNumber(locale, depPct) })} · ${c.balance_received_on ? H.balancePaid : H.balanceDue}`;
   const invoiceOf = (p: OrderInvoice["purpose"]) => invoices.find((x) => x.purpose === p);
+  const F = t.orders.final;
+  // The advance received (VAT included), else its % of the order as ordered
+  const advancePaid = c?.deposit_amount != null ? Number(c.deposit_amount) : Math.round(gross * depPct) / 100;
+  const finalIssued = invoices.some((x) => (x.purpose === "final" || x.purpose === "full") && x.status === "issued");
   const doneTasks = board ? board.tasks.filter((x) => x.status === "done").length : 0;
   const realtime = supabaseConfigured()
     ? { url: process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(), key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim() }
@@ -228,7 +242,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
                         <span className="flex flex-col gap-1">
                           {lineMos.map((m) => (
                             <Link key={m.id} href={`/production/${m.id}`} className="text-ink">
-                              {m.code} · {t.enums.moStatus[m.status as "simulation"]}
+                              {m.code} · {t.enums.moStatus[m.status as "simulation"]}{m.status === "completed" && m.produced_quantity != null ? ` · ${formatNumber(locale, m.produced_quantity)} ${t.common.units}` : ""}
                             </Link>
                           ))}
                         </span>
@@ -325,6 +339,37 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
                   <input type="hidden" name="status" value={s} />
                 </ActionForm>
               ))}
+            </Card>
+          )}
+
+          {c && final && paid && o.status !== "cancelled" && (
+            <Card title={F.title} id="final-h">
+              <p className="m-0 text-sm text-ink-2">{final.done ? F.done : F.pending}</p>
+              {final.done && products.map((l) => {
+                const x = final.lines.find((y) => y.line_id === l.id);
+                return x ? (
+                  <div key={l.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
+                    <span className="min-w-0 break-words">{productName(l)}</span>
+                    <span className="font-semibold">{fmt(F.orderedProduced, { ordered: formatNumber(locale, x.ordered), produced: formatNumber(locale, x.quantity) })}</span>
+                  </div>
+                ) : null;
+              })}
+              {!finalIssued && (
+                <ActionForm action={setOrderTransport} submitLabel={t.common.save} resetOnSuccess={false}>
+                  <input type="hidden" name="order_id" value={o.id} />
+                  <label className="field"><span>{F.transport}</span>
+                    <input name="transport" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={c.transport_amount ?? ""} className="input" />
+                  </label>
+                  <p className="m-0 text-xs text-ink-2">{F.transportNote}</p>
+                </ActionForm>
+              )}
+              {finalIssued && <Fact label={F.transport}>{c.transport_amount ? money(c.transport_amount) : "—"}</Fact>}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 xl:grid-cols-1">
+                <Fact label={F.total}>{money(final.totals?.gross ?? 0)}</Fact>
+                {twoPayments && <Fact label={F.advance}>{money(advancePaid)}</Fact>}
+                {twoPayments && <Fact label={F.due}><strong>{money(Math.max(0, Number(final.totals?.gross ?? 0) - advancePaid))}</strong></Fact>}
+              </div>
+              {final.done && twoPayments && <Link href={`/orders/${o.id}/proforma?final=1`} className="btn btn-primary self-start">{F.open}</Link>}
             </Card>
           )}
 

@@ -655,6 +655,19 @@ export async function openOrderInvoice(_: ActionState, fd: FormData): Promise<Ac
   redirect(`/invoices/${id}`);
 }
 
+/** Transport of an order (EUR excl. VAT; empty = none): a line of the final proforma and invoice. */
+export async function setOrderTransport(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const id = str(fd, "order_id");
+  try {
+    await q(user.id, "select set_order_transport($1, $2)", [id, num(fd, "transport")]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/orders/${id}`);
+  return { ok: true, message: t.common.saved };
+}
+
 /** Issues a draft invoice with its number and date; it is locked afterwards. */
 export async function issueInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();

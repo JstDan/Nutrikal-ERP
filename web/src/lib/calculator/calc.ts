@@ -56,8 +56,8 @@ export interface CalcInput {
   numberOfUnits: number | null;
   markupPct: number | null;
   /**
-   * Raw-material waste in production, %, typed on the offer (owner, Oct 2026): the raw materials cost and the
-   * quantities to buy include it; the dose and fill weights do not. The recipe made from the offer gets it too.
+   * Raw-material waste in production, % (none on new offers; 5 on offers saved before 29 Oct 2026): the raw
+   * materials cost and the quantities to buy include it; the dose and fill weights do not. The recipe gets it too.
    */
   wastePct: number | null;
   addVat: boolean;

@@ -11,7 +11,6 @@ export type FieldKey =
   | 'productType'
   | 'rows'
   | 'capsulesPerDose'
-  | 'waste'
   | 'quantityPerUnit'
   | 'numberOfUnits'
   | 'discount'
@@ -19,7 +18,7 @@ export type FieldKey =
 
 /** Message keys in the calc.validation dictionary. */
 export type ValidationCode =
-  | 'required' | 'email' | 'client' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'waste' | 'extraItems' | 'catalogProduct' | 'belowMoq' | 'capsuleRange' | 'unmatched';
+  | 'required' | 'email' | 'client' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq' | 'capsuleRange' | 'unmatched';
 
 /** Field order = order on the page, used to scroll to the first error. */
 export const FIELD_ORDER: FieldKey[] = [
@@ -29,7 +28,6 @@ export const FIELD_ORDER: FieldKey[] = [
   'productType',
   'rows',
   'capsulesPerDose',
-  'waste',
   'quantityPerUnit',
   'numberOfUnits',
   'discount',
@@ -66,9 +64,6 @@ export function validateOffer(form: OfferForm): ValidationErrors {
     // Ingredients of a catalog product that are not in the price list have no price yet
     else if (form.rows.some(isUnmatched)) errors.rows = 'unmatched';
     if (isCapsule(form.productType) && !parsePositiveInt(form.capsulesPerDose)) errors.capsulesPerDose = 'positiveInt';
-    // Waste is typed by hand; empty means none
-    const waste = parseNum(form.waste || '0');
-    if (waste === null || waste < 0 || waste > 100) errors.waste = 'waste';
     if (!parsePositiveInt(form.quantityPerUnit)) errors.quantityPerUnit = 'positiveInt';
     if (!units) errors.numberOfUnits = 'positiveInt';
   }
