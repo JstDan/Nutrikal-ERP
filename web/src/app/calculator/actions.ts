@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { q } from "@/lib/db/engine";
+import { q, withUser } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import { toOffer } from "@/lib/calculator/db";
 import { extractSheetId } from "@/lib/calculator/materialImport";
@@ -97,9 +97,26 @@ export async function saveRegulatoryNote(id: string, note: string | null): Promi
     const rows = await q<RawMaterial>(
       uid,
       `update calc_raw_materials set regulatory_note = $2 where id = $1
-       returning id, name, price_eur_per_kg, regulatory_note, active, updated_at::text`,
+       returning id, name, price_eur_per_kg, regulatory_note, active, manual, updated_at::text`,
       [id, note?.trim() || null],
     );
+    if (!rows[0]) throw new Error("Not allowed");
+    return { ...rows[0], price_eur_per_kg: Number(rows[0].price_eur_per_kg) };
+  });
+  if (res.ok) revalidatePath("/calculator", "layout");
+  return res;
+}
+
+/** Admin, sales: a raw material that is not in the price list, with its price per kg (kept apart from the sheet). */
+export async function addRawMaterial(name: string, price: number): Promise<CalcResult<RawMaterial>> {
+  const res = await run(async (uid) => {
+    const rows = await withUser(uid, async (tx) => {
+      const { id } = (await tx.query<{ id: string }>("select calc_add_raw_material($1, $2) as id", [name, price])).rows[0];
+      return (await tx.query<RawMaterial>(
+        "select id, name, price_eur_per_kg, regulatory_note, active, manual, updated_at::text from calc_raw_materials where id = $1",
+        [id],
+      )).rows;
+    });
     if (!rows[0]) throw new Error("Not allowed");
     return { ...rows[0], price_eur_per_kg: Number(rows[0].price_eur_per_kg) };
   });

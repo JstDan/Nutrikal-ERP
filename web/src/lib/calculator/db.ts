@@ -64,7 +64,7 @@ export async function loadCatalog(userId: string, { includeInactive = false } = 
 export async function loadMaterials(userId: string): Promise<RawMaterial[]> {
   const rows = await q<RawMaterial>(
     userId,
-    "select id, name, price_eur_per_kg, regulatory_note, active, updated_at::text from calc_raw_materials order by name",
+    "select id, name, price_eur_per_kg, regulatory_note, active, manual, updated_at::text from calc_raw_materials order by name",
   );
   return rows.map((m) => ({ ...m, price_eur_per_kg: num(m.price_eur_per_kg) }));
 }

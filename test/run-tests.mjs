@@ -828,6 +828,28 @@ await ok('a failed sync changes nothing and is logged', async () => {
   eq(run.status, 'error', 'status');
   eq((await as('admin', `select id from calc_raw_materials where name = 'Y'`)).length, 0, 'not applied');
 });
+await ok('sales adds a raw material that is not in the price list; marked manual', async () => {
+  const { id } = await one('sales', `select calc_add_raw_material('  Saffron   Extract ', 1234.56789) as id`);
+  const m = await one('admin', `select name, price_eur_per_kg, active, manual from calc_raw_materials where id = $1`, [id]);
+  eq(m.name, 'Saffron Extract', 'name tidied');
+  eq(Number(m.price_eur_per_kg), 1234.5679, 'price');
+  eq(m.active && m.manual, true, 'active, manual');
+});
+await fails('a name already in the price list cannot be added again', () =>
+  as('admin', `select calc_add_raw_material('zinc glycinate', 5)`), 'already in the price list');
+await fails('a hand-added raw material needs a price above 0', () =>
+  as('sales', `select calc_add_raw_material('Something', 0)`), 'price per kg above 0');
+await fails('production cannot add raw materials', () =>
+  as('production', `select calc_add_raw_material('Other', 5)`), 'not allowed');
+await ok('the sheet sync never removes a hand-added material; the sheet takes it over when it lists it', async () => {
+  await one('sales', `select calc_add_raw_material('Manual Only', 9) as id`);
+  await as('sales', `select calc_record_sync('manual', $1::jsonb, '{}')`,
+    [JSON.stringify({ upserts: [{ name: 'Saffron Extract', price_eur_per_kg: 1000, active: true }], deactivate: ['Manual Only'] })]);
+  eq((await one('admin', `select active, manual from calc_raw_materials where name = 'Manual Only'`)).active, true, 'still active');
+  const s = await one('admin', `select price_eur_per_kg, manual from calc_raw_materials where name = 'Saffron Extract'`);
+  eq(Number(s.price_eur_per_kg), 1000, 'sheet price');
+  eq(s.manual, false, 'no longer manual');
+});
 await fails('production cannot run the sheet sync', () =>
   as('production', `select calc_record_sync('manual', '{}', '{}')`), 'not allowed');
 await fails('sync source "scheduled" is reserved for the server job', () =>

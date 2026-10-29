@@ -21,6 +21,8 @@ export interface RawMaterial {
   price_eur_per_kg: number;
   regulatory_note: string | null;
   active: boolean;
+  /** Added by hand in the calculator, not in the price-list sheet. */
+  manual?: boolean;
   updated_at: string;
 }
 

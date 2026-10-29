@@ -6,7 +6,7 @@ import { matchesQuery } from "@/lib/calculator/search";
 const MAX_OPTIONS = 60;
 
 /** Search-as-you-type list (combobox pattern, keyboard friendly): raw materials and catalog products. */
-export function SearchCombobox<T>({ id, items, searchText, optionKey, renderOption, onPick, placeholder, listLabel, noResults, describedBy, invalid }: {
+export function SearchCombobox<T>({ id, items, searchText, optionKey, renderOption, onPick, placeholder, listLabel, noResults, emptyAction, describedBy, invalid }: {
   id: string;
   items: T[];
   /** Text the query is matched against. */
@@ -17,6 +17,8 @@ export function SearchCombobox<T>({ id, items, searchText, optionKey, renderOpti
   placeholder: string;
   listLabel: string;
   noResults: string;
+  /** Shown under the input while the query finds nothing (e.g. "add this raw material"). */
+  emptyAction?: (query: string) => ReactNode;
   describedBy?: string;
   invalid?: boolean;
 }) {
@@ -76,7 +78,7 @@ export function SearchCombobox<T>({ id, items, searchText, optionKey, renderOpti
         className={`input pl-10! ${invalid ? "border-red!" : ""}`}
       />
       <span aria-hidden="true" className="pointer-events-none absolute top-0 left-3 flex h-11 items-center text-ink-2">⌕</span>
-      {open && (
+      {open && (options.length > 0 || !emptyAction || !query.trim()) && (
         <ul
           id={listId}
           role="listbox"
@@ -102,6 +104,7 @@ export function SearchCombobox<T>({ id, items, searchText, optionKey, renderOpti
           ))}
         </ul>
       )}
+      {emptyAction && query.trim() !== "" && options.length === 0 && <div className="mt-2">{emptyAction(query.trim())}</div>}
     </div>
   );
 }
