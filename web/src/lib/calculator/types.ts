@@ -10,6 +10,8 @@ export const DOSE_UNITS: DoseUnit[] = ['mcg', 'mg', 'g'];
 
 export type CapsuleSize = 'size1' | 'size0' | 'size00';
 export const CAPSULE_SIZES: Record<CapsuleSize, number> = { size1: 400, size0: 500, size00: 730 };
+/** Our machines fill size 00 capsules only (owner, 29 Oct 2026); older offers may name another size. */
+export const CAPSULE_SIZE: CapsuleSize = 'size00';
 
 export function isCapsule(type: ProductType | null | undefined): boolean {
   return type === 'capsules_glass' || type === 'capsules_plastic';

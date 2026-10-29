@@ -1,6 +1,6 @@
 import { DEFAULT_COUNTRY } from './countries';
 import { isoDate } from './numbers';
-import type { OfferForm, Settings } from './types';
+import { CAPSULE_SIZE, CAPSULE_SIZES, type OfferForm, type Settings } from './types';
 
 /** localStorage key of the unsaved calculator form (survives a page refresh). */
 export const DRAFT_KEY = 'nk.calc.draft';
@@ -33,8 +33,8 @@ export function createEmptyForm(settings: Settings, offerNo: string): OfferForm 
     productType: null,
     rows: [],
     capsulesPerDose: '1',
-    capsuleSize: 'size0',
-    maxFillMg: '500',
+    capsuleSize: CAPSULE_SIZE,
+    maxFillMg: String(CAPSULE_SIZES[CAPSULE_SIZE]),
     quantityPerUnit: '',
     numberOfUnits: '',
     markup: String(settings.default_markup),
@@ -73,6 +73,9 @@ export function normalizeForm(f: OfferForm, settings: Settings): OfferForm {
     // Tiers from before the markup field existed come back with an empty markup.
     priceTiers: (f.priceTiers ?? []).map((x) => ({ key: x.key, qty: x.qty ?? '', markup: x.markup ?? '' })),
     discount: f.discount ?? '0',
+    // Size 00 only: an older size's standard fill becomes the size 00 fill (a fill typed by hand stays)
+    capsuleSize: CAPSULE_SIZE,
+    maxFillMg: !f.maxFillMg || (f.capsuleSize && f.maxFillMg === String(CAPSULE_SIZES[f.capsuleSize])) ? String(CAPSULE_SIZES[CAPSULE_SIZE]) : f.maxFillMg,
     waste: f.waste ?? (f.id ? LEGACY_WASTE_PCT : ''),
     paymentTerms:
       f.paymentTerms == null || (!f.id && OLD_DEFAULT_TERMS.includes(f.paymentTerms))

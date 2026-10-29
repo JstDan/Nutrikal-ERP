@@ -5,7 +5,7 @@ import type { CalcResult } from "@/lib/calculator/calc";
 import { isUnmatched, needsCheck } from "@/lib/calculator/catalogToCustom";
 import { defaultUnitFor } from "@/lib/calculator/form";
 import { parseNum } from "@/lib/calculator/numbers";
-import { CAPSULE_SIZES, DOSE_UNITS, isCapsule, type CapsuleSize, type FormulaRow, type RawMaterial } from "@/lib/calculator/types";
+import { DOSE_UNITS, isCapsule, type FormulaRow, type RawMaterial } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
 import { fmt } from "@/lib/i18n";
 import { Chip } from "@/components/ui";
@@ -244,8 +244,8 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
       {rowsError && <p className="m-0 text-xs font-semibold text-red-ink">{rowsError}</p>}
 
       {capsule && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <Field label={t.formula.capsulesPerDose} htmlFor={fieldId("capsulesPerDose")} required error={capsError} className="col-span-2 sm:col-span-1">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label={t.formula.capsulesPerDose} htmlFor={fieldId("capsulesPerDose")} required error={capsError}>
             <NumberField
               id={fieldId("capsulesPerDose")}
               integer
@@ -255,20 +255,7 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
               invalid={!!capsError}
             />
           </Field>
-          <Field label={t.formula.capsuleSize} htmlFor="capsule-size">
-            <select
-              id="capsule-size"
-              value={form.capsuleSize}
-              onChange={(e) => {
-                const size = e.target.value as CapsuleSize;
-                setForm((f) => ({ ...f, capsuleSize: size, maxFillMg: String(CAPSULE_SIZES[size]) }));
-              }}
-              className="input"
-            >
-              {(Object.keys(CAPSULE_SIZES) as CapsuleSize[]).map((s) => <option key={s} value={s}>{t.formula[s]}</option>)}
-            </select>
-          </Field>
-          <Field label={t.formula.maxFill} htmlFor="max-fill">
+          <Field label={t.formula.maxFill} htmlFor="max-fill" hint={t.formula.size00Only}>
             <NumberField id="max-fill" value={form.maxFillMg} onChange={(v) => setForm((f) => ({ ...f, maxFillMg: v }))} />
           </Field>
         </div>

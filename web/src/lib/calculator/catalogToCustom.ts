@@ -1,10 +1,9 @@
 import { offerCapsules } from './catalogCapsules';
-import { CAPSULE_SIZES, type CapsuleSize, type CatalogIngredient, type FormulaRow, type OfferForm, type RawMaterial } from './types';
+import { CAPSULE_SIZE, CAPSULE_SIZES, type CatalogIngredient, type FormulaRow, type OfferForm, type RawMaterial } from './types';
 
 // "Change ingredients" on a catalog product: the offer becomes a custom formula with everything typed so far,
 // its composition as raw-material rows (matched on name with the price list) and its serving and pack size.
 
-const UNIT_TO_MG = { mcg: 0.001, mg: 1, g: 1000 } as const;
 /** Words that say nothing about which raw material it is. */
 const NOISE = new Set(['extract', 'powder', 'from', 'of', 'and', 'the']);
 
@@ -70,12 +69,6 @@ export function compositionRows(composition: CatalogIngredient[], materials: Raw
   });
 }
 
-/** Smallest capsule size that holds the fill weight (size 00 when none does). */
-export function capsuleSizeFor(fillMg: number): CapsuleSize {
-  const sizes = (Object.keys(CAPSULE_SIZES) as CapsuleSize[]).sort((a, b) => CAPSULE_SIZES[a] - CAPSULE_SIZES[b]);
-  return sizes.find((s) => fillMg <= CAPSULE_SIZES[s]) ?? sizes[sizes.length - 1];
-}
-
 /**
  * The catalog offer as a custom formula. Client, offer data, quantity, markup, VAT and the rest stay as typed;
  * the catalog product stays on the form so switching back to Catalog formula keeps it.
@@ -89,8 +82,6 @@ export function catalogToCustom(form: OfferForm, materials: RawMaterial[]): Offe
   const next: OfferForm = { ...form, mode: 'custom', rows, offer: { ...form.offer, productName } };
 
   if (p.capsules_per_serving) {
-    const doseMg = (p.composition ?? []).reduce((sum, x) => sum + x.amount * UNIT_TO_MG[x.unit], 0);
-    const size = capsuleSizeFor(doseMg / p.capsules_per_serving);
     const caps = offerCapsules(form);
     return {
       ...next,
@@ -99,8 +90,8 @@ export function catalogToCustom(form: OfferForm, materials: RawMaterial[]): Offe
       lid: form.jar === 'glass' ? 'aluminium' : form.lid,
       catalogPackaging: true,
       capsulesPerDose: String(p.capsules_per_serving),
-      capsuleSize: size,
-      maxFillMg: String(CAPSULE_SIZES[size]),
+      capsuleSize: CAPSULE_SIZE,
+      maxFillMg: String(CAPSULE_SIZES[CAPSULE_SIZE]),
       quantityPerUnit: caps ? String(caps) : next.quantityPerUnit,
     };
   }
