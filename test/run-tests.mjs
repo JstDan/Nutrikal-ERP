@@ -1716,6 +1716,29 @@ await ok('Repeat order: the recipe the client already ordered ticks "Финал�
   eq(await tkStatus(c, 'formulas_confirmed'), 'done', 'same recipe as before');
   eq(await tkStatus(tkA, 'formulas_confirmed'), 'todo', 'the default template does not');
 });
+await ok('admin cancels a payment confirmed by mistake: back to unpaid, board and draft invoices gone, then paid again', async () => {
+  const od = await calcOffer('NK-T-TKD', tkClient.id, 100, 10);
+  const d = (await one('sales', 'select create_order_from_calc_offers($1, $2) as id', [tkClient.id, [od.id]])).id;
+  await as('admin', `select confirm_order_payment($1, 'advance', 500)`, [d]);
+  await as('admin', `select create_order_invoice($1, 'advance')`, [d]);
+  eq(Number((await one('admin', 'select count(*) from invoices where order_id = $1', [d])).count), 1, 'a draft advance invoice');
+  await as('admin', `select cancel_order_payment($1, 'Wrong order')`, [d]);
+  const o = await one('admin', 'select status, deposit_received_on, balance_received_on, deposit_amount, confirmed_at from sales_orders where id = $1', [d]);
+  eq(o.status, 'unpaid', 'status'); eq(o.deposit_received_on, null, 'deposit date'); eq(o.deposit_amount, null, 'advance');
+  eq(o.confirmed_at, null, 'confirmed at');
+  eq((await as('admin', 'select * from order_task_boards where sales_order_id = $1', [d])).length, 0, 'board deleted');
+  eq(Number((await one('admin', 'select count(*) from invoices where order_id = $1', [d])).count), 0, 'draft invoice deleted');
+  eq((await as('admin', `select * from activities where client_id = $1 and body = 'Wrong order'`, [tkClient.id])).length, 1, 'reason noted');
+  await as('admin', `select confirm_order_payment($1, 'full')`, [d]);
+  eq((await one('admin', 'select status from sales_orders where id = $1', [d])).status, 'confirmed', 'paid again');
+  eq((await as('admin', 'select * from order_task_boards where sales_order_id = $1', [d])).length, 1, 'new board');
+});
+await fails('sales cannot cancel a payment', () =>
+  as('sales', `select cancel_order_payment($1, 'x')`, [tkB]), 'not allowed');
+await fails('cancelling a payment needs a reason', () =>
+  as('admin', `select cancel_order_payment($1, '  ')`, [tkB]), 'reason');
+await fails('a confirmed order cannot be set back to unpaid by hand', () =>
+  as('admin', `update sales_orders set status = 'unpaid' where id = $1`, [tkB]), 'cannot go from');
 await ok('Export outside the EU adds Transport before Documents & dispatch', async () => {
   const exp = await one('sales', `select id from order_task_templates where name_bg = 'Износ извън ЕС'`);
   const cols = await as('sales', 'select coalesce(system_key, name_bg) as k from order_task_template_columns where template_id = $1 order by position', [exp.id]);

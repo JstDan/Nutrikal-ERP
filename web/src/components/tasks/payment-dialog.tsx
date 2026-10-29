@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { fmt, formatPrice, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import type { TemplateOption } from "@/lib/tasks-shared";
-import { confirmFinalPayment, confirmFirstPayment } from "@/app/task-actions";
+import { cancelOrderPayment, confirmFinalPayment, confirmFirstPayment } from "@/app/task-actions";
 
 type T = Dict["tasks"];
 
@@ -78,6 +78,34 @@ export function ConfirmFinalPayment({ orderId, T }: { orderId: string; T: T }) {
         {state.error && <span className="font-semibold text-red-ink">{state.error}</span>}
         {state.ok && state.message && <span className="font-semibold text-green-ink">{state.message}</span>}
       </p>
+    </form>
+  );
+}
+
+/** Admin: cancels a payment confirmed by mistake (with a reason); the order is back at the proforma. */
+export function CancelPayment({ orderId, T }: { orderId: string; T: T }) {
+  const P = T.payment;
+  const [state, action, pending] = useActionState(cancelOrderPayment, {});
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <div className="flex flex-col gap-2">
+        <button type="button" className="btn btn-outline w-fit" onClick={() => setOpen(true)}>{P.cancelPayment}</button>
+        {state.ok && state.message && <p role="status" className="m-0 text-sm font-semibold text-green-ink">{state.message}</p>}
+      </div>
+    );
+  }
+  return (
+    <form action={action} aria-labelledby="pay-cancel-h" className="flex flex-col gap-3 rounded-sm border border-line p-3">
+      <h3 id="pay-cancel-h" className="m-0 text-base font-bold">{P.cancelTitle}</h3>
+      <p className="m-0 text-xs text-ink-2">{P.cancelNote}</p>
+      <input type="hidden" name="order_id" value={orderId} />
+      <label className="field"><span>{P.cancelReason} *</span><textarea name="reason" required className="input" /></label>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="submit" className="btn btn-primary" disabled={pending}>{pending ? "…" : P.cancelConfirm}</button>
+        <button type="button" className="btn btn-outline" onClick={() => setOpen(false)}>{T.cancel}</button>
+        {state.error && <p role="alert" className="m-0 text-sm font-semibold text-red-ink">{state.error}</p>}
+      </div>
     </form>
   );
 }
