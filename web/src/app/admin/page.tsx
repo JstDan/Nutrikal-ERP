@@ -113,11 +113,11 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
         </form>
       </Card>
 
-      <section aria-label={A.costsTitle} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label={A.costsTitle} className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {tiles.map((x) => (
-          <div key={x.label} className="card flex min-w-0 flex-col gap-1 p-5">
+          <div key={x.label} className="card flex min-w-0 flex-col gap-1 p-4 sm:p-5">
             <span className="text-xs font-semibold tracking-[1px] uppercase text-ink-2">{x.label}</span>
-            <span className="text-2xl font-extrabold break-words">{x.value}</span>
+            <span className="text-lg font-extrabold break-words sm:text-2xl">{x.value}</span>
           </div>
         ))}
       </section>
