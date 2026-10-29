@@ -14,7 +14,7 @@ export function AddMaterialPrompt({ query, onAdded }: { query: string; onAdded: 
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm border border-dashed border-line-strong px-3 py-1">
-      <p className="m-0 min-w-0 flex-1 text-sm">{t.formula.notInListAsk}</p>
+      <p className="m-0 min-w-0 grow basis-64 py-2 text-sm">{t.formula.notInListAsk}</p>
       <button type="button" onClick={() => setOpen(true)} className="btn btn-outline min-h-11 gap-2" aria-haspopup="dialog">
         <span aria-hidden="true" className="text-lg leading-none">+</span>
         {t.formula.addMaterial}
