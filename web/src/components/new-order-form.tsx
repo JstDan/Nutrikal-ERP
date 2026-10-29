@@ -8,6 +8,8 @@ import { SearchCombobox } from "@/components/calculator/search-combobox";
 
 export type OrderableOffer = {
   id: string; offer_no: string; product: string | null; client_id: string; units: number; unit_price: number; created_at: string;
+  /** The offer quantity and its other price levels, smallest first. */
+  levels: { units: number; price: number }[];
 };
 export type OrderableClient = { id: string; name: string; country: string; vat_number: string | null };
 export type ServiceOption = { description: string; price: number };
@@ -35,16 +37,19 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
   const [state, formAction, pending] = useActionState(action, {});
   const [clientId, setClientId] = useState<string | null>(clients.some((c) => c.id === initialClient) ? initialClient : null);
   const [picked, setPicked] = useState<string[]>([]);
+  /** Chosen quantity per offer (the offer quantity unless another level is picked). */
+  const [levels, setLevels] = useState<Record<string, number>>({});
   const [services, setServices] = useState<Service[]>(() =>
     presets.map((p, i) => ({ key: `p${i}`, description: p.description, quantity: "1", price: String(p.price), on: false, custom: false })));
   const client = clients.find((c) => c.id === clientId);
   const [vat, setVat] = useState(defaultVat(client));
 
   const clientOffers = useMemo(() => offers.filter((o) => o.client_id === clientId), [offers, clientId]);
+  const levelOf = (o: OrderableOffer) => o.levels.find((l) => l.units === levels[o.id]) ?? { units: o.units, price: o.unit_price };
   const money = (x: number) => formatPrice(locale, x);
   const chosen = services.filter((s) => s.on);
   const total =
-    clientOffers.filter((o) => picked.includes(o.id)).reduce((a, o) => a + o.units * o.unit_price, 0) +
+    clientOffers.filter((o) => picked.includes(o.id)).reduce((a, o) => a + levelOf(o).units * levelOf(o).price, 0) +
     chosen.reduce((a, s) => a + (toNum(s.quantity) ?? 0) * (toNum(s.price) ?? 0), 0);
   const payload = JSON.stringify(chosen.map((s) => ({ description: s.description.trim(), quantity: toNum(s.quantity), unit_price: toNum(s.price) })));
 
@@ -101,7 +106,8 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
             <legend className="mb-1 p-0 text-base font-bold">2. {n.offers} *</legend>
             <p className="m-0 text-[13px] text-ink-2">{n.offersHint}</p>
             {clientOffers.map((o) => (
-              <label key={o.id} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-sm border border-line p-3">
+              <div key={o.id} className="flex flex-col gap-2 rounded-sm border border-line p-3">
+              <label className="flex min-h-11 cursor-pointer items-start gap-3">
                 <input
                   type="checkbox"
                   name="offer_id"
@@ -113,11 +119,22 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
                 <span className="flex min-w-0 flex-1 flex-wrap justify-between gap-x-4 gap-y-1">
                   <span className="min-w-0 break-words">
                     <strong>{o.offer_no}</strong> · {o.product ?? "—"}
-                    <span className="block text-xs text-ink-2">{fmt(n.offerLine, { units: formatNumber(locale, o.units), price: money(o.unit_price) })}</span>
+                    <span className="block text-xs text-ink-2">{fmt(n.offerLine, { units: formatNumber(locale, levelOf(o).units), price: money(levelOf(o).price) })}</span>
                   </span>
-                  <span className="font-semibold tabular-nums">{money(o.units * o.unit_price)}</span>
+                  <span className="font-semibold tabular-nums">{money(levelOf(o).units * levelOf(o).price)}</span>
                 </span>
               </label>
+              {picked.includes(o.id) && o.levels.length > 1 && (
+                <label className="field ml-8 max-w-[360px]"><span>{n.level}</span>
+                  <select name={`level_${o.id}`} className="input" value={levelOf(o).units}
+                    onChange={(e) => setLevels((all) => ({ ...all, [o.id]: Number(e.target.value) }))}>
+                    {o.levels.map((l) => (
+                      <option key={l.units} value={l.units}>{fmt(n.levelOption, { units: formatNumber(locale, l.units), price: money(l.price) })}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              </div>
             ))}
           </fieldset>
 

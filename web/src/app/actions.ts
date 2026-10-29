@@ -11,6 +11,9 @@ import type { Role } from "@/lib/db/demo-users";
 import { DELIVERY_LINES } from "@/lib/deliveries";
 import { DELIVERY_BUCKET, MAX_FILE_BYTES, newDeliveryPath, putFile, removeFile } from "@/lib/files";
 import type { Tx } from "@/lib/db/engine";
+import { offerPriceOptions } from "@/lib/calculator/priceOptions";
+import type { CalcResult } from "@/lib/calculator/calc";
+import type { OfferForm } from "@/lib/calculator/types";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string };
 
@@ -549,10 +552,24 @@ export async function createOrderFromCalcOffers(_: ActionState, fd: FormData): P
   }
   let id: string;
   try {
+    // Another price level of an offer: its price is taken from the saved offer, not from the form
+    const levels: { offer_id: string; quantity: number; unit_price: number }[] = [];
+    const chosen = offers.filter((o) => str(fd, `level_${o}`));
+    if (chosen.length) {
+      const saved = await q<{ id: string; data: OfferForm; results: CalcResult }>(
+        user.id, "select id, data, results from calc_offers where id = any($1::uuid[])", [chosen]);
+      for (const o of saved) {
+        const units = Number(str(fd, `level_${o.id}`));
+        const level = offerPriceOptions(o.data, { ...o.results, complete: true }).find((l) => l.units === units);
+        if (!level) return { error: n.levelMissing };
+        levels.push({ offer_id: o.id, quantity: level.units, unit_price: level.price });
+      }
+    }
     const [row] = await q<{ id: string }>(
       user.id,
-      "select create_order_from_calc_offers($1, $2::uuid[], $3::jsonb, $4, $5, $6::date, $7) as id",
-      [clientId, offers, JSON.stringify(services), num(fd, "vat_pct"), str(fd, "customer_ref"), str(fd, "requested_date"), str(fd, "notes")],
+      "select create_order_from_calc_offers($1, $2::uuid[], $3::jsonb, $4, $5, $6::date, $7, $8::jsonb) as id",
+      [clientId, offers, JSON.stringify(services), num(fd, "vat_pct"), str(fd, "customer_ref"), str(fd, "requested_date"), str(fd, "notes"),
+        JSON.stringify(levels)],
     );
     id = row.id;
   } catch (e) {
