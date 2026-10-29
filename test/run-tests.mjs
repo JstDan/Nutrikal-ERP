@@ -1808,6 +1808,27 @@ await ok('the final proforma takes the units made once every batch is produced, 
   await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [inv2]);
   tkFinal = o;
 });
+await ok('fewer units made than ordered: the final proforma and invoice take the fewer units', async () => {
+  const of = await calcOffer('NK-T-FIN2', tkClient.id, 1000, 2);
+  const o = (await one('sales', `select create_order_from_calc_offers($1, $2, '[]'::jsonb, 20) as id`, [tkClient.id, [of.id]])).id;
+  await as('admin', `select confirm_order_payment($1, 'advance', 600)`, [o]);
+  const l = await one('admin', 'select id from sales_order_lines where order_id = $1', [o]);
+  await as('admin', 'select link_order_line_formula($1, $2)', [l.id, tkVer.id]);
+  const mo = await one('admin', `insert into manufacturing_orders (sales_order_line_id, quantity)
+                                  select id, quantity from sales_order_line_overview where id = $1 returning id`, [l.id]);
+  await db.query(`select set_config('nk.mo_transition', 'on', false)`);
+  await db.query(`update manufacturing_orders set status = 'completed', produced_quantity = 995, completed_at = now() where id = $1`, [mo.id]);
+  await db.query(`select set_config('nk.mo_transition', 'off', false)`);
+  const x = await one('sales', 'select ordered, quantity, amount::float as a from order_final_lines($1)', [o]);
+  eq(`${x.ordered}:${x.quantity}:${x.a}`, '1000:995:1990', 'fewer units');
+  const t = await one('sales', 'select net::float as n, gross::float as g from order_totals($1)', [o]);
+  eq(`${t.n}:${t.g}`, '1990:2388', 'totals');
+  await as('sales', `select issue_invoice(create_order_invoice($1, 'advance'), next_invoice_number(), current_date)`, [o]);
+  await as('admin', 'select confirm_final_payment($1)', [o]);
+  const inv = (await one('sales', 'select create_order_invoice($1) as id', [o])).id;
+  const lines = await as('sales', 'select kind, quantity, amount::float as a from invoice_lines where invoice_id = $1 order by sort_order', [inv]);
+  eq(lines.map((y) => `${y.kind}:${Number(y.quantity)}:${y.a}`).join(), 'calc_offer:995:1990,advance:1:-500', 'final invoice');
+});
 await fails('the transport of an invoiced order is corrected with a credit or debit note', () =>
   as('sales', 'select set_order_transport($1, 10)', [tkFinal]), 'credit or debit note');
 await fails('the transport is not negative', () => as('sales', 'select set_order_transport($1, -1)', [tkB]), 'zero or more');
