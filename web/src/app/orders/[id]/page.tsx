@@ -35,7 +35,7 @@ const NEXT: Record<string, string[]> = {
   draft: ["confirmed", "cancelled"],
   unpaid: ["confirmed", "cancelled"],
   // in_production comes by itself when a manufacturing order is sent to Production (release_mo)
-  confirmed: ["draft", "cancelled"],
+  confirmed: ["cancelled"],
   in_production: ["ready", "cancelled"],
   ready: ["dispatched"],
   dispatched: ["closed"],

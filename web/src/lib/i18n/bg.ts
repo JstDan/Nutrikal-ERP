@@ -1053,7 +1053,6 @@ export const bg: Dict = {
       notes: "Бележки",
       nextStep: "Следваща стъпка",
       toStatus: {
-        draft: "Върни в чернова",
         confirmed: "Потвърди поръчката",
         in_production: "Започни производство",
         ready: "Маркирай като готова",

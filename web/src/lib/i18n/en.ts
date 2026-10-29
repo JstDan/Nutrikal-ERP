@@ -1051,7 +1051,6 @@ export const en = {
       notes: "Notes",
       nextStep: "Next step",
       toStatus: {
-        draft: "Back to draft",
         confirmed: "Confirm order",
         in_production: "Start production",
         ready: "Mark as ready",
