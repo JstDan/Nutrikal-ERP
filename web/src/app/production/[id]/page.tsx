@@ -33,12 +33,6 @@ type Source = {
 };
 type Opt = { id: string; name: string };
 type Pack = { id: string; sku: string; name: string; name_bg: string | null; qty_per_pack: string };
-type Cost = {
-  is_actual: boolean; material_cost: string; estimated_lines: number; missing_prices: number; partner_cost: string;
-  total_cost: string; packs: number; cost_per_pack: string | null;
-};
-type CostLine = { sku: string; name: string; name_bg: string | null; base_unit: string; lot_number: string | null; quantity: string; unit_cost: string | null; cost: string | null; estimated: boolean };
-type Invoice = { id: string; invoice_number: string; invoice_date: string; amount: string; currency: string };
 
 export default async function ProductionOrderPage({ params }: PageProps<"/production/[id]">) {
   const { id } = await params;
@@ -78,16 +72,6 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
       ? (await tx.query<{ id: string; code: string; name: string }>(
           "select id, code, name from projects where status not in ('completed', 'lost') order by code desc")).rows
       : [];
-    const invoices = canPlan
-      ? (await tx.query<Invoice>(
-          "select id, invoice_number, invoice_date::text, amount::text, currency from production_invoices where mo_id = $1 order by invoice_date", [id])).rows
-      : [];
-    const canSeeCosts = (await tx.query<{ ok: boolean }>("select can_see_purchase_prices() as ok")).rows[0]?.ok ?? false;
-    const cost = canSeeCosts ? (await tx.query<Cost>("select * from mo_cost($1)", [id])).rows[0] : undefined;
-    const costLines = canSeeCosts && mo.status === "completed"
-      ? (await tx.query<CostLine>(
-          "select sku, name, name_bg, base_unit, lot_number, quantity::text, unit_cost::text, cost::text, estimated from mo_costs($1)", [id])).rows
-      : [];
     const usage = canPlan && mo.status === "completed"
       ? (await tx.query<Usage>(
           `select item_id, sku, name, name_bg, base_unit, reserved::text, used::text, diff::text, diff_pct::text, over_limit, reason,
@@ -106,10 +90,10 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
             "select id, code, name from locations where is_active and type <> 'virtual' order by (code = 'PF-QUAR') desc, is_partner_visible desc, name")).rows,
         }
       : undefined;
-    return { mo, reqs, packaging, packOptions, projects, invoices, cost, costLines, usage, sources, tolerance, orderForm };
+    return { mo, reqs, packaging, packOptions, projects, usage, sources, tolerance, orderForm };
   });
   if (!data) notFound();
-  const { mo, reqs, packaging, packOptions, projects, invoices, cost, costLines, usage, sources, tolerance, orderForm } = data;
+  const { mo, reqs, packaging, packOptions, projects, usage, sources, tolerance, orderForm } = data;
 
   const open = ["simulation", "scheduled", "released"].includes(mo.status);
   const missingAny = reqs.some((r) => Number(r.reserved) < Number(r.required));
@@ -295,35 +279,11 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
           </div>
         )}
 
-        {cost && mo.status !== "cancelled" && (
-          <Card title={d.cost} id="cost-h">
-            <p className="m-0 text-sm text-ink-2">{cost.is_actual ? d.actualCost : d.plannedCost}</p>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
-              <Fact label={d.materialsCost}>{formatPrice(locale, cost.material_cost)}</Fact>
-              <Fact label={d.partnerCost}>{formatPrice(locale, cost.partner_cost)}</Fact>
-              <Fact label={d.totalCost}><strong>{formatPrice(locale, cost.total_cost)}</strong></Fact>
-              <Fact label={P.quantity}>{formatNumber(locale, cost.packs)}</Fact>
-              <Fact label={d.perPack}><strong>{cost.cost_per_pack != null ? formatPrice(locale, cost.cost_per_pack, "EUR", 4) : "—"}</strong></Fact>
-            </div>
-            {cost.is_actual && cost.estimated_lines > 0 && <p className="m-0 text-sm text-amber-ink">{fmt(d.estimatedNote, { n: cost.estimated_lines })}</p>}
-            {cost.missing_prices > 0 && <p role="alert" className="m-0 text-sm font-semibold text-red-ink">{fmt(d.missingPrices, { n: cost.missing_prices })}</p>}
-            {costLines.length > 0 && (
-              <div>
-                <div className="row hide-sm border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 md:grid-cols-[minmax(0,1.4fr)_120px_120px_120px_120px]">
-                  <span>{d.costLines}</span><span>{d.lot}</span><span>{t.purchasing.quantity}</span><span>{d.unitCost}</span><span className="text-right">{d.totalCost}</span>
-                </div>
-                {costLines.map((c, i) => (
-                  <div key={i} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-2.5 text-sm last:border-0 md:grid-cols-[minmax(0,1.4fr)_120px_120px_120px_120px]">
-                    <span className="min-w-0 break-words">{nm(c)}<span className="block text-xs text-ink-2 md:hidden">{c.lot_number} · {formatQty(locale, c.quantity, c.base_unit)}</span></span>
-                    <span className="hide-sm">{c.lot_number}</span>
-                    <span className="hide-sm">{formatQty(locale, c.quantity, c.base_unit)}</span>
-                    <span className={`hide-sm ${c.estimated ? "text-amber-ink" : ""}`}>{c.unit_cost != null ? formatPrice(locale, c.unit_cost, "EUR", 4) : "—"}</span>
-                    <span className="text-right font-semibold">{c.cost != null ? formatPrice(locale, c.cost) : "—"}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+        {canPlan && mo.status !== "cancelled" && (
+          <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-2">
+            <span>{t.admin.costsMoved}</span>
+            <Link href={`/admin/costs/${mo.id}`} className="inline-flex min-h-11 items-center font-semibold text-ink">{t.admin.openCost} →</Link>
+          </p>
         )}
 
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
@@ -413,17 +373,6 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
               )}
             </Card>
 
-            {canPlan && (
-              <Card title={d.invoices} id="invoices-h">
-                {invoices.length === 0 && <Empty>{d.noInvoices}</Empty>}
-                {invoices.map((i) => (
-                  <div key={i.id} className="flex flex-wrap justify-between gap-2 text-sm">
-                    <span>{i.invoice_number} · {formatDate(locale, i.invoice_date)}</span>
-                    <span className="font-semibold">{formatPrice(locale, i.amount, i.currency)}</span>
-                  </div>
-                ))}
-              </Card>
-            )}
           </div>
         </div>
       </div>

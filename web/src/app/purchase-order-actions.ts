@@ -63,8 +63,8 @@ export async function savePurchaseOrder(_: ActionState, fd: FormData): Promise<A
   const { user, t } = await getSession();
   const id = str(fd, "po_id");
   try {
-    await q(user.id, "update purchase_orders set expected_on = $2::date, location_id = $3, notes = $4 where id = $1",
-      [id, str(fd, "expected_on"), str(fd, "location_id"), str(fd, "notes")]);
+    await q(user.id, "update purchase_orders set location_id = $2, notes = $3 where id = $1",
+      [id, str(fd, "location_id"), str(fd, "notes")]);
   } catch (e) {
     return { error: errorText(e) };
   }
