@@ -10,7 +10,7 @@ import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
 import { addOrderLine, createProductionFromLine, linkOrderLineFormula, openOrderInvoice, removeOrderLine, saveOrder, setOrderStatus } from "@/app/actions";
 import { loadBoard, loadTemplates } from "@/lib/tasks";
 import { TaskBoard } from "@/components/tasks/board";
-import { ConfirmFinalPayment, ConfirmFirstPayment } from "@/components/tasks/payment-dialog";
+import { CancelPayment, ConfirmFinalPayment, ConfirmFirstPayment } from "@/components/tasks/payment-dialog";
 import { supabaseConfigured } from "@/lib/supabase/server";
 
 type Overview = { id: string; code: string; status: string; requested_date: string | null; client: string; client_id: string };
@@ -136,6 +136,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   // Orders paid before the task manager get their board with Confirm first payment too
   const showFirstPayment = isAdmin && !board && ["unpaid", "confirmed", "in_production", "ready"].includes(o.status);
   const showFinalPayment = isAdmin && twoPayments && paid && !c?.balance_received_on;
+  // A payment confirmed by mistake (the database also refuses it once the order is sent to production)
+  const showCancelPayment = isAdmin && o.status === "confirmed" && !!c?.deposit_received_on && !invoices.some((x) => x.status === "issued");
   const invoiceButton = (purpose: OrderInvoice["purpose"], label: string) => {
     const inv = invoiceOf(purpose);
     return (
@@ -316,6 +318,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
               {twoPayments && paid && !c?.balance_received_on && <p className="m-0 text-xs text-ink-2">{H.finalInvoiceAfter}</p>}
               {o.status === "confirmed" && <p className="m-0 text-sm text-ink-2">{d.productionSteps}</p>}
               {o.status === "ready" && <p className="m-0 text-sm text-ink-2">{d.balanceWarning}</p>}
+              {showCancelPayment && <CancelPayment orderId={o.id} T={T} />}
               {next.map((s) => (
                 <ActionForm key={s} action={setOrderStatus} submitLabel={o.status === "unpaid" && s === "confirmed" ? d.confirmPayment : d.toStatus[s as "confirmed"]} resetOnSuccess={false}>
                   <input type="hidden" name="order_id" value={o.id} />

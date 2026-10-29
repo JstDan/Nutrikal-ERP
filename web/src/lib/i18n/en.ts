@@ -1371,6 +1371,12 @@ export const en = {
       confirm: "Confirm",
       confirmed: "Payment confirmed. The tasks are created.",
       finalConfirmed: "Final payment confirmed.",
+      cancelPayment: "Cancel the payment",
+      cancelTitle: "Cancel the payment",
+      cancelNote: "For a payment confirmed by mistake. The order goes back to “Awaiting payment” (proforma): the payment dates and the advance are cleared, the draft invoices and the order's tasks are deleted. Not possible once an invoice is issued or the order has been sent to production.",
+      cancelReason: "Reason (saved as a note on the client)",
+      cancelConfirm: "Cancel the payment",
+      paymentCancelled: "The payment is cancelled. The order awaits payment.",
       finalNote: "Admin confirms the balance once it is received.",
     },
     header: {

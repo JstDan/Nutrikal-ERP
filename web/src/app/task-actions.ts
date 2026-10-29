@@ -143,3 +143,16 @@ export async function confirmFinalPayment(_: ActionState, fd: FormData): Promise
   revalidatePath("/", "layout");
   return { ok: true, message: t.tasks.payment.finalConfirmed };
 }
+
+/** Admin: cancels a payment confirmed by mistake; the order is unpaid again and its task files are removed from Storage. */
+export async function cancelOrderPayment(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    const [row] = await q<{ files: string[] | null }>(user.id, "select cancel_order_payment($1, $2) as files", [uuid(fd.get("order_id")), text(fd.get("reason"))]);
+    for (const path of row?.files ?? []) await removeFile(TASK_BUCKET, path);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: t.tasks.payment.paymentCancelled };
+}
