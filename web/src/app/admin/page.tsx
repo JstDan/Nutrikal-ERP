@@ -5,6 +5,7 @@ import { period } from "@/lib/accounting";
 import { fmt, formatDate, formatNumber, formatPrice } from "@/lib/i18n";
 import { Card, Chip, Empty, PageHeader } from "@/components/ui";
 import { moTone } from "@/lib/status";
+import { DashboardParts, Part, Tiles, type DashboardData } from "@/components/admin-dashboard";
 
 type Row = {
   id: string; code: string; status: string; produced_on: string | null; planned_date: string | null;
@@ -16,7 +17,7 @@ type Row = {
 
 const GRID = "md:grid-cols-[minmax(0,1.6fr)_80px_110px_110px] lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_80px_110px_110px_80px] xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_80px_100px_100px_110px_100px_80px]";
 
-/** Admin only: production costs per batch, with the margin against the order's sales price. */
+/** Admin only: money, sales, stock, purchases and production costs per batch (margin against the order's sales price). */
 export default async function AdminDashboard({ searchParams }: PageProps<"/admin">) {
   const { user, locale, t } = await requireRole("admin");
   const A = t.admin;
@@ -31,6 +32,7 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
        from admin_production_costs($1, $2, $3)`,
     [from, to, withOpen],
   );
+  const dash = (await q<{ d: DashboardData }>(user.id, "select admin_dashboard($1, $2) as d", [from, to]))[0].d;
   const done = rows.filter((r) => r.is_actual);
   const open = rows.filter((r) => !r.is_actual);
 
@@ -100,6 +102,11 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={A.title} subtitle={A.subtitle} />
+      <nav aria-label={A.sections} className="flex flex-wrap gap-2">
+        {([["money", A.tabMoney], ["sales", A.tabSales], ["stock", A.tabStock], ["purchases", A.tabPurchases], ["costs", A.tabCosts]] as const).map(([id, label]) => (
+          <a key={id} href={`#${id}`} className="btn btn-outline">{label}</a>
+        ))}
+      </nav>
       <Card>
         <form method="get" className="flex flex-wrap items-end gap-4">
           <label className="field min-w-0 flex-[1_1_160px]"><span>{A.from}</span><input name="from" type="date" defaultValue={from} required className="input" /></label>
@@ -111,18 +118,15 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
           </label>
           <button type="submit" className="btn btn-outline">{A.show}</button>
         </form>
+        <p className="m-0 text-xs text-ink-2">{A.periodNote}</p>
       </Card>
 
-      <section aria-label={A.costsTitle} className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        {tiles.map((x) => (
-          <div key={x.label} className="card flex min-w-0 flex-col gap-1 p-4 sm:p-5">
-            <span className="text-xs font-semibold tracking-[1px] uppercase text-ink-2">{x.label}</span>
-            <span className="text-lg font-extrabold break-words sm:text-2xl">{x.value}</span>
-          </div>
-        ))}
-      </section>
+      <DashboardParts d={dash} locale={locale} t={t} />
 
-      <Card title={A.costsTitle} id="costs-h">
+      <Part id="costs" title={A.costsTitle}>
+      <Tiles label={A.costsTitle} items={tiles} />
+
+      <Card title={A.batches} id="costs-list-h">
         <p className="m-0 text-sm text-ink-2">{A.costsNote} {A.marginNote}</p>
         {done.length === 0 ? <Empty>{A.noCompleted}</Empty> : list(done)}
       </Card>
@@ -133,6 +137,7 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
           {open.length === 0 ? <Empty>{A.noOpen}</Empty> : list(open)}
         </Card>
       )}
+      </Part>
     </div>
   );
 }

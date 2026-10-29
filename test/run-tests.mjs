@@ -773,6 +773,24 @@ await ok('admin dashboard: completed batches in the period with actual cost, ope
   eq(rows.every((r) => r.status !== 'cancelled' && r.status !== 'simulation'), true, 'no cancelled or simulations');
   eq((await as('admin', `select * from admin_production_costs('2000-01-01', '2000-01-02', false)`)).length, 0, 'empty period');
 });
+await ok('admin dashboard figures: money, sales, stock and purchases', async () => {
+  const { d } = await one('admin', `select admin_dashboard('2000-01-01', '2100-01-01') as d`);
+  for (const k of ['money', 'sales', 'stock', 'purchases']) eq(typeof d[k], 'object', k);
+  eq(Array.isArray(d.money.open) && Array.isArray(d.sales.top_clients) && Array.isArray(d.stock.low) && Array.isArray(d.purchases.open), true, 'lists');
+  eq(Number(d.stock.value) > 0, true, 'stock value');
+});
+await ok('the admin dashboard is refused to sales (even with the price flag) and production', async () => {
+  await db.query('update profiles set can_see_purchase_prices = true where id = $1', [U.sales]);
+  try {
+    for (const user of ['sales', 'production']) {
+      let refused = false;
+      try { await as(user, `select admin_dashboard('2000-01-01', '2100-01-01')`); } catch (e) { refused = /not allowed/i.test(e.message); }
+      eq(refused, true, user);
+    }
+  } finally {
+    await db.query('update profiles set can_see_purchase_prices = false where id = $1', [U.sales]);
+  }
+});
 await fails('production cannot open the admin dashboard costs', () =>
   as('production', `select * from admin_production_costs('2000-01-01', '2100-01-01')`), 'not allowed');
 

@@ -13,7 +13,7 @@ import {
 } from "@/app/purchase-order-actions";
 
 type Po = {
-  id: string; code: string; status: "draft" | "sent" | "cancelled"; order_date: string; expected_on: string | null;
+  id: string; code: string; status: "draft" | "sent" | "cancelled"; order_date: string;
   location_id: string | null; location: string | null; currency: string; notes: string | null; sent_at: string | null;
   supplier: string; supplier_address: string | null; supplier_country: string | null; supplier_vat: string | null;
   supplier_contact: string | null; supplier_email: string | null; supplier_phone: string | null;
@@ -37,7 +37,7 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
   const data = await withUser(user.id, async (tx) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
     const po = (await tx.query<Po>(
-      `select o.id, o.code, o.status, o.order_date::text, o.expected_on::text, o.location_id, l.name as location, o.currency, o.notes,
+      `select o.id, o.code, o.status, o.order_date::text, o.location_id, l.name as location, o.currency, o.notes,
               o.sent_at::text, s.name as supplier, s.address as supplier_address, s.country_code as supplier_country,
               s.vat_number as supplier_vat, s.contact_name as supplier_contact, s.email::text as supplier_email, s.phone as supplier_phone
          from purchase_orders o join suppliers s on s.id = o.supplier_id left join locations l on l.id = o.location_id
@@ -74,8 +74,7 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
     return {
       fileName: `${po.code}-${l}.pdf`,
       title: D.title,
-      meta: [`${D.number} ${po.code}`, `${D.date}: ${formatDate(l, po.order_date)}`,
-        ...(po.expected_on ? [`${D.expected}: ${formatDate(l, po.expected_on)}`] : [])],
+      meta: [`${D.number} ${po.code}`, `${D.date}: ${formatDate(l, po.order_date)}`],
       seller: {
         heading: D.supplier,
         lines: [po.supplier, [po.supplier_address, po.supplier_country].filter(Boolean).join(", "),
@@ -200,7 +199,7 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
             {editable && edit ? (
               <ActionForm action={savePurchaseOrder} submitLabel={t.common.save} resetOnSuccess={false}>
                 <input type="hidden" name="po_id" value={po.id} />
-                <label className="field"><span>{P.expectedOn}</span><input name="expected_on" type="date" defaultValue={po.expected_on ?? ""} className="input" /></label>
+                <Fact label={P.date}>{formatDate(locale, po.order_date)}</Fact>
                 <label className="field"><span>{P.location}</span>
                   <select name="location_id" defaultValue={po.location_id ?? ""} className="input">
                     <option value="">—</option>
@@ -211,7 +210,7 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
               </ActionForm>
             ) : (
               <div className="grid grid-cols-1 gap-3">
-                <Fact label={P.expectedOn}>{formatDate(locale, po.expected_on)}</Fact>
+                <Fact label={P.date}>{formatDate(locale, po.order_date)}</Fact>
                 <Fact label={P.location}>{po.location ?? "—"}</Fact>
                 {po.notes && <Fact label={P.notes}><span className="whitespace-pre-line">{po.notes}</span></Fact>}
               </div>
