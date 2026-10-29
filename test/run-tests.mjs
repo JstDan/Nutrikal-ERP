@@ -752,6 +752,29 @@ await ok('batch cost: consumed lots at their cost + production invoice; per pack
 });
 await fails('production cannot see batch costs', () => as('production', 'select * from mo_cost($1)', [mo.id]), 'not allowed');
 await fails('sales without the price flag cannot see batch costs', () => as('sales', 'select * from mo_costs($1)', [mo.id]), 'not allowed');
+await ok('batch costs are for admin only, even for sales with the price flag', async () => {
+  await db.query('update profiles set can_see_purchase_prices = true where id = $1', [U.sales]);
+  try {
+    let refused = 0;
+    for (const sql of ['select * from mo_cost($1)', 'select * from mo_costs($1)']) {
+      try { await as('sales', sql, [mo.id]); } catch (e) { if (/not allowed/i.test(e.message)) refused++; }
+    }
+    try { await as('sales', `select * from admin_production_costs('2000-01-01', '2100-01-01')`); } catch (e) { if (/not allowed/i.test(e.message)) refused++; }
+    eq(refused, 3, 'refused');
+  } finally {
+    await db.query('update profiles set can_see_purchase_prices = false where id = $1', [U.sales]);
+  }
+});
+await ok('admin dashboard: completed batches in the period with actual cost, open ones planned', async () => {
+  const rows = await as('admin', `select * from admin_production_costs('2000-01-01', '2100-01-01')`);
+  const done = rows.find((r) => r.id === mo.id);
+  eq(done?.is_actual, true, 'completed batch listed');
+  eq(Number(done.total_cost), 2874.25, 'total'); eq(Number(done.cost_per_pack), 2.9033, 'per pack');
+  eq(rows.every((r) => r.status !== 'cancelled' && r.status !== 'simulation'), true, 'no cancelled or simulations');
+  eq((await as('admin', `select * from admin_production_costs('2000-01-01', '2000-01-02', false)`)).length, 0, 'empty period');
+});
+await fails('production cannot open the admin dashboard costs', () =>
+  as('production', `select * from admin_production_costs('2000-01-01', '2100-01-01')`), 'not allowed');
 
 console.log('\nNumbering and audit');
 await fails('production cannot draw invoice numbers', () => as('production', `select next_number('invoice')`), 'not allowed');
