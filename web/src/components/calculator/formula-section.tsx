@@ -11,12 +11,13 @@ import { fmt } from "@/lib/i18n";
 import { Chip } from "@/components/ui";
 import type { SectionProps } from "./client-sections";
 import { Field, InfoLine, Notice, NumberField, RemoveButton, Section, SummaryBox, useCalcText } from "./kit";
+import { AddMaterialPrompt } from "./add-material-dialog";
 import { SearchCombobox } from "./search-combobox";
 
 const materialText = (m: RawMaterial) => m.name;
 const materialKey = (m: RawMaterial) => m.id;
 
-/** Search-as-you-type list of active raw materials. */
+/** Search-as-you-type list of active raw materials; one that is not there can be added with its price. */
 function MaterialSearch({ materials, inFormula, onPick, id = "material-search", label, invalid }: {
   materials: RawMaterial[]; inFormula: Set<string>; onPick: (m: RawMaterial) => void; id?: string; label?: string; invalid?: boolean;
 }) {
@@ -32,11 +33,13 @@ function MaterialSearch({ materials, inFormula, onPick, id = "material-search", 
       listLabel={label ?? t.formula.search}
       invalid={invalid}
       noResults={t.formula.noResults}
+      emptyAction={(query) => <AddMaterialPrompt query={query} onAdded={onPick} />}
       renderOption={(m) => (
         <>
           <span className="min-w-0 flex-1 break-words">
             {m.name}
             {inFormula.has(m.id) && <span className="ml-2 text-xs font-semibold text-amber-ink">({t.formula.duplicate})</span>}
+            {m.manual && <span className="block text-xs font-semibold text-amber-ink">{t.formula.manualChip}</span>}
           </span>
           {m.regulatory_note && <span title={t.formula.regulatory} aria-label={t.formula.regulatory} className="text-amber">⚠</span>}
           <span className="shrink-0 text-ink-2 tabular-nums">{eur(m.price_eur_per_kg)}/kg</span>
@@ -145,6 +148,7 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
           {form.rows.map((row, i) => {
             const dup = !!row.materialId && (idCounts.get(row.materialId) ?? 0) > 1;
             const removed = !!row.materialId && byId.get(row.materialId)?.active === false;
+            const manual = !!row.materialId && !!byId.get(row.materialId)?.manual;
             const amountInvalid = row.amount.trim() !== "" && (parseNum(row.amount) ?? 0) <= 0;
             const unmatched = isUnmatched(row);
             const check = needsCheck(row);
@@ -157,12 +161,13 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
               >
                 <div className="min-w-0 [grid-area:name]">
                   <div className="text-sm font-semibold break-words">{row.name}</div>
-                  {(row.regulatoryNote || dup || removed || unmatched || check) && (
+                  {(row.regulatoryNote || dup || removed || manual || unmatched || check) && (
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       {unmatched && <Chip tone="red">{t.formula.notInList}</Chip>}
                       {check && <Chip tone="amber">{t.formula.checkMatch}</Chip>}
                       {dup && <Chip tone="amber">{t.formula.duplicate}</Chip>}
                       {removed && <Chip tone="red">{t.formula.removedFromList}</Chip>}
+                      {manual && <Chip tone="amber">{t.formula.manualChip}</Chip>}
                     </div>
                   )}
                   {check && row.catalogName && (

@@ -85,7 +85,7 @@ export async function runSync(userId: string | null, source: SyncSource, s: Mess
   let stats: Record<string, number>;
   try {
     const sheet = (await downloadSheet(await sheetUrl(userId), s, false)) as Record<string, unknown>[];
-    const current = (await rows<RawMaterial>(userId, "select id, name, price_eur_per_kg, regulatory_note, active, updated_at::text from calc_raw_materials"))
+    const current = (await rows<RawMaterial>(userId, "select id, name, price_eur_per_kg, regulatory_note, active, updated_at::text from calc_raw_materials where not manual"))
       .map((m) => ({ ...m, price_eur_per_kg: Number(m.price_eur_per_kg) }));
     const preview = buildImportPreview(sheet, current);
     if (!preview) throw new Error(s.noColumns);

@@ -87,6 +87,7 @@ function Materials({ materials, settings, lastSync, isAdmin }: Props) {
             </div>
             <span className="col-span-2 md:col-span-1">
               {x.active ? <Chip tone="green">{m.statusActive}</Chip> : <Chip>{m.statusRemoved}</Chip>}
+              {x.manual && <span className="ml-1.5"><Chip tone="amber">{t.formula.manualChip}</Chip></span>}
             </span>
           </div>
         ))}
