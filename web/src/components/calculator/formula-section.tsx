@@ -60,6 +60,8 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
   const capsule = isCapsule(form.productType);
   const rowsError = errorFor("rows");
   const capsError = errorFor("capsulesPerDose");
+  const waste = parseNum(form.waste);
+  const wasteError = (form.waste.trim() !== "" && (waste === null || waste < 0 || waste > 100)) || errorFor("waste") ? t.validation.waste : undefined;
 
   const active = useMemo(() => materials.filter((m) => m.active), [materials]);
   const byId = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
@@ -274,6 +276,19 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
         </div>
       )}
       {overfill && <Notice tone="warning">⚠ {t.formula.overfill}</Notice>}
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <Field label={t.formula.waste} htmlFor={fieldId("waste")} error={wasteError} hint={t.formula.wasteHint} className="col-span-2">
+          <NumberField
+            id={fieldId("waste")}
+            value={form.waste}
+            onChange={(v) => setForm((f) => ({ ...f, waste: v }))}
+            onBlur={() => touch("waste")}
+            invalid={!!wasteError}
+            suffix="%"
+          />
+        </Field>
+      </div>
 
       <SummaryBox>
         <InfoLine label={t.formula.totalDoseWeight} value={`${num(result.doseWeightMg, 3)} mg · ${num(doseG, 4)} g`} />

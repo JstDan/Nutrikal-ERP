@@ -1052,6 +1052,17 @@ await ok('the next offer with that material finds the stock item by itself; a ca
   eq(`${f3.product_format}:${f3.s}${f3.serving_unit}:${f3.servings_per_pack}`, 'powder:5g:30', 'powder serving');
   eq((await one('sales', 'select count(*)::int as n from formula_lines l join formula_versions v on v.id = l.version_id where v.formula_id = $1', [f3.id])).n, 1, 'catalog line');
 });
+await ok('the recipe takes the waste typed on the offer (empty = none); offers from before the field keep 5 %', async () => {
+  const offer = async (waste) => (await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, data, results)
+                                                      values ('NK-T-W' || $2, 'Client', '', $1::jsonb, '{}') returning id`,
+    [JSON.stringify({ ...JSON.parse(rcpRows(10)), waste }), waste || 'empty'])).id;
+  const overages = async (id) => (await as('sales', `select l.overage_pct::float as o from formula_lines l join formula_versions v on v.id = l.version_id
+                                                       join formulas f on f.id = v.formula_id where f.calc_offer_id = $1`, [id])).map((r) => r.o).join();
+  eq(await overages(await offer('2,5')), '2.5,2.5', 'typed');
+  eq(await overages(await offer('')), '0,0', 'empty');
+  eq(await overages(await offer('150')), '100,100', 'at most 100');
+  eq(Number((await one('sales', 'select calc_offer_waste($1::jsonb) as w', [rcpRows(10)])).w), 5, 'older offer');
+});
 await ok('production sees no recipes, links or waiting ingredients', async () => {
   for (const table of ['formulas', 'formula_lines', 'formula_pending_lines', 'calc_material_items']) {
     eq((await as('production', `select * from ${table}`)).length, 0, table);

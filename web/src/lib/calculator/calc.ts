@@ -4,13 +4,6 @@ import { ALUMINIUM_LID_EUR, GLASS_JAR_EUR, catalogTiersFor } from './catalogCaps
 import { isCapsule, type CatalogTier, type DoseUnit, type FixedCosts, type OfferForm, type ProductType } from './types';
 import { parseNum, parsePositiveInt } from './numbers';
 
-/**
- * Raw-material waste in production, % (owner, Oct 2026): the raw materials cost and the quantities to buy
- * include it; the dose and fill weights do not. Same default as the waste of a recipe made from an offer.
- */
-export const WASTE_PCT = 5;
-const WASTE = new Decimal(1).add(new Decimal(WASTE_PCT).div(100));
-
 /** Custom formula, capsule jar with an aluminium lid: extra cost per unit, EUR (owner, Oct 2026). */
 export const ALUMINIUM_LID_COST_EUR = 0.2;
 
@@ -62,6 +55,11 @@ export interface CalcInput {
   quantityPerUnit: number | null;
   numberOfUnits: number | null;
   markupPct: number | null;
+  /**
+   * Raw-material waste in production, %, typed on the offer (owner, Oct 2026): the raw materials cost and the
+   * quantities to buy include it; the dose and fill weights do not. The recipe made from the offer gets it too.
+   */
+  wastePct: number | null;
   addVat: boolean;
   vatRatePct: number | null;
   /** Discount % applied to the product line only (extra items are never discounted). */
@@ -137,8 +135,9 @@ const ZERO = new Decimal(0);
 export function calculate(input: CalcInput): CalcResult {
   const capsule = isCapsule(input.productType);
 
+  const waste = new Decimal(1).add(Decimal.max(0, new Decimal(input.wastePct ?? 0)).div(100));
   const rowKg = input.rows.map((r) => (r.amount && r.amount > 0 ? new Decimal(r.amount).mul(UNIT_TO_KG[r.unit]) : ZERO));
-  const rowCost = rowKg.map((kg, i) => kg.mul(WASTE).mul(input.rows[i].pricePerKg || 0));
+  const rowCost = rowKg.map((kg, i) => kg.mul(waste).mul(input.rows[i].pricePerKg || 0));
   const doseKg = rowKg.reduce((a, b) => a.add(b), ZERO);
   const costPerDose = rowCost.reduce((a, b) => a.add(b), ZERO);
   const doseWeightMg = doseKg.mul(1e6);
@@ -202,7 +201,7 @@ export function calculate(input: CalcInput): CalcResult {
 
   const orderDoses = dosesPerUnit && units ? dosesPerUnit.mul(units) : ZERO;
   const requirements = input.rows.map((r, i) => {
-    const totalKg = rowKg[i].mul(WASTE).mul(orderDoses);
+    const totalKg = rowKg[i].mul(waste).mul(orderDoses);
     return { name: r.name, totalKg: totalKg.toNumber(), cost: totalKg.mul(r.pricePerKg || 0).toNumber() };
   });
 
@@ -257,6 +256,8 @@ export function calcInputFromForm(form: OfferForm, fixedCosts: FixedCosts): Calc
     quantityPerUnit: parsePositiveInt(form.quantityPerUnit),
     numberOfUnits: parsePositiveInt(form.numberOfUnits),
     markupPct: parseNum(form.markup),
+    // A catalog product's price comes from its steps: no raw materials, no waste.
+    wastePct: catalog ? null : parseNum(form.waste ?? ''),
     // VAT is no longer added: offers are always excl. VAT (older saved offers included).
     addVat: false,
     vatRatePct: null,

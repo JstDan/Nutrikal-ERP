@@ -7,6 +7,9 @@ export const DRAFT_KEY = 'nk.calc.draft';
 /** The draft as last opened, started or saved – tells whether the draft has unsaved changes. */
 export const BASELINE_KEY = 'nk.calc.draftBaseline';
 
+/** Waste of the offers saved before the waste field (it was added automatically, Oct 2026): their prices stay. */
+export const LEGACY_WASTE_PCT = '5';
+
 /** Earlier default payment terms – unsaved drafts that still carry one get the current default. */
 const OLD_DEFAULT_TERMS = [
   '100% advance payment',
@@ -35,6 +38,7 @@ export function createEmptyForm(settings: Settings, offerNo: string): OfferForm 
     quantityPerUnit: '',
     numberOfUnits: '',
     markup: String(settings.default_markup),
+    waste: '',
     addVat: false,
     vatRate: String(settings.default_vat_rate),
     discount: '0',
@@ -69,6 +73,7 @@ export function normalizeForm(f: OfferForm, settings: Settings): OfferForm {
     // Tiers from before the markup field existed come back with an empty markup.
     priceTiers: (f.priceTiers ?? []).map((x) => ({ key: x.key, qty: x.qty ?? '', markup: x.markup ?? '' })),
     discount: f.discount ?? '0',
+    waste: f.waste ?? (f.id ? LEGACY_WASTE_PCT : ''),
     paymentTerms:
       f.paymentTerms == null || (!f.id && OLD_DEFAULT_TERMS.includes(f.paymentTerms))
         ? settings.default_payment_terms
