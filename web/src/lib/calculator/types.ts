@@ -215,7 +215,10 @@ export interface OfferForm {
   quantityPerUnit: string;
   numberOfUnits: string;
   markup: string;
-  /** Raw-material waste in production, %, typed by Sales (empty = none). Saved offers from before the field: 5. */
+  /**
+   * Raw-material waste in production, %. Offers carry none (owner, 29 Oct 2026: the extra raw material goes into
+   * extra units, invoiced on the final proforma): new offers ''; offers saved before keep the 5 % they were priced with.
+   */
   waste: string;
   addVat: boolean;
   vatRate: string;

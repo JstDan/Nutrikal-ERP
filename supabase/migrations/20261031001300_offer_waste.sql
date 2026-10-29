@@ -1,10 +1,10 @@
 -- =====================================================================
 -- Nutrikal ERP + CRM — the waste of a recipe comes from its offer
--- The calculator no longer adds 5 % waste by itself (owner, 29 Oct 2026):
--- Sales types the raw-material waste % on the offer (data.waste; empty =
--- none). The recipe made from the offer gets it on every ingredient.
--- Offers saved before the field keep their 5 %, so their prices and
--- recipes do not change.
+-- The calculator no longer adds 5 % waste (owner, 29 Oct 2026): the extra
+-- raw material is filled into extra units, which the client pays on the
+-- final proforma (20261031001400). New offers save data.waste = '' (no
+-- waste), and the recipe made from them has 0 % overage. Offers saved
+-- before keep their 5 %, so their prices and recipes do not change.
 -- =====================================================================
 
 -- The waste % typed on an offer (data of calc_offers): 5 for offers from before the field, 0 when empty

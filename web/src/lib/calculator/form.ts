@@ -7,7 +7,7 @@ export const DRAFT_KEY = 'nk.calc.draft';
 /** The draft as last opened, started or saved – tells whether the draft has unsaved changes. */
 export const BASELINE_KEY = 'nk.calc.draftBaseline';
 
-/** Waste of the offers saved before the waste field (it was added automatically, Oct 2026): their prices stay. */
+/** Waste of the offers saved before 29 Oct 2026 (it was added automatically): their prices stay. New offers have none. */
 export const LEGACY_WASTE_PCT = '5';
 
 /** Earlier default payment terms – unsaved drafts that still carry one get the current default. */
