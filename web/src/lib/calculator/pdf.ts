@@ -1,10 +1,11 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { fmt } from '@/lib/i18n';
-import { hasAluminiumCap, unitPriceFor, type CalcResult, type OfferLine } from './calc';
+import { hasAluminiumCap, type CalcResult, type OfferLine } from './calc';
 import { formatDate, formatNumber, parseNum } from './numbers';
-import { catalogTiersFor, hasAluminiumLid, offerCapsules, offerServings } from './catalogCapsules';
+import { hasAluminiumLid, offerCapsules, offerServings } from './catalogCapsules';
 import { productName } from './offerRecord';
+import { offerPriceOptions } from './priceOptions';
 import { CAPSULE_SIZES, isCapsule, type OfferForm, type ProductType, type Settings } from './types';
 
 // Client-facing offer, laid out after Nutrikal's offer template (Poppins, two brand marks, customer /
@@ -185,16 +186,7 @@ export function toPdfModel(
 
   // Sales prices table: the offer quantity plus any price tiers; one column per quantity, no totals.
   // A catalog product shows its own price steps instead of tiers built from a markup.
-  const tierPrices = catalog
-    ? catalogTiersFor(form).map((x) => ({ units: x.min_qty, price: x.price }))
-    : (form.priceTiers ?? []).flatMap((tier) => {
-        const qty = parseNum(tier.qty);
-        const markup = parseNum(tier.markup);
-        return qty && qty > 0 && markup !== null ? [{ units: qty, price: unitPriceFor(result.unitCost, markup) }] : [];
-      });
-  const allPrices = [...(units > 0 && result.complete ? [{ units, price: result.unitPrice }] : []), ...tierPrices]
-    .filter((p, i, all) => all.findIndex((q) => q.units === p.units) === i)
-    .sort((a, b) => a.units - b.units);
+  const allPrices = offerPriceOptions(form, result);
   const salesPrices = allPrices.length ? allPrices : null;
 
   const r = form.receiver;

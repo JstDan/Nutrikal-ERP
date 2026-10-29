@@ -1070,6 +1070,36 @@ const calcOffer = (no, clientId, units, price) => one('sales',
   `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, data, results)
    values ($1, 'Client', '', $2, $1 || ' product', jsonb_build_object('numberOfUnits', $3::text), jsonb_build_object('unitPrice', $4::numeric))
    returning id`, [no, clientId, units, price]);
+await ok('an order takes another price level of the offer: a tier at its own markup, a catalog price step', async () => {
+  const tiered = await one('sales',
+    `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, data, results)
+     values ('NK-T-TIER', 'Client', '', $1, 'Tiered', $2::jsonb, $3::jsonb) returning id`,
+    [client.id, JSON.stringify({ numberOfUnits: '1000', priceTiers: [{ key: 'a', qty: '3 000', markup: '25' }, { key: 'b', qty: '5000', markup: '20,5' }] }),
+     JSON.stringify({ unitPrice: 3.2, unitCost: 2.4567 })]);
+  const levels = (qty, price) => JSON.stringify([{ offer_id: tiered.id, quantity: qty, unit_price: price }]);
+  // 2.4567 × 1.205 = 2.96032… → 2.96
+  const r = await one('sales', `select create_order_from_calc_offers($1, $2, '[]', 20, null, null, null, $3::jsonb) as id`,
+    [client.id, [tiered.id], levels(5000, 2.96)]);
+  const l = await one('sales', 'select quantity, unit_price::float as price from sales_order_lines where order_id = $1', [r.id]);
+  eq(`${l.quantity}x${l.price}`, '5000x2.96', 'tier');
+  await as('sales', `update sales_orders set status = 'cancelled' where id = $1`, [r.id]);
+  let refused = '';
+  try { await as('sales', `select create_order_from_calc_offers($1, $2, '[]', 20, null, null, null, $3::jsonb)`, [client.id, [tiered.id], levels(5000, 1)]); }
+  catch (e) { refused = e.message; }
+  eq(/no price level/.test(refused), true, 'a price that is not the tier\'s is refused');
+  refused = '';
+  try { await as('sales', `select create_order_from_calc_offers($1, $2, '[]', 20, null, null, null, $3::jsonb)`, [client.id, [tiered.id], levels(4000, 3)]); }
+  catch (e) { refused = e.message; }
+  eq(/no price level/.test(refused), true, 'a quantity that is not a tier is refused');
+  const cat = await one('sales',
+    `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, data, results)
+     values ('NK-T-CATT', 'Client', '', $1, 'Catalog', $2::jsonb, '{"unitPrice": 4.1}'::jsonb) returning id`,
+    [client.id, JSON.stringify({ mode: 'catalog', numberOfUnits: '1000', catalog: { tiers: [{ min_qty: 1000, price: 4.1 }, { min_qty: 3000, price: 3.6 }] } })]);
+  const rc = await one('sales', `select create_order_from_calc_offers($1, $2, '[]', 20, null, null, null, $3::jsonb) as id`,
+    [client.id, [cat.id], JSON.stringify([{ offer_id: cat.id, quantity: 3000, unit_price: 3.6 }])]);
+  eq(`${(await one('sales', 'select quantity from sales_order_lines where order_id = $1', [rc.id])).quantity}`, '3000', 'catalog step');
+  await as('sales', `update sales_orders set status = 'cancelled' where id = $1`, [rc.id]);
+});
 await ok('sales creates an unpaid order from two calculator offers and services', async () => {
   calcA = await calcOffer('NK-T-OA', client.id, 1000, 4.5);
   calcB = await calcOffer('NK-T-OB', client.id, 500, 6);
