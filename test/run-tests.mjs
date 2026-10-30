@@ -334,8 +334,6 @@ await ok('a met and an unmet health claim', async () => {
 await fails('sales cannot approve', () => as('sales', 'select approve_formula_version($1)', [v1.id]), 'not allowed');
 await fails('sales cannot approve by changing the status directly', () =>
   as('sales', `update formula_versions set status = 'approved' where id = $1`, [v1.id]), 'only admin');
-await fails('approval without a shelf life is refused', () =>
-  as('admin', 'select approve_formula_version($1)', [v1.id]), 'shelf life');
 await ok('shelf life longer than an ingredient allows is flagged', async () => {
   await as('sales', `update formula_versions set shelf_life_months = 36 where id = $1`, [v1.id]);
   const c = await one('sales', `select shelf_life_exceeds_items, min_item_shelf_life from formula_version_checks where version_id = $1`, [v1.id]);
@@ -1533,7 +1531,6 @@ await ok('setup: a client, a recipe with one raw material and a jar, two unpaid 
   tkVer = await one('admin', 'select id from formula_versions where formula_id = $1', [f.id]);
   await as('admin', `insert into formula_lines (version_id, item_id, amount) values ($1, $2, 1000)`, [tkVer.id, tkItem.id]);
   await as('admin', `insert into formula_packaging (version_id, item_id, qty_per_pack) values ($1, $2, 1)`, [tkVer.id, tkJar.id]);
-  await as('admin', 'update formula_versions set shelf_life_months = 12 where id = $1', [tkVer.id]);
   await as('admin', 'select approve_formula_version($1)', [tkVer.id]);
   const oa = await calcOffer('NK-T-TKA', tkClient.id, 100, 10);
   const ob = await calcOffer('NK-T-TKB', tkClient.id, 100, 10);

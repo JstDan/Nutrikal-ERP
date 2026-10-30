@@ -19,7 +19,7 @@ type Formula = {
   shell: string | null; shell_bg: string | null; calc_offer_id: string | null;
 };
 type Version = {
-  id: string; version: number; status: string; shelf_life_months: number | null; change_note: string | null;
+  id: string; version: number; status: string; change_note: string | null;
   notes: string | null; approved_at: string | null; approver: string | null;
 };
 type Line = {
@@ -29,8 +29,7 @@ type Line = {
 };
 type Pending = { id: string; name: string; amount: string; unit: string; material_id: string | null };
 type Checks = {
-  line_count: number; novel_not_authorised: number; novel_to_review: number; shelf_life_months: number | null;
-  min_item_shelf_life: number | null; shelf_life_exceeds_items: boolean; allergens: string | string[];
+  line_count: number; novel_not_authorised: number; novel_to_review: number; allergens: string | string[];
   is_vegan: boolean | null; is_vegetarian: boolean | null; fill_mg_per_serving: string; fill_mg_per_unit: string | null;
   shell_capacity_mg: string | null;
 };
@@ -68,7 +67,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
         where f.id = $1`, [id])).rows[0];
     if (!formula) return null;
     const versions = (await tx.query<Version>(
-      `select v.id, v.version, v.status, v.shelf_life_months, v.change_note, v.notes, v.approved_at::text, pr.full_name as approver
+      `select v.id, v.version, v.status, v.change_note, v.notes, v.approved_at::text, pr.full_name as approver
          from formula_versions v left join profiles pr on pr.id = v.approved_by
         where v.formula_id = $1 order by v.version desc`, [id])).rows;
     const wanted = Number(sp.v);
@@ -91,7 +90,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
           "select id, offer_no, data ->> 'numberOfUnits' as units from calc_offers where id = $1", [formula.calc_offer_id])).rows[0] ?? null
       : null;
     const checks = (await tx.query<Checks>(
-      `select line_count, novel_not_authorised, novel_to_review, shelf_life_months, min_item_shelf_life, shelf_life_exceeds_items,
+      `select line_count, novel_not_authorised, novel_to_review,
               allergens::text[] as allergens, is_vegan, is_vegetarian, fill_mg_per_serving::text, fill_mg_per_unit::text,
               shell_capacity_mg::text
          from formula_version_checks where version_id = $1`, [current.id])).rows[0];
@@ -132,11 +131,6 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
       : c.novel_to_review > 0
         ? { tone: "amber", text: fmt(d.novelReview, { n: c.novel_to_review }) }
         : { tone: "green", text: d.novelOk },
-    c.shelf_life_months == null
-      ? { tone: "amber", text: d.shelfLifeMissing }
-      : c.shelf_life_exceeds_items
-        ? { tone: "amber", text: fmt(d.shelfLifeExceeds, { v: c.shelf_life_months, m: c.min_item_shelf_life ?? "" }) }
-        : { tone: "green", text: fmt(d.shelfLifeOk, { v: c.shelf_life_months }) },
     { tone: "neutral", text: fmt(d.fillPerServing, { mg: formatMass(locale, c.fill_mg_per_serving) }) },
   ];
   if (fillPerUnit != null) {
@@ -498,15 +492,11 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
               <ActionForm action={saveFormulaVersion} submitLabel={t.common.save} resetOnSuccess={false}>
                 <input type="hidden" name="version_id" value={v.id} />
                 <input type="hidden" name="formula_id" value={f.id} />
-                <label className="field"><span>{d.shelfLife}</span>
-                  <input name="shelf_life_months" type="number" min={1} step={1} defaultValue={v.shelf_life_months ?? ""} className="input" />
-                </label>
                 <label className="field"><span>{d.changeNote}</span><input name="change_note" defaultValue={v.change_note ?? ""} className="input" /></label>
                 <label className="field"><span>{d.notes}</span><textarea name="notes" defaultValue={v.notes ?? ""} className="input" /></label>
               </ActionForm>
             ) : (
               <div className="grid grid-cols-1 gap-3">
-                <Fact label={d.shelfLife}>{v.shelf_life_months ?? "—"}</Fact>
                 <Fact label={d.changeNote}>{v.change_note ?? "—"}</Fact>
                 {v.notes && <Fact label={d.notes}><span className="whitespace-pre-line">{v.notes}</span></Fact>}
               </div>
