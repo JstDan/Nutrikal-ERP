@@ -302,8 +302,8 @@ export async function saveFormulaVersion(_: ActionState, fd: FormData): Promise<
   try {
     await q(
       user.id,
-      "update formula_versions set shelf_life_months = $2, change_note = $3, notes = $4 where id = $1",
-      [str(fd, "version_id"), num(fd, "shelf_life_months"), str(fd, "change_note"), str(fd, "notes")],
+      "update formula_versions set change_note = $2, notes = $3 where id = $1",
+      [str(fd, "version_id"), str(fd, "change_note"), str(fd, "notes")],
     );
   } catch (e) {
     return { error: errorText(e) };
