@@ -1080,6 +1080,12 @@ await ok('a recipe from an offer gets the capsule 00, the jar and the lid of the
   eq(await pack('NK-T-PK4', { productType: 'capsules_glass', catalogPackaging: true, lid: 'plastic' }), 'PK-CAPS-00|PK-JAR-GL,PK-LID-AL', 'catalog glass jar: aluminium lid');
   eq(await pack('NK-T-PK5', { productType: 'powder', quantityPerUnit: '30' }), 'null|null', 'powder');
 });
+await ok('the basic capsule, jar and lid are shown in the recipe only: not needed as materials', async () => {
+  const v = await one('admin', `select v.id from formula_versions v join formulas f on f.id = v.formula_id
+    join calc_offers o on o.id = f.calc_offer_id where o.offer_no = 'NK-T-PK1'`);
+  const kinds = (await db.query('select kind from version_required_materials($1, 100) order by kind', [v.id])).rows.map((r) => r.kind);
+  eq(kinds.join(), 'ingredient,ingredient', 'ingredients only');
+});
 await ok('production sees no recipes, links or waiting ingredients', async () => {
   for (const table of ['formulas', 'formula_lines', 'formula_pending_lines', 'calc_material_items']) {
     eq((await as('production', `select * from ${table}`)).length, 0, table);
