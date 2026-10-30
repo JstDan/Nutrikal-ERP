@@ -1111,6 +1111,14 @@ await ok('an order takes another price level of the offer: a tier at its own mar
   eq(`${(await one('sales', 'select quantity from sales_order_lines where order_id = $1', [rc.id])).quantity}`, '3000', 'catalog step');
   await as('sales', `update sales_orders set status = 'cancelled' where id = $1`, [rc.id]);
 });
+await ok('the offer of a cancelled order can be deleted; the order line keeps its product and price', async () => {
+  const line = await one('sales', `select l.id, l.order_id from sales_order_lines l join calc_offers co on co.id = l.calc_offer_id
+    where co.offer_no = 'NK-T-CATT'`);
+  eq((await as('sales', `delete from calc_offers where offer_no = 'NK-T-CATT' returning id`)).length, 1, 'deleted');
+  const l = await one('sales', 'select kind, calc_offer_id, description, quantity, unit_price::float as price from sales_order_lines where id = $1', [line.id]);
+  eq(`${l.kind}:${l.calc_offer_id}:${l.description}:${l.quantity}x${l.price}`, 'calc_offer:null:Catalog:3000x3.6', 'line kept');
+  eq((await one('sales', 'select status from sales_orders where id = $1', [line.order_id])).status, 'cancelled', 'order');
+});
 await ok('sales creates an unpaid order from two calculator offers and services', async () => {
   calcA = await calcOffer('NK-T-OA', client.id, 1000, 4.5);
   calcB = await calcOffer('NK-T-OB', client.id, 500, 6);
@@ -1123,6 +1131,8 @@ await ok('sales creates an unpaid order from two calculator offers and services'
   const ov = await one('sales', 'select line_count, total_packs from sales_order_overview where id = $1', [r.id]);
   eq(ov.line_count, 2, 'products only'); eq(ov.total_packs, 1500, 'packs');
 });
+await fails('the offer of an order that is not cancelled cannot be deleted', () =>
+  as('admin', `delete from calc_offers where offer_no = 'NK-T-OA'`), 'can no longer be changed');
 await fails('an offer already in an order cannot be ordered again', () =>
   as('sales', 'select create_order_from_calc_offers($1, $2)', [client.id, [calcA.id]]), 'already in an order');
 await fails('an offer of another client cannot be ordered', async () => {
