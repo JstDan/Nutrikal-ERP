@@ -325,6 +325,7 @@ export const en = {
     supplier: "Supplier",
     date: "Created on",
     lines: "Lines",
+    materials: "Materials and quantities",
     total: "Total",
     status: "Status",
     statuses: { draft: "Draft", sent: "Sent", cancelled: "Cancelled" },
