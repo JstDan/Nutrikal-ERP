@@ -172,7 +172,8 @@ await ok('a sales user with the price flag can see prices', async () => {
   await db.query('update profiles set can_see_purchase_prices = false where id = $1', [U.sales]);
 });
 await ok('production sees items but no prices or suppliers', async () => {
-  eq((await as('production', 'select id from items')).length, 1, 'items');
+  // the test item + the basic packaging items of the migrations
+  eq((await as('production', 'select id from items')).length, (await as('admin', 'select id from items')).length, 'items');
   eq((await as('production', 'select * from supplier_prices')).length, 0, 'prices');
   eq((await as('production', 'select * from suppliers')).length, 0, 'suppliers');
 });
@@ -1052,16 +1053,32 @@ await ok('the next offer with that material finds the stock item by itself; a ca
   eq(`${f3.product_format}:${f3.s}${f3.serving_unit}:${f3.servings_per_pack}`, 'powder:5g:30', 'powder serving');
   eq((await one('sales', 'select count(*)::int as n from formula_lines l join formula_versions v on v.id = l.version_id where v.formula_id = $1', [f3.id])).n, 1, 'catalog line');
 });
-await ok('the recipe takes the waste typed on the offer (empty = none); offers from before the field keep 5 %', async () => {
+await ok('a recipe from an offer starts at 5 % overage, whatever waste the offer carries', async () => {
   const offer = async (waste) => (await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, data, results)
                                                       values ('NK-T-W' || $2, 'Client', '', $1::jsonb, '{}') returning id`,
     [JSON.stringify({ ...JSON.parse(rcpRows(10)), waste }), waste || 'empty'])).id;
   const overages = async (id) => (await as('sales', `select l.overage_pct::float as o from formula_lines l join formula_versions v on v.id = l.version_id
                                                        join formulas f on f.id = v.formula_id where f.calc_offer_id = $1`, [id])).map((r) => r.o).join();
-  eq(await overages(await offer('2,5')), '2.5,2.5', 'typed');
-  eq(await overages(await offer('')), '0,0', 'empty');
-  eq(await overages(await offer('150')), '100,100', 'at most 100');
+  eq(await overages(await offer('2,5')), '5,5', 'typed');
+  eq(await overages(await offer('')), '5,5', 'empty (new offers)');
+  eq(await overages(await offer('150')), '5,5', 'any');
   eq(Number((await one('sales', 'select calc_offer_waste($1::jsonb) as w', [rcpRows(10)])).w), 5, 'older offer');
+});
+await ok('a recipe from an offer gets the capsule 00, the jar and the lid of the offer', async () => {
+  const pack = async (no, extra) => {
+    const o = await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, data, results)
+                                  values ($1, 'Client', '', $2::jsonb, '{}') returning id`, [no, JSON.stringify({ ...JSON.parse(rcpRows(10)), ...extra })]);
+    const r = await one('sales', `select s.sku as shell,
+        (select string_agg(i.sku, ',' order by i.sku) from formula_packaging fp join items i on i.id = fp.item_id
+          join formula_versions v on v.id = fp.version_id where v.formula_id = f.id) as pack
+      from formulas f left join items s on s.id = f.shell_item_id where f.calc_offer_id = $1`, [o.id]);
+    return `${r.shell}|${r.pack}`;
+  };
+  eq(await pack('NK-T-PK1', { productType: 'capsules_plastic', lid: 'plastic' }), 'PK-CAPS-00|PK-JAR-PL,PK-LID-PL', 'plastic jar, plastic lid');
+  eq(await pack('NK-T-PK2', { productType: 'capsules_plastic', lid: 'aluminium' }), 'PK-CAPS-00|PK-JAR-PL,PK-LID-AL', 'aluminium lid');
+  eq(await pack('NK-T-PK3', { productType: 'capsules_glass', lid: 'plastic' }), 'PK-CAPS-00|PK-JAR-GL,PK-LID-PL', 'glass jar');
+  eq(await pack('NK-T-PK4', { productType: 'capsules_glass', catalogPackaging: true, lid: 'plastic' }), 'PK-CAPS-00|PK-JAR-GL,PK-LID-AL', 'catalog glass jar: aluminium lid');
+  eq(await pack('NK-T-PK5', { productType: 'powder', quantityPerUnit: '30' }), 'null|null', 'powder');
 });
 await ok('production sees no recipes, links or waiting ingredients', async () => {
   for (const table of ['formulas', 'formula_lines', 'formula_pending_lines', 'calc_material_items']) {
