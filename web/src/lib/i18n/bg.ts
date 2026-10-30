@@ -327,6 +327,7 @@ export const bg: Dict = {
     supplier: "Доставчик",
     date: "Дата на създаване",
     lines: "Редове",
+    materials: "Суровини и количества",
     total: "Общо",
     status: "Статус",
     statuses: { draft: "Чернова", sent: "Изпратена", cancelled: "Отказана" },
