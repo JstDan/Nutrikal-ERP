@@ -18,6 +18,8 @@ type Props = {
   settings: Settings;
   userId: string;
   isAdmin: boolean;
+  /** Offers in an order that is not cancelled: fixed, no Delete */
+  inOrder: string[];
 };
 
 /** Offers created in the calculator, listed under Offers: open the summary, edit in the calculator, download the PDF, delete. */
@@ -32,7 +34,7 @@ export function OffersList(props: Props) {
 const GRID =
   "grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[130px_minmax(0,1.4fr)_minmax(0,1fr)_120px] lg:grid-cols-[130px_110px_minmax(0,1.4fr)_minmax(0,1fr)_120px]";
 
-function List({ offers, settings, userId, isAdmin }: Props) {
+function List({ offers, settings, userId, isAdmin, inOrder }: Props) {
   const { t, locale, eur } = useCalcText();
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -114,7 +116,7 @@ function List({ offers, settings, userId, isAdmin }: Props) {
                 <button type="button" onClick={() => pdf(x)} disabled={busy} className={small} aria-label={`${t.results.downloadPdf} ${x.offer_no}`}>
                   {busy ? "…" : t.results.downloadPdf}
                 </button>
-                {(isAdmin || x.created_by === userId) && (
+                {(isAdmin || x.created_by === userId) && !inOrder.includes(x.id) && (
                   <button type="button" onClick={() => setConfirmId(x.id)} disabled={busy} aria-expanded={confirmId === x.id} className={`${small} text-red-ink!`} aria-label={`${t.delete} ${x.offer_no}`}>
                     {t.delete}
                   </button>

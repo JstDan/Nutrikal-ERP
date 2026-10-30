@@ -12,6 +12,13 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
   const [offer, settings] = await Promise.all([loadOffer(user.id, id), loadSettings(user.id)]);
   if (!offer) notFound();
   const recipe = (await q<{ id: string }>(user.id, "select id from formulas where calc_offer_id = $1", [offer.id]))[0];
+  // Offers in an order that is not cancelled cannot be deleted (calc_offers_in_order_guard)
+  const inOrder = (await q<{ id: number }>(
+    user.id,
+    `select 1 as id from sales_order_lines l join sales_orders so on so.id = l.order_id
+      where l.calc_offer_id = $1 and so.status <> 'cancelled' limit 1`,
+    [offer.id],
+  )).length > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -26,7 +33,7 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
         locale={locale}
         offer={offer}
         settings={settings}
-        canDelete={user.role === "admin" || offer.created_by === user.id}
+        canDelete={(user.role === "admin" || offer.created_by === user.id) && !inOrder}
       />
     </div>
   );

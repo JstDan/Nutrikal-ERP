@@ -19,6 +19,12 @@ export default async function OffersPage({ searchParams }: PageProps<"/offers">)
   const status = typeof sp.status === "string" && (STATUSES as readonly string[]).includes(sp.status) ? sp.status : "";
 
   const [calcOffers, settings] = await Promise.all([loadOffers(user.id), loadSettings(user.id)]);
+  // Offers in an order that is not cancelled cannot be deleted (calc_offers_in_order_guard)
+  const inOrder = (await q<{ calc_offer_id: string }>(
+    user.id,
+    `select distinct l.calc_offer_id from sales_order_lines l join sales_orders so on so.id = l.order_id
+      where l.calc_offer_id is not null and so.status <> 'cancelled'`,
+  )).map((r) => r.calc_offer_id);
   const rows = await q<Row>(
     user.id,
     `select o.id, o.code, o.status, o.valid_until::text, c.legal_name as client, c.id as client_id,
@@ -43,7 +49,7 @@ export default async function OffersPage({ searchParams }: PageProps<"/offers">)
         actions={<Link href="/offers/costing" className="btn btn-outline">{t.offers.costing}</Link>}
       />
       {/* Offers are created in the calculator (Create offer), not here */}
-      <OffersList t={t.calc} locale={locale} offers={calcOffers} settings={settings} userId={user.id} isAdmin={user.role === "admin"} />
+      <OffersList t={t.calc} locale={locale} offers={calcOffers} settings={settings} userId={user.id} isAdmin={user.role === "admin"} inOrder={inOrder} />
 
       <h2 className="m-0 text-lg font-bold">{t.offers.formulaOffers}</h2>
       <nav aria-label={t.offers.status} className="flex flex-wrap gap-1">
