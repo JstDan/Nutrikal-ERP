@@ -2626,7 +2626,7 @@ await ok('only the author or admin removes a file', async () => {
 console.log('\nChat');
 const gen = (await one('admin', `select id from chat_channels where name = 'общи'`)).id;
 await ok('people write in a channel; the others see it with the name and as unread', async () => {
-  await as('designer', `insert into chat_messages (channel_id, body) values ($1, 'Етикетът е готов')`, [gen]);
+  await as('designer', `select chat_post($1, 'Етикетът е готов')`, [gen]);
   const m = await as('sales', 'select author, body from chat_feed($1)', [gen]);
   eq(m[0].author, 'Test designer', 'author');
   eq(Number((await one('sales', 'select sum(unread) as n from chat_unread()')).n), 1, 'unread');
@@ -2635,14 +2635,80 @@ await ok('people write in a channel; the others see it with the name and as unre
   eq((await session('accountant', 'select body from chat_feed($1)', [gen])).length, 1, 'accountant reads');
 });
 await fails('nobody writes as someone else', () => as('sales', `insert into chat_messages (channel_id, author_id, body) values ($1, $2, 'x')`, [gen, U.admin]));
-await fails('the accountant does not post', () => session('accountant', `insert into chat_messages (channel_id, body) values ($1, 'x')`, [gen]));
 await fails('only admin creates channels', () => as('sales', `insert into chat_channels (name) values ('x')`));
-await fails('production does not post', () => as('production', `insert into chat_messages (channel_id, body) values ($1, 'x')`, [gen]));
 await ok('production sees no channels and no messages', async () => {
-  eq((await as('production', 'select id from chat_channels')).length, 0, 'channels');
   eq((await as('production', 'select id from chat_messages')).length, 0, 'messages');
   eq((await as('production', 'select id from chat_feed($1)', [gen])).length, 0, 'feed');
-  eq((await as('production', 'select channel_id from chat_unread()')).length, 0, 'unread');
+});
+
+console.log('\nChat: partner, direct messages, attachments, mentions, reactions');
+const partnerCh = (await one('admin', `select id from chat_channels where kind = 'external'`)).id;
+await ok('the partner sees only the partner channel and can write there', async () => {
+  const l = await as('production', 'select id, kind from chat_channel_list()');
+  eq(l.length, 1, 'one channel'); eq(l[0].kind, 'external', 'partner');
+  await as('production', `select chat_post($1, 'Партидата е готова')`, [partnerCh]);
+  eq((await as('sales', 'select body from chat_feed($1)', [partnerCh])).length, 1, 'team reads it');
+});
+await fails('the partner does not write in a team channel', () => as('production', `select chat_post($1, 'x')`, [gen]), 'not allowed');
+await fails('the partner does not write directly into the table', () => as('production', `insert into chat_messages (channel_id, body) values ($1, 'x')`, [gen]));
+await fails('the partner opens no direct messages', () => as('production', 'select chat_open_direct($1)', [U.sales]), 'not allowed');
+await fails('nobody opens a direct conversation with the partner', () => as('sales', 'select chat_open_direct($1)', [U.production]), 'not allowed');
+await ok('the partner does not list the team as people, except in the partner channel; the team finds no partner elsewhere', async () => {
+  eq((await as('production', 'select id from chat_people()')).length, 0, 'no list');
+  eq((await as('sales', 'select id from chat_people()')).some((x) => x.id === U.production), false, 'not for direct');
+  eq((await as('sales', 'select id from chat_people($1)', [partnerCh])).some((x) => x.id === U.production), true, 'in the channel');
+});
+let dm;
+await ok('a direct conversation is the same both ways and shows the other name', async () => {
+  dm = (await one('sales', 'select chat_open_direct($1) as id', [U.designer])).id;
+  eq((await one('designer', 'select chat_open_direct($1) as id', [U.sales])).id, dm, 'same');
+  await as('sales', `select chat_post($1, 'Лично')`, [dm]);
+  eq((await as('designer', 'select body from chat_feed($1)', [dm])).length, 1, 'other side');
+  eq((await as('sales', `select name from chat_channel_list() where kind = 'direct'`))[0].name, 'Test designer', 'name');
+});
+await ok('nobody else reads a direct conversation: not admin, not the accountant, not the partner', async () => {
+  eq((await as('admin', 'select id from chat_feed($1)', [dm])).length, 0, 'admin feed');
+  eq((await as('admin', 'select id from chat_messages where channel_id = $1', [dm])).length, 0, 'admin table');
+  eq((await session('accountant', 'select id from chat_feed($1)', [dm])).length, 0, 'accountant');
+  eq((await as('production', 'select id from chat_feed($1)', [dm])).length, 0, 'partner');
+  eq((await as('admin', 'select id from chat_search($1)', ['Лично'])).length, 0, 'search');
+});
+await fails('an outsider does not post into a direct conversation', () => as('bookkeeper', `select chat_post($1, 'x')`, [dm]), 'not allowed');
+await ok('the accountant writes in the chat, and only there', async () => {
+  await as('accountant', `select chat_post($1, 'От счетоводството')`, [gen]);
+  eq((await as('sales', 'select body from chat_feed($1)', [gen])).some((x) => x.body === 'От счетоводството'), true, 'posted');
+});
+await ok('the accountant writing does not open anything else', async () => {
+  eq((await as('accountant', `update clients set legal_name = 'x' where id = $1 returning id`, [client.id])).length, 0, 'clients');
+  eq((await as('accountant', 'select id from invoices')).length, 0, 'invoices');
+});
+await fails('the accountant issues nothing outside read-only either', () => as('accountant', 'select create_client_invoice($1, 20, null, null, null, null)', [client.id]), 'not allowed');
+await ok('a mention notifies a person of the channel, not an outsider of a direct conversation', async () => {
+  await as('sales', `select chat_post($1, 'Виж това', $2::uuid[])`, [gen, [U.designer]]);
+  const n = await as('designer', `select params, link from notifications where kind = 'chat_mention'`);
+  eq(n.length, 1, 'told'); eq(n[0].params.channel, 'общи', 'channel');
+  await as('sales', `select chat_post($1, 'Тайно', $2::uuid[])`, [dm, [U.admin]]);
+  eq((await as('admin', `select id from notifications where kind = 'chat_mention'`)).length, 0, 'not told');
+});
+await ok('reactions: once each, shown with the count', async () => {
+  const m = (await one('sales', `select id from chat_feed($1) order by created_at desc limit 1`, [gen])).id;
+  await as('sales', `insert into chat_reactions (message_id, emoji) values ($1, ':capsule:')`, [m]);
+  await as('designer', `insert into chat_reactions (message_id, emoji) values ($1, ':capsule:')`, [m]);
+  const f = (await as('sales', 'select id, reactions from chat_feed($1)', [gen])).find((x) => x.id === m);
+  eq(f.reactions[0].n, 2, 'count'); eq(f.reactions[0].mine, true, 'mine');
+});
+await fails('no reaction as someone else', () => as('sales', `insert into chat_reactions (message_id, user_id, emoji) select id, $1, 'x' from chat_messages limit 1`, [U.admin]));
+await ok('attachments follow the channel', async () => {
+  const m = (await one('sales', `select chat_post($1, 'Файл') as id`, [dm])).id;
+  const a = (await one('sales', `insert into chat_attachments (message_id, file_name, storage_path) values ($1, 'a.pdf', 'x/y/z') returning id`, [m])).id;
+  eq((await as('designer', 'select id from chat_attachments where id = $1', [a])).length, 1, 'member');
+  eq((await as('admin', 'select id from chat_attachments where id = $1', [a])).length, 0, 'outsider');
+  eq((await as('production', 'select id from chat_attachments where id = $1', [a])).length, 0, 'partner');
+});
+await ok('only the author edits a message', async () => {
+  const m = (await one('sales', `select chat_post($1, 'Първо') as id`, [gen])).id;
+  eq((await as('admin', `update chat_messages set body = 'x' where id = $1 returning id`, [m])).length, 0, 'admin');
+  eq((await as('sales', `update chat_messages set body = 'Второ', edited_at = now() where id = $1 returning id`, [m])).length, 1, 'author');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -230,4 +230,4 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
 @page { margin: 12mm; }
 
 /* Read-only accounts: nothing to press. The database refuses it anyway. */
-[data-readonly] main form:not([method="get"]) button[type="submit"] { display: none; }
+[data-readonly] main form:not([method="get"]):not([data-chat]) button[type="submit"] { display: none; }

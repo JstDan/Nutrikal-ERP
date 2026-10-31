@@ -20,13 +20,14 @@ export async function AppShell({ children }: { children: ReactNode }) {
   const savedTheme = (await cookies()).get(THEME_COOKIE)?.value;
   const soon = (n: number) => `${t.common.phase} ${n}`;
 
-  const unread = isProduction ? 0 : Number((await q<{ n: string | null }>(user.id, "select sum(unread) as n from chat_unread()"))[0]?.n ?? 0);
+  const unread = Number((await q<{ n: string | null }>(user.id, "select sum(unread) as n from chat_unread()"))[0]?.n ?? 0);
 
   const groups: NavGroup[] = isProduction
     ? [
         {
           items: [
             { href: "/factory", label: t.nav.today },
+            { href: "/chat", label: t.nav.chat, badge: unread },
             { href: "/factory/orders", label: t.nav.productionOrders },
             { href: "/factory/stock", label: t.nav.stock },
             { href: "/factory/deliveries", label: t.nav.incoming },

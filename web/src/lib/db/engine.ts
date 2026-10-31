@@ -148,20 +148,20 @@ function readOnlyError(e: unknown): never {
 }
 
 /** Run fn inside a transaction as the given user (RLS applies). */
-export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>, writable = false): Promise<T> {
   if (usesSupabaseDb()) {
     // The user and the role in the same round trip as "begin" (values inlined: the id is checked to be a uuid)
     if (!/^[0-9a-f-]{36}$/i.test(userId)) throw new Error("Invalid user");
     const claims = JSON.stringify({ sub: userId, role: "authenticated" }).replaceAll("'", "''");
     return pgTransaction((c) => fn(c as unknown as Tx),
       `select set_config('request.jwt.claim.sub', '${userId}', true), set_config('request.jwt.claims', '${claims}', true);` +
-      "set local role authenticated; select public.app_session_start();").catch(readOnlyError);
+      `set local role authenticated;${writable ? "" : " select public.app_session_start();"}`).catch(readOnlyError);
   }
   const db = await getDb();
   return db.transaction(async (tx) => {
     await tx.query("select set_config('request.jwt.claim.sub', $1, true)", [userId]);
     await tx.exec("set local role authenticated");
-    await tx.query("select public.app_session_start()");
+    if (!writable) await tx.query("select public.app_session_start()");
     return fn(tx);
   }).catch(readOnlyError) as T;
 }
@@ -169,6 +169,14 @@ export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): P
 /** Convenience: rows of one query as the user. */
 export async function q<T>(userId: string, sql: string, params: unknown[] = []): Promise<T[]> {
   return withUser(userId, async (tx) => (await tx.query<T>(sql, params)).rows);
+}
+
+/**
+ * The chat: never read only, so the accountant can write in it. Outside a read-only transaction
+ * has_role() gives the accountant nothing, so only the rules of the chat tables let this through.
+ */
+export async function qChat<T>(userId: string, sql: string, params: unknown[] = []): Promise<T[]> {
+  return withUser(userId, async (tx) => (await tx.query<T>(sql, params)).rows, true);
 }
 
 /**
