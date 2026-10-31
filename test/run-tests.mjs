@@ -197,7 +197,7 @@ await ok('transfer quarantine → raw materials store', async () => {
   await as('production', 'select transfer_stock($1, $2, $3, 100)', [lot.id, L['PF-QUAR'], L['PF-RM']]);
 });
 await fails('consumption of a lot admin put in quarantine is blocked', async () => {
-  await as('admin', `select set_lot_qc_status($1, 'quarantine')`, [lot.id]);
+  await as('admin', `select set_lot_qc_status($1, 'quarantine', 'Under review')`, [lot.id]);
   await as('production', `select post_stock_movement('consumption', $1, $2, 10)`, [lot.id, L['PF-RM']]);
 }, 'not released');
 await fails('production cannot release a lot (Admin only)', () =>
@@ -643,14 +643,14 @@ await fails('a usage more than 5 % away from the reservation needs a reason', as
   reservedBefore = await reserved();
   await as('production', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb)`, [mo.id, consumption()]);
 }, 'enter a reason');
-await ok('production reports the batch: lots used, finished lot released in PF-QUAR', async () => {
+await ok('production reports the batch: lots used, finished lot in quarantine in PF-QUAR', async () => {
   const before = Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [lot.id])).q);
   const items = await as('admin', 'select item_id from mo_material_requirements($1)', [mo.id]);
   const reasons = JSON.stringify(items.map(i => ({ item_id: i.item_id, reason: 'Less needed' })));
   const r = await one('production', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb, $3::jsonb) as lot`,
                       [mo.id, consumption(), reasons]);
   const fg = await one('admin', 'select l.lot_number, l.qc_status, i.type, i.sku from lots l join items i on i.id = l.item_id where l.id = $1', [r.lot]);
-  eq(fg.lot_number, 'B-24001', 'batch number'); eq(fg.qc_status, 'released', 'QC'); eq(fg.type, 'finished_good', 'item type');
+  eq(fg.lot_number, 'B-24001', 'batch number'); eq(fg.qc_status, 'quarantine', 'QC'); eq(fg.type, 'finished_good', 'item type');
   eq(fg.sku, 'FG-NK-P-0001', 'finished goods item');
   eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1 and location_id = $2', [r.lot, L['PF-QUAR']])).q), 990, 'made in quarantine');
   eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [lot.id])).q), before - 22.5, 'magnesium used');
@@ -1765,7 +1765,7 @@ await ok('QC release of the batch ticks "QC освобождаване"', async 
   eq(await tkStatus(tkA, 'qc_released'), 'done', 'released on receipt');
   await as('admin', `select set_lot_qc_status($1, 'released')`, [lot.id]);
   eq(await tkStatus(tkA, 'qc_released'), 'done', 'released');
-  await as('admin', `select set_lot_qc_status($1, 'quarantine')`, [lot.id]);
+  await as('admin', `select set_lot_qc_status($1, 'quarantine', 'Under review')`, [lot.id]);
   eq(await tkStatus(tkA, 'qc_released'), 'todo', 'back in quarantine');
 });
 await ok('the final invoice: every line less the advance invoiced', async () => {
@@ -2077,6 +2077,117 @@ await ok('acting as a user is logged; admin and the developer can read the log',
 });
 await fails('nobody writes the impersonation log directly',
   () => as('admin', 'insert into impersonation_log (developer_id, target_id) values ($1, $2)', [U.developer, U.admin]));
+
+console.log('\nBatch release, dispatch, traceability, credit and debit notes');
+const fgLot = (await one('admin', 'select finished_lot_id as id from manufacturing_orders where id = $1', [mo.id])).id;
+const qcDispatch = () => JSON.stringify([{ lot_id: fgLot, location_id: L['PF-QUAR'], quantity: 500 }]);
+await fails('blocking a lot needs a reason', () =>
+  as('admin', `select set_lot_qc_status($1, 'rejected')`, [lot.id]), 'reason');
+await fails('sales cannot block a lot', () =>
+  as('sales', `select set_lot_qc_status($1, 'rejected', 'x')`, [lot.id]), 'not allowed');
+await fails('a finished batch is not released without its COA', () =>
+  as('admin', `select set_lot_qc_status($1, 'released')`, [fgLot]), 'certificate of analysis');
+await fails('a batch without any shelf life needs an expiry date', async () => {
+  const p = await one('sales', `insert into projects (client_id, name) values ($1, 'No shelf life') returning id`, [client2.id]);
+  const f = await one('sales', `insert into formulas (name, product_format, serving_size, servings_per_pack) values ('No shelf', 'capsule', 1, 30) returning id`);
+  const v = await one('sales', 'select id from formula_versions where formula_id = $1', [f.id]);
+  await as('sales', 'insert into formula_lines (version_id, item_id, amount) values ($1, $2, 100)', [v.id, mcc.id]);
+  await as('admin', 'select approve_formula_version($1)', [v.id]);
+  const l = await recv(mcc.id, 5, 'PF-RM');
+  const m = await one('admin', 'insert into manufacturing_orders (formula_version_id, project_id, quantity) values ($1, $2, 10) returning id', [v.id, p.id]);
+  await as('admin', 'select schedule_mo($1, current_date + 1)', [m.id]);
+  await as('admin', 'select release_mo($1)', [m.id]);
+  await as('production', 'select start_production($1)', [m.id]);
+  globalThis.nkExpiry = { m: m.id, usage: JSON.stringify([{ lot_id: l, location_id: L['PF-RM'], quantity: 0.03 }]) };
+  await as('production', `select complete_production($1, 'B-EXP', 10, current_date, $2::jsonb)`, [m.id, globalThis.nkExpiry.usage]);
+}, 'expiry date');
+await ok('the expiry date entered with the batch is used; the batch waits in quarantine', async () => {
+  const { m, usage } = globalThis.nkExpiry;
+  const r = await one('production', `select complete_production($1, 'B-EXP', 10, current_date, $2::jsonb, '[]'::jsonb, date '2028-05-31') as lot`, [m, usage]);
+  const l = await one('admin', 'select expires_on::text, qc_status from lots where id = $1', [r.lot]);
+  eq(l.expires_on, '2028-05-31', 'expiry'); eq(l.qc_status, 'quarantine', 'status');
+});
+await fails('an order cannot be set to dispatched without its batches', async () => {
+  await as('sales', `update sales_orders set status = 'ready' where id = $1`, [order.id]);
+  await as('sales', `update sales_orders set status = 'dispatched' where id = $1`, [order.id]);
+}, 'delivery note');
+await fails('sales cannot dispatch', () =>
+  as('sales', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, qcDispatch()]), 'not allowed');
+await fails('no dispatch before the balance is paid', () =>
+  as('admin', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, qcDispatch()]), 'balance must be paid');
+await fails('a batch in quarantine cannot be dispatched', async () => {
+  await as('admin', 'update sales_orders set balance_received_on = current_date where id = $1', [order.id]);
+  await as('admin', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, qcDispatch()]);
+}, 'not released');
+await ok('with its COA the batch is released and dispatched: delivery note, stock out, order and project move on', async () => {
+  await as('admin', 'select set_lot_coa($1, $2)', [fgLot, `${fgLot}/00000000-0000-4000-8000-000000000001.pdf`]);
+  await as('admin', `select set_lot_qc_status($1, 'released', 'COA OK')`, [fgLot]);
+  const r = await one('admin', `select dispatch_order($1, current_date, $2::jsonb, 'DHL', 'T-1') as id`, [order.id, qcDispatch()]);
+  eq((await one('sales', 'select code from dispatches where id = $1', [r.id])).code, 'DN-00001', 'delivery note');
+  eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [fgLot])).q), 490, 'left');
+  eq((await one('sales', 'select status from sales_orders where id = $1', [order.id])).status, 'dispatched', 'order');
+  eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'completed', 'project');
+});
+await ok('the rest can follow on a second delivery note', async () => {
+  const lines = JSON.stringify([{ lot_id: fgLot, location_id: L['PF-QUAR'], quantity: 90 }]);
+  await as('admin', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, lines]);
+  eq((await as('sales', 'select id from dispatches where order_id = $1', [order.id])).length, 2, 'notes');
+});
+await fails('no more than is in stock', () =>
+  as('admin', 'select dispatch_order($1, current_date, $2::jsonb)',
+     [order.id, JSON.stringify([{ lot_id: fgLot, location_id: L['PF-QUAR'], quantity: 401 }])]), 'insufficient');
+await fails('a batch of another order is refused', () =>
+  as('admin', 'select dispatch_order($1, current_date, $2::jsonb)',
+     [order.id, JSON.stringify([{ lot_id: lot.id, location_id: L['PF-RM'], quantity: 1 }])]), 'does not belong');
+await ok('trace back: a finished batch lists the raw material lots', async () => {
+  const rows = await as('sales', 'select lot_id, mo_code, quantity from trace_back($1)', [fgLot]);
+  const m = rows.find(r => r.lot_id === lot.id);
+  eq(m.mo_code, mo.code, 'order'); eq(Number(m.quantity), 22.5, 'quantity');
+});
+await ok('trace forward: a raw material lot leads to the batch, its stock and the client', async () => {
+  const f = (await as('sales', 'select lot_number, on_hand from trace_forward($1)', [lot.id])).find(r => r.lot_number === 'B-24001');
+  eq(Number(f.on_hand), 400, 'left of the batch');
+  const c = await as('sales', 'select client, quantity from trace_clients($1)', [lot.id]);
+  eq(c.length, 2, 'two delivery notes'); eq(c[0].client, 'Acme Wellness GmbH', 'client');
+  eq(c.reduce((a, r) => a + Number(r.quantity), 0), 590, 'sent');
+});
+await fails('production cannot read traceability', () => as('production', 'select * from trace_clients($1)', [lot.id]), 'not allowed');
+await ok('production sees no delivery notes', async () => {
+  eq((await as('production', 'select * from dispatches')).length, 0, 'notes');
+  eq((await as('production', 'select * from dispatch_lines')).length, 0, 'lines');
+});
+const orig = await one('admin', `select id, total, order_id from invoices where kind = 'invoice' and status = 'issued' and total > 0 order by number limit 1`);
+let credit;
+await fails('a credit note needs a reason', () => as('sales', `select create_invoice_note($1, 'credit_note', ' ')`, [orig.id]), 'reason');
+await fails('a note is only against an issued invoice', async () => {
+  const c = await one('sales', `select create_invoice_note($1, 'debit_note', 'more') as id`, [orig.id]);
+  await as('sales', `select create_invoice_note($1, 'credit_note', 'x')`, [c.id]);
+}, 'issued invoice');
+await ok('a credit note starts from the lines of the invoice and keeps the link', async () => {
+  credit = (await one('sales', `select create_invoice_note($1, 'credit_note', 'Wrong quantity') as id`, [orig.id])).id;
+  const n = await one('sales', 'select corrects_invoice_id, reason, status from invoices where id = $1', [credit]);
+  eq(n.corrects_invoice_id, orig.id, 'link'); eq(n.status, 'draft', 'draft');
+  eq((await as('sales', 'select id from invoice_lines where invoice_id = $1', [credit])).length > 0, true, 'lines');
+});
+await fails('a credit note cannot exceed the invoice', async () => {
+  const l = await one('sales', 'select id from invoice_lines where invoice_id = $1 order by sort_order limit 1', [credit]);
+  await as('sales', `select save_note_line($1, $2, 'Correction', 1, 99999999)`, [credit, l.id]);
+  await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [credit]);
+}, 'more than what is left');
+await ok('a corrected credit note takes the next number of the shared series and locks', async () => {
+  const lines = await as('sales', 'select id from invoice_lines where invoice_id = $1 order by sort_order', [credit]);
+  await as('sales', `select save_note_line($1, $2, 'Correction', 1, 1)`, [credit, lines[0].id]);
+  for (const l of lines.slice(1)) await as('sales', 'select delete_note_line($1, $2)', [credit, l.id]);
+  const next = (await one('sales', 'select next_invoice_number() as n')).n;
+  eq((await one('sales', 'select issue_invoice($1, next_invoice_number(), current_date) as n', [credit])).n, next, 'number');
+  eq((await one('sales', 'select total from invoices where id = $1', [credit])).total !== null, true, 'total');
+});
+await fails('an issued note cannot be changed', () =>
+  as('sales', `select save_note_line($1, null, 'x', 1, 1)`, [credit]), 'cannot be changed');
+await fails('an invoice itself is not changed through note lines', () =>
+  as('sales', `select save_note_line($1, null, 'x', 1, 1)`, [orig.id]), 'only the lines');
+await fails('production cannot create notes', () =>
+  as('production', `select create_invoice_note($1, 'credit_note', 'x')`, [orig.id]), 'not allowed');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
