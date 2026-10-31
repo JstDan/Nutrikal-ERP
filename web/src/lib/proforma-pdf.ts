@@ -83,20 +83,42 @@ export async function downloadProformaPdf(model: ProformaPdfModel): Promise<void
   }
   write(m.title.toUpperCase(), R, 16.5, { size: 17, color: WHITE, align: 'right', spacing: 0.9 });
 
-  // Number and dates on a light strip
+  // Number and dates on a light strip: each item at its full width, a new row when the page is full
   let y = 28;
   if (m.meta.length) {
-    doc.setFillColor(...CANVAS);
-    doc.rect(0, 28, pageW, 15, 'F');
-    const step = (R - L) / Math.max(m.meta.length, 1);
-    m.meta.forEach((line, i) => {
+    const items = m.meta.map((line) => {
       const at = line.indexOf(': ');
-      const x = L + step * i;
-      if (at > 0) label(line.slice(0, at), x, 33.5);
+      const head = at > 0 ? line.slice(0, at) : '';
       const value = at > 0 ? line.slice(at + 2) : line;
-      write((doc.splitTextToSize(value, step - 3) as string[])[0], x, 38.5, { bold: true, size: 8.5 });
+      doc.setFont(FONT, 'bold');
+      doc.setFontSize(8.5);
+      const width = doc.getTextWidth(value);
+      doc.setFontSize(7);
+      return { head, value, width: Math.max(width, doc.getTextWidth(head.toUpperCase()) + 2) };
     });
-    y = 43;
+    const rows: (typeof items)[] = [[]];
+    let used = 0;
+    for (const item of items) {
+      if (used > 0 && used + item.width > R - L) {
+        rows.push([]);
+        used = 0;
+      }
+      rows[rows.length - 1].push(item);
+      used += item.width + 9;
+    }
+    const rowH = 10.5;
+    doc.setFillColor(...CANVAS);
+    doc.rect(0, 28, pageW, rows.length * rowH + 4.5, 'F');
+    rows.forEach((row, r) => {
+      let x = L;
+      const top = 33.5 + r * rowH;
+      for (const item of row) {
+        if (item.head) label(item.head, x, top);
+        write(item.value, x, top + 5, { bold: true, size: 8.5 });
+        x += item.width + 9;
+      }
+    });
+    y = 28 + rows.length * rowH + 4.5;
   }
 
   // Supplier / client
