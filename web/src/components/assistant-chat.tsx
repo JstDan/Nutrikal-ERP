@@ -46,6 +46,7 @@ function ProposalCard({ p, locale, A }: { p: ChatProposal; locale: Locale; A: Di
         ))}
       </div>
       <div className="flex flex-col gap-1 text-sm">
+        {!!e.shell_cost_per_pack && <div className="text-ink-2">{fmt(A.proposalShell, { cost: formatPrice(locale, e.shell_cost_per_pack, "EUR", 2) })}</div>}
         {total != null && <div><strong>{fmt(A.proposalCost, { cost: formatPrice(locale, total, "EUR", 2) })}</strong></div>}
         {e.prices_hidden && <div className="text-ink-2">{A.proposalNoPrices}</div>}
         {e.lines_without_price > 0 && !e.prices_hidden && <div className="font-semibold text-amber-ink">{fmt(A.proposalMissingPrices, { n: e.lines_without_price })}</div>}
