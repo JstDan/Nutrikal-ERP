@@ -75,7 +75,7 @@ export default async function Dashboard() {
                 <span className="min-w-0 break-words">{T.groups[g.key]}</span><span>{g.total}</span>
               </h3>
               {g.items.map((x) => (
-                <Link key={x.id} href={x.href} className="flex min-h-11 min-w-0 flex-wrap items-center gap-x-2 border-b border-mist py-1 text-sm text-ink no-underline last:border-0 hover:underline">
+                <Link key={x.id + x.title} href={x.href} className="flex min-h-11 min-w-0 flex-wrap items-center gap-x-2 border-b border-mist py-1 text-sm text-ink no-underline last:border-0 hover:underline">
                   <span className="font-semibold break-words">{x.title}</span><span className="min-w-0 break-words text-ink-2">{x.sub}</span>
                 </Link>
               ))}

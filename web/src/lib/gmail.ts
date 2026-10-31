@@ -1,0 +1,124 @@
+import { asSystem } from "@/lib/db/engine";
+
+// The shared mailbox, read only. Connected once by Admin; the job brings new mail, oldest pages first served
+// by Gmail newest first, a few pages per run. GOOGLE_STUB_URL replaces Google's addresses in tests.
+
+export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const PAGES_PER_RUN = 3;
+const PER_PAGE = 50;
+const MAX_BODY = 20000;
+
+const stub = () => process.env.GOOGLE_STUB_URL?.trim().replace(/\/+$/, "") ?? "";
+const url = (host: string, path: string) => `${stub() || host}${path}`;
+export const googleAuthUrl = () => url("https://accounts.google.com", "/o/oauth2/v2/auth");
+const tokenUrl = () => url("https://oauth2.googleapis.com", "/token");
+const gmailUrl = (path: string) => url("https://gmail.googleapis.com", `/gmail/v1/users/me${path}`);
+
+export const gmailConfigured = () =>
+  !!process.env.GOOGLE_CLIENT_ID?.trim() && !!process.env.GOOGLE_CLIENT_SECRET?.trim() && !!process.env.GMAIL_TOKEN_KEY?.trim();
+
+// ---------------------------------------------------------------- the token, encrypted
+const toBytes = (b64: string) => Uint8Array.from(Buffer.from(b64, "base64"));
+const key = () => crypto.subtle.importKey("raw", toBytes(process.env.GMAIL_TOKEN_KEY!.trim()), "AES-GCM", false, ["encrypt", "decrypt"]);
+
+export async function encryptToken(token: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await key(), new TextEncoder().encode(token));
+  return `${Buffer.from(iv).toString("base64")}.${Buffer.from(data).toString("base64")}`;
+}
+
+async function decryptToken(value: string): Promise<string> {
+  const [iv, data] = value.split(".");
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: toBytes(iv) }, await key(), toBytes(data)));
+}
+
+// ---------------------------------------------------------------- Google
+async function token(body: Record<string, string>): Promise<{ access_token: string; refresh_token?: string }> {
+  const res = await fetch(tokenUrl(), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID!.trim(), client_secret: process.env.GOOGLE_CLIENT_SECRET!.trim(), ...body }),
+  });
+  if (!res.ok) throw new Error(`Google token ${res.status}`);
+  return res.json();
+}
+
+export const exchangeCode = (code: string, redirectUri: string) =>
+  token({ code, redirect_uri: redirectUri, grant_type: "authorization_code" });
+
+async function gmail<T>(access: string, path: string): Promise<T> {
+  const res = await fetch(gmailUrl(path), { headers: { Authorization: `Bearer ${access}` } });
+  if (!res.ok) throw new Error(`Gmail ${res.status}`);
+  return res.json();
+}
+
+export const mailboxAddress = async (access: string) => (await gmail<{ emailAddress: string }>(access, "/profile")).emailAddress;
+
+// ---------------------------------------------------------------- one message
+type Part = { mimeType?: string; filename?: string; body?: { data?: string }; parts?: Part[]; headers?: { name: string; value: string }[] };
+type Message = { id: string; threadId: string; labelIds?: string[]; snippet?: string; internalDate: string; payload: Part };
+
+const decode = (data: string) => Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+const walk = (p: Part): Part[] => [p, ...(p.parts ?? []).flatMap(walk)];
+const addresses = (v: string | undefined) => (v?.match(/[^\s<>,;"']+@[^\s<>,;"']+/g) ?? []).map((a) => a.toLowerCase());
+
+/** The text of a message; HTML only when there is no plain text. Marked up text is reduced to plain text. */
+export function bodyOf(payload: Part): string {
+  const parts = walk(payload);
+  const plain = parts.find((p) => p.mimeType === "text/plain" && p.body?.data);
+  if (plain) return decode(plain.body!.data!);
+  const html = parts.find((p) => p.mimeType === "text/html" && p.body?.data);
+  if (!html) return "";
+  return decode(html.body!.data!)
+    .replace(/<(style|script)[\s\S]*?<\/\1>/gi, " ").replace(/<(br|\/p|\/div|\/tr)[^>]*>/gi, "\n").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n\n").trim();
+}
+
+export function toMail(m: Message) {
+  const header = (name: string) => m.payload.headers?.find((h) => h.name.toLowerCase() === name)?.value;
+  const from = addresses(header("from"));
+  const to = [...addresses(header("to")), ...addresses(header("cc"))];
+  const out = !!m.labelIds?.includes("SENT");
+  return {
+    gmail_id: m.id, thread_id: m.threadId, direction: out ? "out" : "in",
+    from_address: header("from") ?? "", to_addresses: [header("to"), header("cc")].filter(Boolean).join(", ") || null,
+    parties: out ? to : from,
+    subject: header("subject") ?? null, snippet: m.snippet ?? null, body: bodyOf(m.payload).slice(0, MAX_BODY),
+    has_attachments: walk(m.payload).some((p) => !!p.filename),
+    sent_at: new Date(Number(m.internalDate)).toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------- the job
+type State = { email: string; token_enc: string; sync_from: string; page_token: string | null };
+
+/** A few pages of mail; the next run goes on. When a pass is finished, the next one starts from a day before it. */
+export async function syncGmail(): Promise<{ connected: boolean; saved: number }> {
+  const [state] = await asSystem<State>("select email, token_enc, sync_from::text, page_token from gmail_job_state()");
+  if (!state) return { connected: false, saved: 0 };
+  let saved = 0;
+  let pageToken = state.page_token;
+  try {
+    const { access_token } = await token({ refresh_token: await decryptToken(state.token_enc), grant_type: "refresh_token" });
+    const started = new Date();
+    for (let page = 0; page < PAGES_PER_RUN; page++) {
+      const q = encodeURIComponent(`after:${state.sync_from.replaceAll("-", "/")} -in:chats`);
+      const list = await gmail<{ messages?: { id: string }[]; nextPageToken?: string }>(
+        access_token, `/messages?q=${q}&maxResults=${PER_PAGE}${pageToken ? `&pageToken=${pageToken}` : ""}`);
+      const mails = [];
+      for (const { id } of list.messages ?? []) mails.push(toMail(await gmail<Message>(access_token, `/messages/${id}?format=full`)));
+      if (mails.length) saved += (await asSystem<{ n: number }>("select gmail_job_save($1::jsonb) as n", [JSON.stringify(mails)]))[0].n;
+      pageToken = list.nextPageToken ?? null;
+      if (!pageToken) {
+        started.setDate(started.getDate() - 1);
+        await asSystem("select gmail_job_done(null, $1::date, null)", [started.toISOString().slice(0, 10)]);
+        return { connected: true, saved };
+      }
+    }
+    await asSystem("select gmail_job_done($1, null, null)", [pageToken]);
+  } catch (e) {
+    console.error("Gmail sync", e);
+    await asSystem("select gmail_job_done($1, null, $2)", [pageToken, e instanceof Error ? e.message : String(e)]);
+  }
+  return { connected: true, saved };
+}

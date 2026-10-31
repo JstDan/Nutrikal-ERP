@@ -1,7 +1,7 @@
 import type { Tx } from "@/lib/db/engine";
 import type { Locale } from "@/lib/i18n";
 
-export type TodoKey = "tasks" | "payment" | "plan" | "purchases" | "batches" | "dispatch" | "balance" | "invoice";
+export type TodoKey = "tasks" | "mail" | "payment" | "plan" | "purchases" | "batches" | "dispatch" | "balance" | "invoice";
 export type TodoGroup = { key: TodoKey; total: number; items: { id: string; title: string; sub: string; href: string }[] };
 type Row = { id: string; title: string; sub: string; total: number };
 
@@ -19,6 +19,8 @@ export async function loadTodo(tx: Tx, role: string, locale: Locale): Promise<To
                  from order_tasks t join order_task_boards b on b.id = t.board_id join sales_orders so on so.id = b.sales_order_id
                 where t.assignee_id = auth.uid() and t.status <> 'done' and so.status not in ('cancelled', 'closed')
                 order by so.code`, [locale], (id) => { const [task, order] = id.split("|"); return `/orders/${order}?task=${task}`; }],
+    ["mail", `select w.client_id::text as id, coalesce(w.subject, '—') as title, w.client as sub, count(*) over ()::int as total
+                from emails_waiting_reply w order by w.sent_at`, [], (id) => `/clients/${id}`],
     ["payment", `select ${ORDER} where so.status = 'unpaid' order by so.created_at`, [], orderLink],
     ...(admin ? [
       ["plan", `select ${ORDER} where so.status = 'confirmed' and exists (

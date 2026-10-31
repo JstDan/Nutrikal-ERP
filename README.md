@@ -56,6 +56,7 @@ Open http://localhost:3000.
 | E-mail | Offers, proformas, issued invoices, credit and debit notes and delivery notes go to the client as a PDF from their page; each send is listed there. Needs RESEND_API_KEY and MAIL_FROM |
 | AI assistant | Admin, Sales: questions about clients, orders, stock and recipes, answered from the data the person may see; read only; each person sees only their own conversations; daily limit. Needs AI_BASE_URL, AI_API_KEY and AI_MODELS |
 | AI recipe proposals | In the assistant: a recipe from the items in the system; cost, capsule fill and stock come from the database. A person saves it as a draft and approves it as usual. Health claims and Novel Food status are looked up in the EU lists; doses stay for a person to check |
+| Mail | Shared Gmail mailbox, read only, connected once under Settings > Mail: mail with known clients shows on the client, unanswered threads under Waiting for you, hourly sync. Needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GMAIL_TOKEN_KEY; AI_READ_MAIL=on lets the assistant read it |
 | Settings | Admin only, under Settings: general (allowed batch difference, waybill photo rule, expiry warning, next invoice number), calculator settings and price-list links, production costs per format, task templates |
 | Dispatch | Admin: when an order is ready, choose how much of each released batch leaves; stock goes down and a delivery note (DN-00001) is made, in the client's language, without prices; PDF and print |
 | Production costs | Admin keeps per-format fees (per pack, per 1000 units, per kg), set-up per batch, material loss and default margin |
@@ -96,6 +97,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 | `20261023000400_delivery_docs_storage.sql` | Private bucket `delivery-docs` and its rules (Supabase only) |
 | `20261024000100_calc_scheduled_sync.sql` | Daily 17:00 price-list sync run by the server (`calc_record_scheduled_sync`, not callable by users) |
 | `20261024000200_views_read_only.sql` | Users can only read views (no writes through a view past row-level security) |
+| `20261031002600_gmail.sql` | Shared mailbox: connection, client mail, threads waiting for a reply |
 | `20261031002500_eu_lists.sql` | Public EU lists, generated: Register of health claims and Novel Food status Catalogue |
 | `20261031002400_ai_recipe_proposals.sql` | Recipe proposals of the assistant: estimate from the database, saved as a draft by a person |
 | `20261031002300_ai_assistant.sql` | Conversations of the AI assistant, each person's own |
@@ -133,7 +135,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 
 ```
 cd test && npm install
-node run-tests.mjs          # 421 database rule checks across the roles
+node run-tests.mjs          # 428 database rule checks across the roles
 python3 ui_test.py http://localhost:3000   # 18 browser checks (needs Python Playwright + Chromium)
 ```
 

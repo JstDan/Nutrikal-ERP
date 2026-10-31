@@ -18,6 +18,7 @@ type Client = {
 };
 type Order = { id: string; code: string; status: string; total_packs: number; products: string | null };
 type Contact = { id: string; first_name: string; last_name: string | null; position: string | null; email: string | null; phone: string | null; is_primary: boolean };
+type Mail = { id: string; direction: "in" | "out"; from_address: string; subject: string | null; snippet: string | null; body: string | null; sent_at: string; has_attachments: boolean };
 type Activity = { id: string; type: string; subject: string; body: string | null; created_at: string; due_at: string | null; done_at: string | null; project_code: string | null };
 
 
@@ -46,10 +47,15 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
       `select a.id, a.type, a.subject, a.body, a.created_at::text, a.due_at::text, a.done_at::text, p.code as project_code
          from activities a left join projects p on p.id = a.project_id
         where a.client_id = $1 order by a.created_at desc limit 30`, [id])).rows;
-    return { client, settings, contacts, orders, activities };
+    const mails = canEdit
+      ? (await tx.query<Mail>(
+          `select id, direction, from_address, subject, snippet, body, sent_at::text, has_attachments from client_emails
+            where client_id = $1 order by sent_at desc limit 30`, [id])).rows
+      : [];
+    return { client, settings, contacts, orders, activities, mails };
   });
   if (!data) notFound();
-  const { client: c, settings, contacts, orders, activities } = data;
+  const { client: c, settings, contacts, orders, activities, mails } = data;
 
   const deposit = c.deposit_pct ?? settings?.default_deposit_pct;
   const balance = c.balance_terms ?? settings?.default_balance_terms ?? "before_dispatch";
@@ -152,6 +158,21 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
               </div>
             ))}
           </Card>
+
+          {mails.length > 0 && (
+            <Card title={d.mail} id="mail-h">
+              {mails.map((m) => (
+                <details key={m.id} className="min-w-0 border-b border-mist pb-2 text-sm last:border-0">
+                  <summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-x-2">
+                    <span className="text-xs text-ink-2">{formatDate(locale, m.sent_at.slice(0, 10), { day: "2-digit", month: "short" })} · {m.direction === "in" ? d.mailIn : d.mailOut}{m.has_attachments ? ` · ${d.mailFiles}` : ""}</span>
+                    <span className="min-w-0 font-semibold break-words">{m.subject || "—"}</span>
+                  </summary>
+                  <p className="m-0 text-xs text-ink-2 break-words">{m.from_address}</p>
+                  <p className="m-0 mt-2 whitespace-pre-line break-words">{m.body || m.snippet}</p>
+                </details>
+              ))}
+            </Card>
+          )}
 
           <Card title={d.activity} id="log-activity">
             {canEdit && (

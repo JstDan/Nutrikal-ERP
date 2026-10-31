@@ -2357,5 +2357,37 @@ await ok('production does not see the lists', async () => {
 await fails('nobody changes the lists from the app', () =>
   as('admin', `update eu_health_claims set claim = 'x' where code = (select code from eu_health_claims limit 1) returning code`).then((r) => { if (!r.length) throw new Error('refused'); }));
 
+console.log('\nGmail');
+const mailClient = await one('sales', `insert into clients (legal_name, billing_email) values ('Mail Client GmbH', 'office@mailclient.test') returning id`);
+const mail = (id, over = {}) => ({ gmail_id: id, thread_id: 't-' + id, direction: 'in', from_address: 'Anna <anna@mailclient.test>', parties: ['anna@mailclient.test'],
+  subject: 'Enquiry', snippet: 's', body: 'b', has_attachments: false, sent_at: '2026-10-30T10:00:00Z', ...over });
+const saveMail = (list) => db.query('select gmail_job_save($1::jsonb) as n', [JSON.stringify(list)]);
+await ok('mail of a known client is kept, by exact address or company domain; other mail is skipped', async () => {
+  const r = await saveMail([mail('m1'), mail('m2', { parties: ['stranger@elsewhere.test'] }), mail('m3', { parties: ['office@mailclient.test'], thread_id: 't-m1', direction: 'out', sent_at: '2026-10-30T11:00:00Z' })]);
+  eq(r.rows[0].n, 2, 'kept');
+  eq((await as('sales', 'select id from client_emails where client_id = $1', [mailClient.id])).length, 2, 'on the client');
+});
+await ok('saving the same mail twice keeps one copy; a free mail domain does not match by domain', async () => {
+  eq((await saveMail([mail('m1')])).rows[0].n, 0, 'same');
+  await as('sales', `insert into contacts (client_id, first_name, email) values ($1, 'Ivan', 'ivan@gmail.com')`, [mailClient.id]);
+  eq((await saveMail([mail('m4', { parties: ['someone@gmail.com'] })])).rows[0].n, 0, 'free domain');
+});
+await ok('a thread waits for a reply only when the client wrote last', async () => {
+  await saveMail([mail('m5')]);
+  const w = await as('sales', 'select thread_id from emails_waiting_reply');
+  eq(w.some((x) => x.thread_id === 't-m5'), true, 'waiting'); eq(w.some((x) => x.thread_id === 't-m1'), false, 'answered');
+});
+await ok('production sees no mail', async () => {
+  eq((await as('production', 'select id from client_emails')).length, 0, 'mail');
+  eq((await as('production', 'select id from emails_waiting_reply')).length, 0, 'waiting');
+});
+await fails('only admin connects the mailbox', () => as('sales', `select gmail_connect('a@b.co', 'x')`), 'not allowed');
+await ok('nobody reads the stored token', async () => {
+  await as('admin', `select gmail_connect('shared@nutrikal.test', 'secret')`);
+  eq((await as('admin', 'select id from gmail_connection')).length, 0, 'table');
+  eq((await one('admin', 'select email from gmail_status()')).email, 'shared@nutrikal.test', 'status');
+});
+await fails('the sync functions are not for signed-in users', () => as('admin', 'select * from gmail_job_state()'), 'permission denied');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

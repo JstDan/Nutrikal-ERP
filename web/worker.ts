@@ -16,5 +16,11 @@ export default {
     ctx.waitUntil(
       handler.fetch(req, env, ctx).then(async (res: Response) => console.log(`[nutrikal] price-sync cron: ${res.status} ${await res.text()}`)),
     );
+    const mail = new Request("https://cron.internal/api/cron/gmail-sync", {
+      headers: { authorization: `Bearer ${env.CRON_SECRET ?? ""}` },
+    });
+    ctx.waitUntil(
+      handler.fetch(mail, env, ctx).then(async (res: Response) => console.log(`[nutrikal] gmail-sync cron: ${res.status} ${await res.text()}`)),
+    );
   },
 };

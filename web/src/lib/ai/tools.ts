@@ -51,6 +51,13 @@ export const AI_TOOLS: ToolDefinition[] = [
   }),
 ];
 
+/** Mail reaches the AI service only with AI_READ_MAIL=on (after the data processing agreement is signed). */
+const MAIL_TOOLS: ToolDefinition[] = [
+  tool("mail_waiting_reply", "Client mail threads whose last message came from the client, oldest first."),
+  tool("search_client_mail", "Saved mail with clients by client name or words in the subject and text, newest first.", TERM),
+];
+export const aiTools = () => (process.env.AI_READ_MAIL?.trim() === "on" ? [...AI_TOOLS, ...MAIL_TOOLS] : AI_TOOLS);
+
 const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
   find_clients: (a) => [
     `select code, legal_name, trade_name, status, country_code, vat_number, billing_email from clients
@@ -81,6 +88,13 @@ const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
             (select v.status from formula_versions v where v.formula_id = f.id order by v.version desc limit 1) as latest_status
        from formulas f left join clients c on c.id = f.client_id
       where $1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%' order by f.code desc limit ${LIMIT}`, [term(a)]],
+  mail_waiting_reply: () => [
+    `select client, from_address, subject, snippet, sent_at::text from emails_waiting_reply order by sent_at limit ${LIMIT}`, []],
+  search_client_mail: (a) => [
+    `select c.legal_name as client, e.direction, e.from_address, e.subject, left(e.body, 1500) as body, e.sent_at::text
+       from client_emails e join clients c on c.id = e.client_id
+      where c.legal_name ilike '%' || $1 || '%' or e.subject ilike '%' || $1 || '%' or e.body ilike '%' || $1 || '%'
+      order by e.sent_at desc limit 15`, [term(a)]],
   eu_health_claims: (a) => [
     `select code, substance, claim, conditions, restrictions, status, claim_type, (select downloaded_on::text from eu_lists_info limit 1) as list_date
        from eu_health_claims where status = $2 and (substance ilike '%' || $1 || '%' or claim ilike '%' || $1 || '%')
@@ -109,6 +123,7 @@ export async function runTool(userId: string, conversationId: string, name: stri
       return JSON.stringify({ error: e instanceof Error ? e.message.split("\n")[0] : "The proposal could not be saved" });
     }
   }
+  if (MAIL_TOOLS.some((t) => t.name === name) && process.env.AI_READ_MAIL?.trim() !== "on") return JSON.stringify({ error: "Mail is not available" });
   const query = QUERIES[name];
   if (!query) return JSON.stringify({ error: "Unknown tool" });
   try {

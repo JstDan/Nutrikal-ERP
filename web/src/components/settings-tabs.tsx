@@ -6,6 +6,7 @@ const TABS = [
   { key: "calculator", href: "/settings/calculator" },
   { key: "costs", href: "/settings/costs" },
   { key: "templates", href: "/settings/templates" },
+  { key: "mail", href: "/settings/mail" },
 ] as const;
 
 /** The parts of Settings (Admin only). */
