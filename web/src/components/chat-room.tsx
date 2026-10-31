@@ -47,7 +47,7 @@ function Body({ text, names, own }: { text: string; names: string[]; own: boolea
     <>
       {parts.map((p, i): ReactNode => {
         if (i % 2 === 0) return <Fragment key={i}>{p}</Fragment>;
-        if (p.startsWith("http")) return <a key={i} href={p} target="_blank" rel="noopener noreferrer" className={`break-all underline ${own ? "text-[#fff]" : "text-ink"}`}>{p}</a>;
+        if (p.startsWith("http")) return <a key={i} href={p} target="_blank" rel="noopener noreferrer" className={`break-all underline ${own ? "text-white" : "text-ink"}`}>{p}</a>;
         if (p.startsWith("@")) return <span key={i} className={`rounded-sm px-1 font-semibold ${own ? "bg-[#ffffff33]" : "bg-green-tint text-green-ink"}`}>{p}</span>;
         return <Emoji key={i} code={p.slice(1, -1)} />;
       })}
@@ -193,7 +193,7 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
                       </div>
                     </form>
                   ) : m.body !== "📎" && (
-                    <div className={`min-w-0 rounded-2xl px-3 py-1.5 text-sm ${own ? "rounded-br-md bg-ink text-[#fff]" : "rounded-bl-md bg-neutral-tint text-ink"}`}>
+                    <div className={`min-w-0 rounded-2xl px-3 py-1.5 text-sm ${own ? "rounded-br-md bg-ink text-white" : "rounded-bl-md bg-neutral-tint text-ink"}`}>
                       <p className="m-0 whitespace-pre-line break-words"><Body text={m.body} names={names} own={own} /></p>
                     </div>
                   )}
@@ -237,7 +237,7 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
       </div>
 
       {behind && (
-        <button type="button" onClick={() => toEnd()} className="chat-in absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-xs font-semibold text-[#fff] shadow-lg">↓ {C.newMessages}</button>
+        <button type="button" onClick={() => toEnd()} className="chat-in absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white shadow-lg">↓ {C.newMessages}</button>
       )}
 
       <div className="relative px-3 pt-1 pb-3">
@@ -268,7 +268,7 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
           <textarea id={`chat-text-${channel}`} data-chat-input ref={box} rows={1} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey}
             placeholder={C.message} className="max-h-40 min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2.5 text-sm text-ink outline-none" />
           <button type="submit" aria-label={C.send} disabled={pending || (!draft.trim() && !files.length)}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-ink text-lg text-[#fff] transition-transform hover:scale-105 disabled:opacity-30">↑</button>
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-ink text-lg text-white transition-transform hover:scale-105 disabled:opacity-30">↑</button>
         </form>
       </div>
     </div>
