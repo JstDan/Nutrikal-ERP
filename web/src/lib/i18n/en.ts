@@ -2124,7 +2124,7 @@ export const en = {
   },
   assistant: {
     title: "Nutri AI",
-    subtitle: "I know who ordered what, what is in stock and how much magnesium fits in one capsule. I see only what you can see, and I don't touch a thing.",
+    subtitle: "I read client mail, answer questions, suggest ideas, make recipes and remind you what is waiting. I see only what you can see, and I don't touch a thing without you.",
     proposal: "Recipe proposal",
     proposalServing: "{size} per serving, {servings} servings per pack",
     proposalShell: "Capsules per pack: {cost}",
@@ -2152,7 +2152,7 @@ export const en = {
     offerCloseNote: "Takes the offer out of the list of offers waiting for an answer.",
     newChat: "New conversation",
     welcome: "Hi, I'm Nutri AI! What are we mixing up today?",
-    suggestions: ["Who owes us money?", "What is running out in stock?", "Come up with a magnesium recipe for sleep in capsules"],
+    suggestions: ["What have clients written to us?", "Who owes us money?", "What is running out in stock?", "Come up with a magnesium recipe for sleep in capsules"],
     placeholder: "Go on, ask me",
     enterHint: "Enter sends, Shift+Enter starts a new line",
     thinking: "Mixing up an answer…",
