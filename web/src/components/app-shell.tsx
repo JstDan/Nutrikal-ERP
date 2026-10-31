@@ -28,6 +28,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
         {
           items: [
             { href: "/factory", label: t.nav.today },
+            { href: "/chat", label: t.nav.chat, badge: unread },
             { href: "/factory/orders", label: t.nav.productionOrders },
             { href: "/factory/stock", label: t.nav.stock },
             { href: "/factory/deliveries", label: t.nav.incoming },
@@ -41,6 +42,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
           items: [
             { href: "/", label: t.nav.dashboard },
             ...((user.role === "admin" || user.role === "sales") && !user.readOnly ? [{ href: "/assistant", label: t.nav.assistant }] : []),
+            { href: "/chat", label: t.nav.chat, badge: unread },
             { href: "/clients", label: t.nav.clients },
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/offers", label: t.nav.offers, also: ["/calculator"] }] : []),
             { href: "/orders", label: t.nav.orders },
@@ -77,7 +79,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   // Designer: the client work only
   const shown = user.access === "designer"
-    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/clients", "/orders"].includes(i.href ?? "")) })).filter((g) => g.items.length)
+    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/chat", "/clients", "/orders"].includes(i.href ?? "")) })).filter((g) => g.items.length)
     : groups;
 
   return (
