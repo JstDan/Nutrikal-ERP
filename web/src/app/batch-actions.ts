@@ -113,6 +113,37 @@ export async function deleteInvoiceNote(fd: FormData) {
   redirect("/invoices");
 }
 
+// ------------------------------------------------- invoices without an order
+export async function createClientInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    const [r] = await q<{ id: string }>(user.id, "select create_client_invoice($1, $2, $3::date, $4, $5, $6) as id",
+      [str(fd, "client_id"), num(fd, "vat_pct"), str(fd, "due_date"), str(fd, "method"), str(fd, "ref"), str(fd, "notes")]);
+    id = r.id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/invoices", "layout");
+  redirect(`/invoices/${id}`);
+}
+
+export async function saveInvoiceTerms(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run("select set_client_invoice_terms($1, $2, $3::date, $4::date, $5, $6)",
+    [str(fd, "invoice_id"), num(fd, "vat_pct"), str(fd, "tax_date"), str(fd, "due_date"), str(fd, "method"), str(fd, "notes")]);
+}
+
+export async function addInvoicePayment(_: ActionState, fd: FormData): Promise<ActionState> {
+  return run("select add_invoice_payment($1, $2::date, $3, $4, $5)",
+    [str(fd, "invoice_id"), str(fd, "paid_on"), num(fd, "amount"), str(fd, "method"), str(fd, "note")]);
+}
+
+export async function deleteInvoicePayment(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "select delete_invoice_payment($1)", [str(fd, "id")]);
+  revalidatePath("/invoices", "layout");
+}
+
 // --------------------------------------------------------------- settings
 export async function saveGeneralSettings(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();

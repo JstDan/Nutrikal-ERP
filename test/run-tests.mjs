@@ -2389,5 +2389,66 @@ await ok('nobody reads the stored token', async () => {
 });
 await fails('the sync functions are not for signed-in users', () => as('admin', 'select * from gmail_job_state()'), 'permission denied');
 
+console.log('\nInvoices without an order');
+let dInv, dLine;
+await fails('production cannot create invoices', () =>
+  as('production', 'select create_client_invoice($1, 20, null, null, null, null)', [client.id]), 'not allowed');
+await fails('a client is needed', () =>
+  as('sales', 'select create_client_invoice(null, 20, null, null, null, null)'), 'Choose the client');
+await ok('a draft for a client, without an order, with free lines', async () => {
+  dInv = (await one('sales', `select create_client_invoice($1, 20, current_date + 14, 'bank', 'PO-9', 'Consulting') as id`, [client.id])).id;
+  const i = await one('sales', 'select order_id, status, due_date is not null as due, buyer ->> \'customer_ref\' as ref from invoices where id = $1', [dInv]);
+  eq(i.order_id, null, 'no order'); eq(i.status, 'draft', 'draft'); eq(i.due, true, 'due'); eq(i.ref, 'PO-9', 'reference');
+  await as('sales', `select save_note_line($1, null, 'Regulatory consulting', 2, 100)`, [dInv]);
+  dLine = (await one('sales', 'select id from invoice_lines where invoice_id = $1', [dInv])).id;
+  await as('sales', `select save_note_line($1, $2, 'Regulatory consulting', 3, 100)`, [dInv, dLine]);
+  eq(Number((await one('sales', 'select amount from invoice_lines where id = $1', [dLine])).amount), 300, 'amount');
+});
+await ok('terms of a draft can change', async () => {
+  await as('sales', `select set_client_invoice_terms($1, 0, current_date - 1, current_date - 1, 'cash', 'Note')`, [dInv]);
+  eq(Number((await one('sales', 'select vat_pct from invoices where id = $1', [dInv])).vat_pct), 0, 'vat');
+  await as('sales', `select set_client_invoice_terms($1, 20, null, current_date - 1, 'bank', null)`, [dInv]);
+});
+await fails('no payment on a draft', () => as('admin', 'select add_invoice_payment($1, current_date, 10, null, null)', [dInv]), 'issued invoice');
+await ok('issued on the shared series; the date of the taxable event defaults to the issue date', async () => {
+  const next = (await one('sales', 'select next_invoice_number() as n')).n;
+  eq((await one('sales', 'select issue_invoice($1, next_invoice_number(), current_date) as n', [dInv])).n, next, 'number');
+  const i = await one('sales', 'select total, tax_point_date = issue_date as same from invoices where id = $1', [dInv]);
+  eq(Number(i.total), 360, 'total'); eq(i.same, true, 'tax date');
+});
+await fails('an issued invoice stays locked', () =>
+  as('sales', `select save_note_line($1, null, 'x', 1, 1)`, [dInv]), 'cannot be changed');
+await fails('the terms of an issued invoice stay locked', () =>
+  as('sales', `select set_client_invoice_terms($1, 0, null, null, null, null)`, [dInv]), 'draft invoice');
+await fails('sales cannot record a payment', () => as('sales', 'select add_invoice_payment($1, current_date, 10, null, null)', [dInv]), 'not allowed');
+await ok('partial payments lower what is left; the invoice itself does not change', async () => {
+  await as('admin', `select add_invoice_payment($1, current_date, 100, 'cash', 'First')`, [dInv]);
+  eq(Number((await one('sales', 'select invoice_open_amount($1) as n', [dInv])).n), 260, 'left');
+  eq(Number((await one('sales', 'select total from invoices where id = $1', [dInv])).total), 360, 'total');
+});
+await fails('no payment above what is left', () => as('admin', 'select add_invoice_payment($1, current_date, 261, null, null)', [dInv]), 'more than what is left');
+await ok('a credit note lowers what is left and works on a direct invoice', async () => {
+  const n = (await one('sales', `select create_invoice_note($1, 'credit_note', 'Price') as id`, [dInv])).id;
+  const lines = await as('sales', 'select id from invoice_lines where invoice_id = $1', [n]);
+  await as('sales', `select save_note_line($1, $2, 'Correction', 1, 50)`, [n, lines[0].id]);
+  await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [n]);
+  eq(Number((await one('sales', 'select invoice_open_amount($1) as n', [dInv])).n), 200, 'left');
+});
+await ok('with an empty VAT: 20 % in Bulgaria, 0 % abroad, as on new orders', async () => {
+  const bg = await one('sales', `insert into clients (legal_name, country_code) values ('BG Client', 'BG') returning id`);
+  const de = await one('sales', `insert into clients (legal_name, country_code) values ('DE Client', 'DE') returning id`);
+  const vat = async (c) => {
+    const id = (await one('sales', 'select create_client_invoice($1, null, null, null, null, null) as id', [c])).id;
+    return Number((await one('sales', 'select vat_pct from invoices where id = $1', [id])).vat_pct);
+  };
+  eq(await vat(bg.id) > 0, true, 'Bulgaria'); eq(await vat(de.id), 0, 'abroad');
+});
+await ok('production sees no payments and no open amount', async () => {
+  eq((await as('production', 'select id from invoice_payments')).length, 0, 'payments');
+  eq((await one('production', 'select invoice_open_amount($1) as n', [dInv])).n, null, 'amount');
+});
+await fails('a draft of an order keeps its lines from the order', () =>
+  as('sales', `select save_note_line($1, null, 'x', 1, 1)`, [orig.id]), 'only the lines');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

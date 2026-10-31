@@ -94,7 +94,8 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
       doc.setFontSize(8.5);
       const width = doc.getTextWidth(value);
       doc.setFontSize(7);
-      return { head, value, width: Math.max(width, doc.getTextWidth(head.toUpperCase()) + 2) };
+      // The labels are written with letter spacing
+      return { head, value, width: Math.max(width, doc.getTextWidth(head.toUpperCase()) + head.length * 0.4 + 2) };
     });
     const rows: (typeof items)[] = [[]];
     let used = 0;

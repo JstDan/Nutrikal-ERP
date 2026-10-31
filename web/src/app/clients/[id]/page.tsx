@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
-import { fmt, formatDate, formatMoney, formatNumber } from "@/lib/i18n";
+import { fmt, formatDate, formatMoney, formatNumber, formatPrice } from "@/lib/i18n";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { clientTone, orderTone } from "@/lib/status";
@@ -18,6 +18,7 @@ type Client = {
 };
 type Order = { id: string; code: string; status: string; total_packs: number; products: string | null };
 type Contact = { id: string; first_name: string; last_name: string | null; position: string | null; email: string | null; phone: string | null; is_primary: boolean };
+type ClientInvoice = { id: string; number: string | null; status: string; total: string | null; currency: string; issue_date: string | null };
 type Mail = { id: string; direction: "in" | "out"; from_address: string; subject: string | null; snippet: string | null; body: string | null; sent_at: string; has_attachments: boolean };
 type Activity = { id: string; type: string; subject: string; body: string | null; created_at: string; due_at: string | null; done_at: string | null; project_code: string | null };
 
@@ -52,10 +53,15 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
           `select id, direction, from_address, subject, snippet, body, sent_at::text, has_attachments from client_emails
             where client_id = $1 order by sent_at desc limit 30`, [id])).rows
       : [];
-    return { client, settings, contacts, orders, activities, mails };
+    const invoices = canEdit
+      ? (await tx.query<ClientInvoice>(
+          `select id, number, status, total::text, currency, issue_date::text from invoices
+            where client_id = $1 and kind = 'invoice' order by status = 'issued', number desc nulls first limit 20`, [id])).rows
+      : [];
+    return { client, settings, contacts, orders, activities, mails, invoices };
   });
   if (!data) notFound();
-  const { client: c, settings, contacts, orders, activities, mails } = data;
+  const { client: c, settings, contacts, orders, activities, mails, invoices } = data;
 
   const deposit = c.deposit_pct ?? settings?.default_deposit_pct;
   const balance = c.balance_terms ?? settings?.default_balance_terms ?? "before_dispatch";
@@ -158,6 +164,18 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
               </div>
             ))}
           </Card>
+
+          {canEdit && (
+            <Card title={t.invoices.title} id="invoices-h" action={<Link href={`/invoices/new?client=${c.id}`} className="text-ink">+ {t.invoices.direct.title}</Link>}>
+              {invoices.length === 0 && <Empty>{t.invoices.empty}</Empty>}
+              {invoices.map((i) => (
+                <Link key={i.id} href={`/invoices/${i.id}`} className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 border-b border-mist text-sm text-ink no-underline last:border-0">
+                  <span className="font-semibold">{i.number ?? t.invoices.statusDraft}</span>
+                  <span className="text-ink-2">{formatDate(locale, i.issue_date)}{i.total ? ` · ${formatPrice(locale, i.total, i.currency)}` : ""}</span>
+                </Link>
+              ))}
+            </Card>
+          )}
 
           {mails.length > 0 && (
             <Card title={d.mail} id="mail-h">

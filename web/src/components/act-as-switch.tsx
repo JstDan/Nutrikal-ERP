@@ -7,8 +7,8 @@ type Option = { id: string; label: string };
 /** Developer only: pick the user to act as. Every page then runs as that user. */
 export function ActAsSwitch({ current, options, label }: { current: string; options: Option[]; label: string }) {
   return (
-    <form action={actAs} className="flex min-w-0 max-w-full flex-wrap items-center gap-2 rounded-sm border-2 border-ink px-2 py-1">
-      <label htmlFor="act-as" className="text-xs font-semibold text-ink">
+    <form action={actAs} className="flex min-w-0 max-w-full items-center gap-2">
+      <label htmlFor="act-as" className="sr-only">
         {label}
       </label>
       <select

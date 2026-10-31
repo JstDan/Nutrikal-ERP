@@ -12,7 +12,8 @@ export async function syncGmailNow(): Promise<ActionState> {
   const { t } = await getSession();
   const r = await syncGmail();
   revalidatePath("/settings/mail");
-  return { ok: true, message: fmt(t.adminSettings.mail.synced, { n: r.saved }) };
+  if (r.error) return { error: fmt(t.adminSettings.mail.lastError, { error: r.error }) };
+  return { ok: true, message: fmt(r.paused ? t.adminSettings.mail.paused : t.adminSettings.mail.synced, { n: r.saved }) };
 }
 
 export async function disconnectGmail(): Promise<ActionState> {

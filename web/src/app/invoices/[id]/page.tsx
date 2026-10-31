@@ -4,7 +4,7 @@ import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice, getDict } from "@/lib/i18n";
 import { issueInvoice } from "@/app/actions";
-import { createInvoiceNote, deleteInvoiceNote, deleteNoteLine, saveNoteLine } from "@/app/batch-actions";
+import { addInvoicePayment, createInvoiceNote, deleteInvoiceNote, deleteInvoicePayment, deleteNoteLine, saveInvoiceTerms, saveNoteLine } from "@/app/batch-actions";
 import { ActionForm } from "@/components/action-form";
 import { Card, Chip, PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
@@ -19,12 +19,14 @@ type Party = Record<string, string | boolean | null>;
 type Invoice = {
   id: string; status: "draft" | "issued"; number: string | null; issue_date: string | null; tax_point_date: string | null;
   currency: string; vat_pct: string; locale: "bg" | "en"; seller: Party; buyer: Party; notes: string | null;
-  subtotal: string | null; vat_amount: string | null; total: string | null; order_id: string; order_code: string;
+  subtotal: string | null; vat_amount: string | null; total: string | null; order_id: string | null; order_code: string | null;
+  client_id: string; due_date: string | null; payment_method: "bank" | "cash" | "card";
   kind: "invoice" | "credit_note" | "debit_note"; reason: string | null; corrects_invoice_id: string | null;
   corrects_number: string | null; corrects_date: string | null;
 };
 type Note = { id: string; kind: "credit_note" | "debit_note"; status: string; number: string | null; total: string | null };
 type Line = { id: string; description: string; offer_no: string | null; capsules: number | null; quantity: string; unit_price: string; amount: string };
+type Payment = { id: string; paid_on: string; amount: string; method: "bank" | "cash" | "card"; note: string | null };
 type Seller = { logo_data_url: string | null };
 
 /** An invoice: a draft is checked and issued here (number and date); an issued one is downloaded or printed. */
@@ -38,8 +40,9 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
     const inv = (await tx.query<Invoice>(
       `select i.id, i.status, i.number, i.issue_date::text, i.tax_point_date::text, i.currency, i.vat_pct::text, i.locale,
               i.seller, i.buyer, i.notes, i.subtotal::text, i.vat_amount::text, i.total::text, i.order_id, so.code as order_code,
-              i.kind, i.reason, i.corrects_invoice_id, o.number as corrects_number, o.issue_date::text as corrects_date
-         from invoices i join sales_orders so on so.id = i.order_id
+              i.kind, i.reason, i.corrects_invoice_id, o.number as corrects_number, o.issue_date::text as corrects_date,
+              i.client_id, i.due_date::text, i.payment_method
+         from invoices i left join sales_orders so on so.id = i.order_id
          left join invoices o on o.id = i.corrects_invoice_id where i.id = $1`, [id])).rows[0];
     if (!inv) return null;
     const lines = (await tx.query<Line>(
@@ -47,14 +50,20 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
          from invoice_lines where invoice_id = $1 order by sort_order`, [id])).rows;
     const next = (await tx.query<{ n: string | null }>("select next_invoice_number() as n")).rows[0]?.n ?? "";
     const seller = (await tx.query<Seller>("select logo_data_url from calc_settings limit 1")).rows[0];
-    const rate = (await tx.query<{ r: string }>("select order_vat_rate($1)::text as r", [inv.order_id])).rows[0]?.r;
+    const rate = inv.order_id ? (await tx.query<{ r: string }>("select order_vat_rate($1)::text as r", [inv.order_id])).rows[0]?.r : inv.vat_pct;
+    const payments = (await tx.query<Payment>("select id, paid_on::text, amount::text, method, note from invoice_payments where invoice_id = $1 order by paid_on", [id])).rows;
+    const open = (await tx.query<{ n: string | null }>("select invoice_open_amount($1)::text as n", [id])).rows[0]?.n ?? null;
     const notes = (await tx.query<Note>(
       "select id, kind, status, number, total::text from invoices where corrects_invoice_id = $1 order by created_at", [id])).rows;
-    return { inv, lines, next, logo: seller?.logo_data_url ?? null, rate: Number(rate ?? 20), notes };
+    return { inv, lines, next, logo: seller?.logo_data_url ?? null, rate: Number(rate ?? 20), notes, payments, open };
   });
   if (!data) notFound();
-  const { inv: x, lines, next, logo, rate, notes } = data;
+  const { inv: x, lines, next, logo, rate, notes, payments, open } = data;
   const draft = x.status === "draft";
+  // No order: the lines and terms are written here, and payments are recorded here
+  const direct = !x.order_id;
+  const W = I.direct;
+  const today = new Date().toISOString().slice(0, 10);
 
   // The document is in the client's language
   const l = x.locale;
@@ -85,7 +94,8 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
       `${D.issueDate}: ${x.issue_date ? formatDate(l, x.issue_date) : "—"}`,
       ...(isNote ? [] : [`${D.taxPoint}: ${formatDate(l, x.tax_point_date)}`]),
       ...(isNote ? [fmt(NT.ofInvoice, { n: x.corrects_number ?? "", date: formatDate(l, x.corrects_date) })] : []),
-      fmt(D.orderRef, { code: x.order_code }),
+      ...(x.order_code ? [fmt(D.orderRef, { code: x.order_code })] : []),
+      ...(direct && x.due_date && !isNote ? [`${doc.invoices.direct.due}: ${formatDate(l, x.due_date)}`] : []),
       draft ? D.draft : D.original,
     ],
     seller: {
@@ -120,15 +130,17 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
     vatNote: vatPct === 0 ? P.zeroVat : null,
     bank: isNote ? { heading: "", lines: [] } : {
       heading: D.payment,
-      lines: [D.bankTransfer, `${P.bankName}: ${str(s.bank_name)}`, `IBAN: ${str(s.iban)}`, `BIC: ${str(s.bic)}`,
-        fmt(D.paidOn, { date: formatDate(l, x.tax_point_date) })],
+      lines: direct
+        ? [doc.invoices.direct.methods[x.payment_method], ...(x.payment_method === "bank" ? [`${P.bankName}: ${str(s.bank_name)}`, `IBAN: ${str(s.iban)}`, `BIC: ${str(s.bic)}`] : [])]
+        : [D.bankTransfer, `${P.bankName}: ${str(s.bank_name)}`, `IBAN: ${str(s.iban)}`, `BIC: ${str(s.bic)}`,
+            fmt(D.paidOn, { date: formatDate(l, x.tax_point_date) })],
     },
     notes: isNote ? [fmt(NT.reasonDoc, { reason: x.reason ?? "" }), x.notes].filter(Boolean).join("\n") : x.notes,
     footer: "",
     logoDataUrl: logo,
   };
 
-  const send = draft ? null : await loadSendInfo(user.id, user.name, "invoice", x.id, { orderId: x.order_id, title: docTitle, no: x.number ?? "", lang: l });
+  const send = draft ? null : await loadSendInfo(user.id, user.name, "invoice", x.id, { orderId: x.order_id, clientId: x.client_id, title: docTitle, no: x.number ?? "", lang: l });
 
   return (
     <div className="flex flex-col gap-4">
@@ -141,16 +153,16 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
           subtitle={
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <Chip tone={draft ? "amber" : "green"}>{draft ? I.statusDraft : I.statusIssued}</Chip>
-              <span>{str(b.name)} · {x.order_code}</span>
+              <span>{[str(b.name), x.order_code].filter(Boolean).join(" · ")}</span>
             </span>
           }
         />
       </div>
 
-      {draft && isNote && (
+      {draft && (isNote || direct) && (
         <div className="print:hidden">
-          <Card title={N.lines} id="note-lines-h">
-            <p className="m-0 text-sm text-ink-2">{x.kind === "credit_note" ? N.linesNote : ""}</p>
+          <Card title={isNote ? N.lines : W.lines} id="note-lines-h">
+            {x.kind === "credit_note" && <p className="m-0 text-sm text-ink-2">{N.linesNote}</p>}
             {lines.map((r) => (
               <div key={r.id} className="flex flex-wrap items-end gap-3 border-t border-mist pt-3">
                 <ActionForm action={saveNoteLine} submitLabel={t.common.save} resetOnSuccess={false} className="min-w-0 flex-[1_1_280px]">
@@ -187,11 +199,66 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
         </div>
       )}
 
+      {draft && direct && !isNote && (
+        <div className="print:hidden">
+          <Card title={W.terms} id="terms-h">
+            <ActionForm action={saveInvoiceTerms} submitLabel={t.common.save} resetOnSuccess={false}>
+              <input type="hidden" name="invoice_id" value={x.id} />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="field"><span>{W.vat}</span><input name="vat_pct" type="number" min={0} max={100} step="any" defaultValue={vatPct} className="input" /></label>
+                <label className="field"><span>{W.taxDate}</span><input name="tax_date" type="date" defaultValue={x.tax_point_date ?? ""} className="input" /></label>
+                <label className="field"><span>{W.due}</span><input name="due_date" type="date" defaultValue={x.due_date ?? ""} className="input" /></label>
+                <label className="field"><span>{W.method}</span>
+                  <select name="method" className="input" defaultValue={x.payment_method}>
+                    {(["bank", "cash", "card"] as const).map((m) => <option key={m} value={m}>{W.methods[m]}</option>)}
+                  </select>
+                </label>
+                <label className="field md:col-span-2"><span>{W.notes}</span><textarea name="notes" defaultValue={x.notes ?? ""} className="input" /></label>
+              </div>
+            </ActionForm>
+          </Card>
+        </div>
+      )}
+
+      {!draft && direct && !isNote && (
+        <div className="print:hidden">
+          <Card title={W.payments} id="payments-h">
+            <p className="m-0 text-sm"><strong>{fmt(W.open, { amount: money(Number(open ?? 0)) })}</strong>{x.due_date ? ` · ${W.due}: ${formatDate(locale, x.due_date)}` : ""}</p>
+            {payments.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-mist pt-2 text-sm">
+                <span className="min-w-0 break-words">{formatDate(locale, p.paid_on)} · {money(Number(p.amount))} · {W.methods[p.method]}{p.note ? ` · ${p.note}` : ""}</span>
+                {user.role === "admin" && (
+                  <form action={deleteInvoicePayment}>
+                    <input type="hidden" name="id" value={p.id} />
+                    <button type="submit" className="min-h-11 text-xs text-ink-2 underline">{N.removeLine}</button>
+                  </form>
+                )}
+              </div>
+            ))}
+            {user.role === "admin" && Number(open ?? 0) > 0 && (
+              <ActionForm action={addInvoicePayment} submitLabel={W.addPayment}>
+                <input type="hidden" name="invoice_id" value={x.id} />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <label className="field"><span>{W.paidOn} *</span><input name="paid_on" type="date" required defaultValue={today} className="input" /></label>
+                  <label className="field"><span>{W.amount} *</span><input name="amount" type="number" min="0.01" step="0.01" required defaultValue={Number(open)} className="input" /></label>
+                  <label className="field"><span>{W.method}</span>
+                    <select name="method" className="input" defaultValue={x.payment_method}>
+                      {(["bank", "cash", "card"] as const).map((m) => <option key={m} value={m}>{W.methods[m]}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <label className="field"><span>{W.notes}</span><input name="note" className="input" /></label>
+              </ActionForm>
+            )}
+          </Card>
+        </div>
+      )}
+
       {draft ? (
         <div className="print:hidden">
           <Card title={isNote ? N.issueTitle : I.issueTitle} id="issue-h">
             <p className="m-0 text-sm text-ink-2">{I.draftNote}</p>
-            {!isNote && (
+            {!isNote && !direct && (
               <VatToggle checked={vatPct > 0} invoiceId={x.id}
                 label={fmt(t.common.withVat, { pct: formatNumber(locale, vatPct > 0 ? vatPct : rate) })} />
             )}
@@ -226,7 +293,7 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
         <div className="flex flex-wrap gap-2 print:hidden">
           <ProformaPdfButton model={model} label={I.download} errorText={I.downloadFailed} />
           <PrintButton label={I.print} variant="outline" />
-          <Link href={`/orders/${x.order_id}`} className="btn btn-outline">{I.toOrder}</Link>
+          {x.order_id && <Link href={`/orders/${x.order_id}`} className="btn btn-outline">{I.toOrder}</Link>}
         </div>
       )}
 

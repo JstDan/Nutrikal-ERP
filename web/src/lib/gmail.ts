@@ -7,6 +7,9 @@ export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const PAGES_PER_RUN = 3;
 const PER_PAGE = 50;
 const MAX_BODY = 20000;
+/** Gmail limits the cost of requests per minute: one message at a time, with a pause. */
+const PAUSE_MS = 500;
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const stub = () => process.env.GOOGLE_STUB_URL?.trim().replace(/\/+$/, "") ?? "";
 const url = (host: string, path: string) => `${stub() || host}${path}`;
@@ -48,9 +51,14 @@ export const exchangeCode = (code: string, redirectUri: string) =>
 
 async function gmail<T>(access: string, path: string): Promise<T> {
   const res = await fetch(gmailUrl(path), { headers: { Authorization: `Bearer ${access}` } });
-  if (!res.ok) throw new Error(`Gmail ${res.status}`);
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null) as { error?: { message?: string } } | null;
+    throw new Error(`Gmail ${res.status}: ${detail?.error?.message ?? ""}`);
+  }
   return res.json();
 }
+
+const isQuota = (e: unknown) => e instanceof Error && /Gmail (403|429).*(quota|rate limit)/i.test(e.message);
 
 export const mailboxAddress = async (access: string) => (await gmail<{ emailAddress: string }>(access, "/profile")).emailAddress;
 
@@ -93,7 +101,7 @@ export function toMail(m: Message) {
 type State = { email: string; token_enc: string; sync_from: string; page_token: string | null };
 
 /** A few pages of mail; the next run goes on. When a pass is finished, the next one starts from a day before it. */
-export async function syncGmail(): Promise<{ connected: boolean; saved: number }> {
+export async function syncGmail(): Promise<{ connected: boolean; saved: number; paused?: boolean; error?: string }> {
   const [state] = await asSystem<State>("select email, token_enc, sync_from::text, page_token from gmail_job_state()");
   if (!state) return { connected: false, saved: 0 };
   let saved = 0;
@@ -106,8 +114,23 @@ export async function syncGmail(): Promise<{ connected: boolean; saved: number }
       const list = await gmail<{ messages?: { id: string }[]; nextPageToken?: string }>(
         access_token, `/messages?q=${q}&maxResults=${PER_PAGE}${pageToken ? `&pageToken=${pageToken}` : ""}`);
       const mails = [];
-      for (const { id } of list.messages ?? []) mails.push(toMail(await gmail<Message>(access_token, `/messages/${id}?format=full`)));
+      let paused = false;
+      for (const { id } of list.messages ?? []) {
+        try {
+          mails.push(toMail(await gmail<Message>(access_token, `/messages/${id}?format=full`)));
+        } catch (e) {
+          if (!isQuota(e)) throw e;
+          paused = true;
+          break;
+        }
+        await wait(PAUSE_MS);
+      }
       if (mails.length) saved += (await asSystem<{ n: number }>("select gmail_job_save($1::jsonb) as n", [JSON.stringify(mails)]))[0].n;
+      // At the limit: what came is kept, and the next run goes on from this page
+      if (paused) {
+        await asSystem("select gmail_job_done($1, null, null)", [pageToken]);
+        return { connected: true, saved, paused };
+      }
       pageToken = list.nextPageToken ?? null;
       if (!pageToken) {
         started.setDate(started.getDate() - 1);
@@ -117,8 +140,14 @@ export async function syncGmail(): Promise<{ connected: boolean; saved: number }
     }
     await asSystem("select gmail_job_done($1, null, null)", [pageToken]);
   } catch (e) {
+    if (isQuota(e)) {
+      await asSystem("select gmail_job_done($1, null, null)", [pageToken]);
+      return { connected: true, saved, paused: true };
+    }
     console.error("Gmail sync", e);
-    await asSystem("select gmail_job_done($1, null, $2)", [pageToken, e instanceof Error ? e.message : String(e)]);
+    const error = e instanceof Error ? e.message : String(e);
+    await asSystem("select gmail_job_done($1, null, $2)", [pageToken, error]);
+    return { connected: true, saved, error };
   }
   return { connected: true, saved };
 }
