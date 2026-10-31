@@ -2776,6 +2776,11 @@ await ok('the catalogue is public with prices and composition; bars from 3000; n
   eq(th.tiers.length, 4, 'tiers'); eq(th.tiers[0].unit_price, 6.2, 'price');
   eq(d.products.find((p) => p.code === 'GP-101').min_qty, 3000, 'bar');
 });
+await ok('Essentials and Mushrooms are capsules, softgels and powders stay what they are', async () => {
+  const f = Object.fromEntries((await as('admin', "select code, product_format from catalog_products where code in ('NTL-EN101', 'NTL-M101', 'NTL-EN103', 'NTL-EN104', 'NTL-EN120')")).map((r) => [r.code, r.product_format]));
+  eq(f['NTL-EN101'], 'capsule', 'nutrient'); eq(f['NTL-M101'], 'capsule', 'mushroom');
+  eq(f['NTL-EN103'], 'softgel', 'D3'); eq(f['NTL-EN104'], 'softgel', 'omega'); eq(f['NTL-EN120'], 'powder', 'colostrum');
+});
 await fails('Sales does not publish everything', () => as('sales', 'select catalog_publish_ready()'), 'not allowed');
 await ok('publish all ready takes what is ready and leaves out what has no price', async () => {
   await as('admin', "update catalog_products set is_published = false where code = 'NTL-TH101'");
