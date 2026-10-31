@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LiveSearch } from "@/components/live-search";
 import { q } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
 import { Chip, Empty, PageHeader } from "@/components/ui";
@@ -51,7 +52,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
         <form method="get" role="search" className="flex min-w-0 flex-[1_1_240px] justify-end gap-2">
           {status && <input type="hidden" name="status" value={status} />}
           <label htmlFor="client-q" className="sr-only">{t.topbar.search}</label>
-          <input id="client-q" name="q" type="search" defaultValue={term} placeholder={t.clients.searchPlaceholder} className="input max-w-[360px]" />
+          <LiveSearch id="client-q" defaultValue={term} placeholder={t.clients.searchPlaceholder} className="input max-w-[360px]" />
         </form>
       </div>
 

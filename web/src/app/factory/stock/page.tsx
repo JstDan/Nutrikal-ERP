@@ -1,4 +1,5 @@
 import { withUser } from "@/lib/db/engine";
+import { LiveSearch } from "@/components/live-search";
 import { requireRole } from "@/lib/session";
 import { formatDate, formatQty } from "@/lib/i18n";
 import { Card, Chip, Empty, PageHeader } from "@/components/ui";
@@ -50,7 +51,7 @@ export default async function FactoryStockPage({ searchParams }: PageProps<"/fac
         <section aria-label={S.title} className="cq card flex flex-col px-5 pt-4 pb-3">
           <form method="get" role="search" className="flex flex-wrap gap-2">
             <label htmlFor="stock-q" className="sr-only">{S.search}</label>
-            <input id="stock-q" name="q" type="search" defaultValue={term} placeholder={S.search} className="input min-w-0 flex-[1_1_200px]" />
+            <LiveSearch id="stock-q" defaultValue={term} placeholder={S.search} className="input min-w-0 flex-[1_1_200px]" />
             <button type="submit" className="btn btn-outline">{S.find}</button>
           </form>
           <div className="row cq-hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 @xl:grid-cols-[minmax(0,1.6fr)_100px_120px_120px]">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LiveSearch } from "@/components/live-search";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
 import { fmt, formatDate, formatPrice, formatQty, type Locale } from "@/lib/i18n";
@@ -118,7 +119,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
         <form method="get" role="search" className="flex min-w-0 flex-[1_1_220px] justify-end">
           <input type="hidden" name="type" value={type} />
           <label htmlFor="inv-q" className="sr-only">{t.topbar.search}</label>
-          <input id="inv-q" name="q" type="search" defaultValue={term} placeholder={t.inventory.searchPlaceholder} className="input max-w-[320px]" />
+          <LiveSearch id="inv-q" defaultValue={term} placeholder={t.inventory.searchPlaceholder} className="input max-w-[320px]" />
         </form>
       </div>
 

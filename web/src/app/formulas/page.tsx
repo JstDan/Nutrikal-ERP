@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LiveSearch } from "@/components/live-search";
 import { q } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
 import { Chip, Empty, PageHeader } from "@/components/ui";
@@ -48,7 +49,7 @@ export default async function FormulasPage({ searchParams }: PageProps<"/formula
 
       <form method="get" role="search" className="flex min-w-0 justify-end">
         <label htmlFor="formula-q" className="sr-only">{t.topbar.search}</label>
-        <input id="formula-q" name="q" type="search" defaultValue={term} placeholder={t.formulas.searchPlaceholder} className="input max-w-[360px]" />
+        <LiveSearch id="formula-q" defaultValue={term} placeholder={t.formulas.searchPlaceholder} className="input max-w-[360px]" />
       </form>
 
       <section aria-label={t.formulas.title} className="card px-5 pt-2 pb-3">
