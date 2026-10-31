@@ -10,6 +10,8 @@ import { ThemeSwitch } from "./theme-switch";
 import { MobileMenu } from "./mobile-menu";
 import { Wordmark } from "./logo";
 import { NotificationBell } from "./notification-bell";
+import { AssistantPanel } from "./assistant-panel";
+import { aiConfigured, aiModels } from "@/lib/ai/gateway";
 
 export async function AppShell({ children }: { children: ReactNode }) {
   const { user, developer, locale, t, local } = await getSession();
@@ -124,6 +126,9 @@ export async function AppShell({ children }: { children: ReactNode }) {
         </header>
         <main className="w-full max-w-[1360px] px-4 py-6 sm:px-8 sm:py-8">{children}</main>
       </div>
+      {(user.role === "admin" || user.role === "sales") && (
+        <AssistantPanel models={aiModels()} configured={aiConfigured()} locale={locale} text={t.assistant} />
+      )}
     </div>
   );
 }

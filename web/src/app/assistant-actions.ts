@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { q } from "@/lib/db/engine";
 import { aiConfigured, aiModels, converse, type Turn } from "@/lib/ai/gateway";
 import { aiTools, runTool } from "@/lib/ai/tools";
+import type { ChatLine, ChatProposal } from "@/components/assistant-chat";
 import { getSession } from "@/lib/session";
 import type { ActionState } from "@/app/actions";
 
@@ -24,7 +25,22 @@ Never calculate cost, fill or stock yourself: report the figures propose_recipe 
 If a needed material is not in the system, name it and propose without it. After proposing, summarise in a few lines. The person sees the proposal with its figures below your answer, so do not mention cards or buttons.
 After proposing, check the status of each ingredient with eu_novel_food_status and name the claims the recipe could carry with eu_health_claims. Say once that the doses are not checked and that a person decides.`;
 
-export async function askAssistant(_: ActionState, fd: FormData): Promise<ActionState> {
+/** What the person has open, for questions like "this order". Only pages with a record, read with the person's rights. */
+async function pageContext(userId: string, page: string): Promise<string> {
+  const m = page.match(/^\/(orders|clients|formulas)\/([0-9a-f-]{36})/i);
+  if (!m) return "";
+  const sql = {
+    orders: "select code || ', client ' || client as x from sales_order_overview where id = $1",
+    clients: "select legal_name as x from clients where id = $1",
+    formulas: "select code || ' ' || name as x from formulas where id = $1",
+  }[m[1].toLowerCase() as "orders"];
+  const [row] = await q<{ x: string }>(userId, sql, [m[2]]);
+  const kind = { orders: "order", clients: "client", formulas: "recipe" }[m[1].toLowerCase() as "orders"];
+  return row ? `\nThe person has this ${kind} open: ${row.x}. "This" in the question most likely means it.` : "";
+}
+
+/** One question: saved, answered and saved again. The answer stays in the conversation even when the service fails. */
+async function ask(fd: FormData): Promise<{ error: string } | { id: string }> {
   const { user, locale, t } = await getSession();
   const A = t.assistant;
   const text = String(fd.get("text") ?? "").trim();
@@ -43,7 +59,8 @@ export async function askAssistant(_: ActionState, fd: FormData): Promise<Action
     const history = await q<Turn>(user.id,
       `select role, content from (select role, content, created_at from ai_messages where conversation_id = $1 order by created_at desc limit ${HISTORY}) x
         order by created_at`, [id]);
-    const instructions = system(user.name, locale === "bg" ? "Bulgarian" : "English", new Date().toISOString().slice(0, 10));
+    const instructions = system(user.name, locale === "bg" ? "Bulgarian" : "English", new Date().toISOString().slice(0, 10))
+      + await pageContext(user.id, String(fd.get("page") ?? ""));
     const answer = await converse(model.id, instructions, history, aiTools(), (name, args) => runTool(user.id, id, name, args), MAX_ROUNDS);
     await q(user.id, "insert into ai_messages (conversation_id, role, content, model, tokens_in, tokens_out) values ($1, 'assistant', $2, $3, $4, $5)",
       [id, answer.text || A.noAnswer, model.label, answer.tokensIn, answer.tokensOut]);
@@ -53,7 +70,35 @@ export async function askAssistant(_: ActionState, fd: FormData): Promise<Action
     await q(user.id, "insert into ai_messages (conversation_id, role, content, model) values ($1, 'assistant', $2, $3)", [id, A.failed, model.label]);
   }
   revalidatePath("/assistant");
-  redirect(`/assistant?c=${id}`);
+  return { id };
+}
+
+export async function askAssistant(_: ActionState, fd: FormData): Promise<ActionState> {
+  const r = await ask(fd);
+  if ("error" in r) return r;
+  redirect(`/assistant?c=${r.id}`);
+}
+
+async function conversation(userId: string, id: string) {
+  return {
+    messages: await q<ChatLine>(userId, "select id, role, content, model, created_at::text from ai_messages where conversation_id = $1 order by created_at", [id]),
+    proposals: await q<ChatProposal>(userId, "select id, recipe, estimate, formula_id, created_at::text from ai_recipe_proposals where conversation_id = $1 order by created_at", [id]),
+  };
+}
+
+/** The floating panel: the answer comes back to the page the person is on. */
+export async function askPanel(fd: FormData) {
+  const { user } = await getSession();
+  const r = await ask(fd);
+  if ("error" in r) return r;
+  return { id: r.id, ...await conversation(user.id, r.id) };
+}
+
+export async function openPanelConversation(id: string) {
+  const { user } = await getSession();
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const c = await conversation(user.id, id);
+  return c.messages.length ? c : null;
 }
 
 /** A person saves the proposal as a draft recipe, to review and approve as usual. */

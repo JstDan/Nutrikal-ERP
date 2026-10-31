@@ -23,7 +23,7 @@ export type ChatProposal = {
 };
 
 /** A proposal with the system's figures; only a person saves it as a draft. */
-function ProposalCard({ p, locale, A }: { p: ChatProposal; locale: Locale; A: Dict["assistant"] }) {
+export function ProposalCard({ p, locale, A }: { p: ChatProposal; locale: Locale; A: Dict["assistant"] }) {
   const e = p.estimate;
   const name = locale === "bg" && p.recipe.name_bg ? p.recipe.name_bg : p.recipe.name;
   const total = e.materials_cost_per_pack == null ? null : e.materials_cost_per_pack + (e.shell_cost_per_pack ?? 0);
