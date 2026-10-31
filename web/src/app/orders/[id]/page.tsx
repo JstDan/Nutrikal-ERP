@@ -1,14 +1,15 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { DispatchCard } from "@/components/dispatch-card";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice } from "@/lib/i18n";
-import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
+import { Card, Chip, Empty, Fact, Fold, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { orderTone } from "@/lib/status";
 import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
-import { addOrderLine, createProductionFromLine, linkOrderLineFormula, openOrderInvoice, removeOrderLine, saveOrder, setOrderStatus, setOrderTransport } from "@/app/actions";
+import { addOrderLine, linkOrderLineFormula, openOrderInvoice, removeOrderLine, saveOrder, setOrderStatus, setOrderTransport } from "@/app/actions";
 import { copyOrder, prepareProduction } from "@/app/shortcut-actions";
 import { loadBoard, loadTemplates } from "@/lib/tasks";
 import { TaskBoard } from "@/components/tasks/board";
@@ -127,7 +128,6 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const total = lines.reduce((s, l) => s + Number(price.get(l.id)?.unit_price ?? 0) * l.quantity, 0);
   const money = (n: number | string) => formatPrice(locale, n, c?.currency ?? "EUR");
   const isDraft = o.status === "draft";
-  const canPlan = !["cancelled", "dispatched", "closed"].includes(o.status);
   const balanceText = c ? fmt(t.enums.balanceTerms[c.balance_terms ?? "before_dispatch"], { days: c.balance_net_days ?? 0 }) : "";
 
   const T = t.tasks;
@@ -170,6 +170,71 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     );
   };
 
+  const statusButton = (s: string) => (
+    <ActionForm key={s} action={setOrderStatus} submitLabel={d.toStatus[s as "confirmed"]} resetOnSuccess={false}>
+      <input type="hidden" name="order_id" value={o.id} />
+      <input type="hidden" name="status" value={s} />
+    </ActionForm>
+  );
+
+  // The one thing to do now; everything less common is under Other actions
+  const primaryFinal = showFinalPayment && o.status === "ready" && c?.balance_terms !== "net_days";
+  const toSend = mos.find((m) => ["simulation", "scheduled"].includes(m.status));
+  const unplanned = products.some((l) => !mos.some((m) => m.sales_order_line_id === l.id && m.status !== "cancelled"));
+  const note = (text: string) => <p className="m-0 text-sm text-ink-2">{text}</p>;
+  const finalPayment = (<>{note(T.payment.finalNote)}<ConfirmFinalPayment orderId={o.id} T={T} /></>);
+  const firstPayment = (
+    <ConfirmFirstPayment orderId={o.id} T={T} locale={locale} templates={templates} defaultPct={c?.deposit_pct != null ? depPct : null}
+      gross={gross} currency={c?.currency ?? "EUR"} />
+  );
+  let primaryStatus: string | null = null;
+  let step: ReactNode = null;
+  if (canEdit) {
+    if (showFirstPayment && o.status === "unpaid") {
+      step = (<>{note(d.unpaidNote)}{firstPayment}</>);
+    } else if (o.status === "unpaid") {
+      step = note(d.unpaidSales);
+    } else if (isDraft) {
+      primaryStatus = "confirmed";
+      step = statusButton("confirmed");
+    } else if (showPrepare) {
+      step = (
+        <ActionForm action={prepareProduction} submitLabel={d.prepareProduction} resetOnSuccess={false}>
+          <input type="hidden" name="order_id" value={o.id} />
+          {note(d.prepareNote)}
+          <label className="field max-w-[260px]"><span>{d.prepareDate}</span><input name="planned_date" type="date" className="input" /></label>
+        </ActionForm>
+      );
+    } else if (["confirmed", "in_production"].includes(o.status) && unplanned) {
+      step = note(d.stepWaitAdmin);
+    } else if (["confirmed", "in_production"].includes(o.status) && toSend) {
+      step = (<>{note(d.stepSend)}<Link href={`/production/${toSend.id}`} className="btn btn-primary self-start">{fmt(d.openMo, { code: toSend.code })}</Link></>);
+    } else if (o.status === "in_production" && final?.done) {
+      primaryStatus = "ready";
+      step = statusButton("ready");
+    } else if (["confirmed", "in_production"].includes(o.status)) {
+      step = note(d.stepProducing);
+    } else if (primaryFinal) {
+      step = finalPayment;
+    } else if (o.status === "ready") {
+      step = (
+        <>
+          {note(isAdmin ? d.stepDispatch : t.dispatch.onlyAdmin)}
+          {isAdmin && <a href="#dispatch-h" className="btn btn-primary self-start">{t.dispatch.submit}</a>}
+        </>
+      );
+    } else if (shipped && dueInvoice) {
+      step = (<>{note(d.invoiceNote)}{invoiceButton(dueInvoice, invoiceOf(dueInvoice) ? d.openInvoice : d.makeInvoice)}</>);
+    } else if (shipped && showFinalPayment) {
+      step = finalPayment;
+    } else if (shipped && !finalIssued) {
+      step = note(H.finalInvoiceAfter);
+    } else if (o.status === "dispatched") {
+      primaryStatus = "closed";
+      step = statusButton("closed");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -181,24 +246,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             <span>{t.orders.products}: {products.length}{c ? ` · ${money(total)}` : ""}</span>
           </span>
         }
-        actions={canEdit ? (
-          <div className="flex flex-wrap items-start gap-3">
-            {/* Paid: the invoice replaces the proforma */}
-            {o.status !== "cancelled" && (!["draft", "unpaid"].includes(o.status) ? (
-              twoPayments ? (
-                <>
-                  {invoiceButton("advance", H.advanceInvoice)}
-                  {c?.balance_received_on && invoiceButton("final", H.finalInvoice)}
-                </>
-              ) : invoiceButton("full", d.exportInvoice)
-            ) : (
-              <Link href={`/orders/${o.id}/proforma`} className="btn btn-primary">{d.exportProforma}</Link>
-            ))}
-            <ActionForm action={copyOrder} submitLabel={d.repeatOrder} resetOnSuccess={false}>
-              <input type="hidden" name="order_id" value={o.id} />
-            </ActionForm>
-          </div>
-        ) : undefined}
+        actions={canEdit && ["draft", "unpaid"].includes(o.status)
+          ? <Link href={`/orders/${o.id}/proforma`} className="btn btn-outline">{d.exportProforma}</Link>
+          : undefined}
       />
 
       <section aria-label={o.code} className="card grid grid-cols-2 gap-x-6 gap-y-3 p-5 sm:grid-cols-3 sm:p-6 xl:grid-cols-6">
@@ -210,244 +260,210 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         {board && <Fact label={H.progress}>{fmt(T.progress, { done: doneTasks, total: board.tasks.length })}</Fact>}
       </section>
 
-      {canEdit && board && (
-        <TaskBoard orderId={o.id} locale={locale} userId={user.id} isAdmin={isAdmin} data={board} T={T}
-          templates={templates} initialTask={initialTask} realtime={realtime} />
-      )}
+      {step && <Card title={d.nextStep} id="next-h" className="border-ink">{step}</Card>}
 
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-4">
-          <Card title={d.lines} id="lines-h">
-            {products.length === 0 && <Empty>{d.noLines}</Empty>}
-            {products.map((l) => {
-              const p = price.get(l.id);
-              const lineMos = mos.filter((m) => m.sales_order_line_id === l.id);
-              const active = lineMos.some((m) => m.status !== "cancelled");
-              return (
-                <div key={l.id} className="flex flex-col gap-3 border-b border-mist pb-4 last:border-0">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-[1_1_240px]">
-                      <div className="font-semibold break-words">
-                        {l.capsules ? fmt(d.withCapsules, { name: productName(l), n: formatNumber(locale, l.capsules) }) : productName(l)}
-                      </div>
-                      <div className="text-xs text-ink-2">
-                        {l.kind === "calc_offer" && l.calc_offer_id && (
-                          <Link href={`/offers/calc/${l.calc_offer_id}`} className="text-ink-2">{fmt(d.calcOffer, { no: l.calc_offer_no ?? "" })}</Link>
-                        )}
-                        {l.formula_code && <>{l.kind === "calc_offer" && " · "}{l.project_code} · {l.project_name} · {fmt(t.offers.detail.formulaVersion, { code: l.formula_code, n: l.formula_version ?? 0 })}</>}
-                        {l.offer_id && p?.offer_code && <> · <Link href={`/offers/${l.offer_id}`} className="text-ink-2">{p.offer_code}</Link></>}
-                      </div>
-                    </div>
-                    {isDraft && canEdit && (
-                      <form action={removeOrderLine}>
-                        <input type="hidden" name="line_id" value={l.id} />
-                        <input type="hidden" name="order_id" value={o.id} />
-                        <button type="submit" className="btn btn-outline" aria-label={`${d.remove}: ${productName(l)}`}>{d.remove}</button>
-                      </form>
+      <Card title={d.lines} id="lines-h">
+        {products.length === 0 && <Empty>{d.noLines}</Empty>}
+        {products.map((l) => {
+          const p = price.get(l.id);
+          const lineMos = mos.filter((m) => m.sales_order_line_id === l.id);
+          return (
+            <div key={l.id} className="flex flex-col gap-3 border-b border-mist pb-4 last:border-0">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-[1_1_240px]">
+                  <div className="font-semibold break-words">
+                    {l.capsules ? fmt(d.withCapsules, { name: productName(l), n: formatNumber(locale, l.capsules) }) : productName(l)}
+                  </div>
+                  <div className="text-xs text-ink-2">
+                    {l.kind === "calc_offer" && l.calc_offer_id && (
+                      <Link href={`/offers/calc/${l.calc_offer_id}`} className="text-ink-2">{fmt(d.calcOffer, { no: l.calc_offer_no ?? "" })}</Link>
                     )}
+                    {l.formula_code && <>{l.kind === "calc_offer" && " · "}{l.project_code} · {l.project_name} · {fmt(t.offers.detail.formulaVersion, { code: l.formula_code, n: l.formula_version ?? 0 })}</>}
+                    {l.offer_id && p?.offer_code && <> · <Link href={`/offers/${l.offer_id}`} className="text-ink-2">{p.offer_code}</Link></>}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
-                    <Fact label={d.quantity}>{formatNumber(locale, l.quantity)} {t.common.units}</Fact>
-                    {p && <Fact label={d.unitPrice}>{money(p.unit_price)}</Fact>}
-                    {p && <Fact label={d.lineTotal}><strong>{money(Number(p.unit_price) * l.quantity)}</strong></Fact>}
-                    <Fact label={d.production}>
-                      {lineMos.length === 0 ? "—" : (
-                        <span className="flex flex-col gap-1">
-                          {lineMos.map((m) => (
-                            <Link key={m.id} href={`/production/${m.id}`} className="text-ink">
-                              {m.code} · {t.enums.moStatus[m.status as "simulation"]}{m.status === "completed" && m.produced_quantity != null ? ` · ${formatNumber(locale, m.produced_quantity)} ${t.common.units}` : ""}
-                            </Link>
-                          ))}
-                        </span>
-                      )}
-                    </Fact>
-                  </div>
-                  {isAdmin && l.kind === "calc_offer" && !l.formula_version_id && ["confirmed", "in_production"].includes(o.status) && (
-                    <div className="flex flex-col gap-2 rounded-sm border border-line p-3">
-                      <div className="text-sm font-semibold">{d.formula}</div>
-                      <p className="m-0 text-[13px] text-ink-2">{d.formulaHint}</p>
-                      {approved.length === 0 ? (
-                        <p className="m-0 text-[13px] font-semibold">{d.noApproved} <Link href="/formulas" className="text-ink">{t.nav.formulas}</Link></p>
-                      ) : (
-                        <ActionForm action={linkOrderLineFormula} submitLabel={d.linkFormula} resetOnSuccess={false}>
-                          <input type="hidden" name="line_id" value={l.id} />
-                          <label className="field"><span>{d.chooseFormula} *</span>
-                            <select name="formula_version_id" required className="input" defaultValue={approved.find((v) => v.calc_offer_id && v.calc_offer_id === l.calc_offer_id)?.id ?? ""}>
-                              <option value="" disabled>—</option>
-                              {approved.map((v) => (
-                                <option key={v.id} value={v.id}>{fmt(t.offers.detail.formulaVersion, { code: v.code, n: v.version })} · {productName({ product: v.name, product_bg: v.name_bg })}</option>
-                              ))}
-                            </select>
-                          </label>
-                        </ActionForm>
-                      )}
-                    </div>
+                </div>
+                {isDraft && canEdit && (
+                  <form action={removeOrderLine}>
+                    <input type="hidden" name="line_id" value={l.id} />
+                    <input type="hidden" name="order_id" value={o.id} />
+                    <button type="submit" className="btn btn-outline" aria-label={`${d.remove}: ${productName(l)}`}>{d.remove}</button>
+                  </form>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
+                <Fact label={d.quantity}>{formatNumber(locale, l.quantity)} {t.common.units}</Fact>
+                {p && <Fact label={d.unitPrice}>{money(p.unit_price)}</Fact>}
+                {p && <Fact label={d.lineTotal}><strong>{money(Number(p.unit_price) * l.quantity)}</strong></Fact>}
+                <Fact label={d.production}>
+                  {lineMos.length === 0 ? "—" : (
+                    <span className="flex flex-col gap-1">
+                      {lineMos.map((m) => (
+                        <Link key={m.id} href={`/production/${m.id}`} className="text-ink">
+                          {m.code} · {t.enums.moStatus[m.status as "simulation"]}{m.status === "completed" && m.produced_quantity != null ? ` · ${formatNumber(locale, m.produced_quantity)} ${t.common.units}` : ""}
+                        </Link>
+                      ))}
+                    </span>
                   )}
-                  {canPlan && !active && l.formula_version_id && o.status !== "unpaid" && (
-                    <ActionForm action={createProductionFromLine} submitLabel={d.planProduction} resetOnSuccess={false}>
+                </Fact>
+              </div>
+              {isAdmin && l.kind === "calc_offer" && !l.formula_version_id && ["confirmed", "in_production"].includes(o.status) && (
+                <div className="flex flex-col gap-2 rounded-sm border border-line p-3">
+                  <div className="text-sm font-semibold">{d.formula}</div>
+                  <p className="m-0 text-[13px] text-ink-2">{d.formulaHint}</p>
+                  {approved.length === 0 ? (
+                    <p className="m-0 text-[13px] font-semibold">{d.noApproved} <Link href="/formulas" className="text-ink">{t.nav.formulas}</Link></p>
+                  ) : (
+                    <ActionForm action={linkOrderLineFormula} submitLabel={d.linkFormula} resetOnSuccess={false}>
                       <input type="hidden" name="line_id" value={l.id} />
+                      <label className="field"><span>{d.chooseFormula} *</span>
+                        <select name="formula_version_id" required className="input" defaultValue={approved.find((v) => v.calc_offer_id && v.calc_offer_id === l.calc_offer_id)?.id ?? ""}>
+                          <option value="" disabled>—</option>
+                          {approved.map((v) => (
+                            <option key={v.id} value={v.id}>{fmt(t.offers.detail.formulaVersion, { code: v.code, n: v.version })} · {productName({ product: v.name, product_bg: v.name_bg })}</option>
+                          ))}
+                        </select>
+                      </label>
                     </ActionForm>
                   )}
                 </div>
+              )}
+            </div>
+          );
+        })}
+        {services.length > 0 && (
+          <div className="flex flex-col gap-2 border-t border-mist pt-4">
+            <h3 className="m-0 text-base font-bold">{t.orders.new.services}</h3>
+            {services.map((l) => {
+              const p = price.get(l.id);
+              return (
+                <div key={l.id} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-2 text-sm last:border-0 sm:grid-cols-[minmax(0,1fr)_120px_120px]">
+                  <span className="min-w-0 break-words">{l.product}</span>
+                  <span className="hide-sm">{formatNumber(locale, l.quantity)} × {p ? money(p.unit_price) : "—"}</span>
+                  <strong className="text-right">{p ? money(Number(p.unit_price) * l.quantity) : ""}</strong>
+                </div>
               );
             })}
-            {services.length > 0 && (
-              <div className="flex flex-col gap-2 border-t border-mist pt-4">
-                <h3 className="m-0 text-base font-bold">{t.orders.new.services}</h3>
-                {services.map((l) => {
-                  const p = price.get(l.id);
-                  return (
-                    <div key={l.id} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-2 text-sm last:border-0 sm:grid-cols-[minmax(0,1fr)_120px_120px]">
-                      <span className="min-w-0 break-words">{l.product}</span>
-                      <span className="hide-sm">{formatNumber(locale, l.quantity)} × {p ? money(p.unit_price) : "—"}</span>
-                      <strong className="text-right">{p ? money(Number(p.unit_price) * l.quantity) : ""}</strong>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {isDraft && canEdit && offerOptions.length > 0 && (
-              <div className="flex flex-col gap-3 border-t border-mist pt-4">
-                <h3 className="m-0 text-base font-bold">{d.addLine}</h3>
-                <p className="m-0 text-[13px] text-ink-2">{d.addLineNote}</p>
-                <ActionForm action={addOrderLine} submitLabel={t.common.add}>
-                  <input type="hidden" name="order_id" value={o.id} />
-                  <label className="field"><span>{d.chooseOffer} *</span>
-                    <select name="offer_quantity" required className="input" defaultValue="">
-                      <option value="" disabled>—</option>
-                      {offerOptions.map((x) => (
-                        <option key={x.offer_id + x.quantity} value={`${x.offer_id}|${x.quantity}`}>
-                          {x.code} · {productName(x)} · {formatNumber(locale, x.quantity)} × {money(x.unit_price)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </ActionForm>
-              </div>
-            )}
-          </Card>
-        </div>
+          </div>
+        )}
+        {isDraft && canEdit && offerOptions.length > 0 && (
+          <div className="flex flex-col gap-3 border-t border-mist pt-4">
+            <h3 className="m-0 text-base font-bold">{d.addLine}</h3>
+            <p className="m-0 text-[13px] text-ink-2">{d.addLineNote}</p>
+            <ActionForm action={addOrderLine} submitLabel={t.common.add}>
+              <input type="hidden" name="order_id" value={o.id} />
+              <label className="field"><span>{d.chooseOffer} *</span>
+                <select name="offer_quantity" required className="input" defaultValue="">
+                  <option value="" disabled>—</option>
+                  {offerOptions.map((x) => (
+                    <option key={x.offer_id + x.quantity} value={`${x.offer_id}|${x.quantity}`}>
+                      {x.code} · {productName(x)} · {formatNumber(locale, x.quantity)} × {money(x.unit_price)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </ActionForm>
+          </div>
+        )}
+      </Card>
 
-        <div className="flex min-w-0 flex-col gap-4">
-          {canEdit && (next.length > 0 || showFirstPayment || showFinalPayment || showPrepare) && (
-            <Card title={d.nextStep} id="next-h">
-              {o.status === "unpaid" && <p className="m-0 text-sm text-ink-2">{isAdmin ? d.unpaidNote : d.unpaidSales}</p>}
-              {showFirstPayment && (
-                <ConfirmFirstPayment orderId={o.id} T={T} locale={locale} templates={templates} defaultPct={c?.deposit_pct != null ? depPct : null}
-                  gross={gross} currency={c?.currency ?? "EUR"} />
-              )}
-              {showFinalPayment && (
+      <DispatchCard orderId={o.id} status={o.status} isAdmin={isAdmin} userId={user.id} locale={locale} t={t}
+        balanceDue={!!c && c.balance_terms === "before_dispatch" && !c.balance_received_on} />
+
+      {canEdit && board && (
+        <Fold title={T.title} note={fmt(T.progress, { done: doneTasks, total: board.tasks.length })} open={!!initialTask}>
+          <TaskBoard orderId={o.id} locale={locale} userId={user.id} isAdmin={isAdmin} data={board} T={T}
+            templates={templates} initialTask={initialTask} realtime={realtime} />
+        </Fold>
+      )}
+      {canEdit && !board && !["draft", "unpaid", "cancelled"].includes(o.status) && (
+        <Fold title={T.title}><Empty>{isAdmin ? T.legacyAdmin : T.legacySales}</Empty></Fold>
+      )}
+
+      {c && final && paid && o.status !== "cancelled" && (
+        <Fold title={F.title}>
+          <p className="m-0 text-sm text-ink-2">{final.done ? F.done : F.pending}</p>
+          {final.done && products.map((l) => {
+            const x = final.lines.find((y) => y.line_id === l.id);
+            return x ? (
+              <div key={l.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
+                <span className="min-w-0 break-words">{productName(l)}</span>
+                <span className="font-semibold">{fmt(F.orderedProduced, { ordered: formatNumber(locale, x.ordered), produced: formatNumber(locale, x.quantity) })}</span>
+              </div>
+            ) : null;
+          })}
+          {!finalIssued && (
+            <ActionForm action={setOrderTransport} submitLabel={t.common.save} resetOnSuccess={false}>
+              <input type="hidden" name="order_id" value={o.id} />
+              <label className="field"><span>{F.transport}</span>
+                <input name="transport" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={c.transport_amount ?? ""} className="input" />
+              </label>
+              <p className="m-0 text-xs text-ink-2">{F.transportNote}</p>
+            </ActionForm>
+          )}
+          {finalIssued && <Fact label={F.transport}>{c.transport_amount ? money(c.transport_amount) : "—"}</Fact>}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 xl:grid-cols-1">
+            <Fact label={F.total}>{money(final.totals?.gross ?? 0)}</Fact>
+            {twoPayments && <Fact label={F.advance}>{money(advancePaid)}</Fact>}
+            {twoPayments && <Fact label={F.due}><strong>{money(Math.max(0, Number(final.totals?.gross ?? 0) - advancePaid))}</strong></Fact>}
+          </div>
+          {final.done && twoPayments && <Link href={`/orders/${o.id}/proforma?final=1`} className="btn btn-primary self-start">{F.open}</Link>}
+        </Fold>
+      )}
+
+      {c ? (
+        <Fold title={d.payments} note={paymentText}>
+          <p className="m-0 text-sm">
+            {c.deposit_amount != null ? <>{fmt(d.depositAmount, { amount: money(c.deposit_amount) })} · </>
+              : c.deposit_pct != null && Number(c.deposit_pct) > 0 && <>{fmt(d.depositAmount, { amount: money(total * Number(c.deposit_pct) / 100) })} · </>}
+            {balanceText}
+          </p>
+          <ActionForm action={saveOrder} submitLabel={t.common.save} resetOnSuccess={false}>
+            <input type="hidden" name="order_id" value={o.id} />
+            <div className="grid grid-cols-1 gap-3">
+              <label className="field"><span>{d.depositPct}</span><input name="deposit_pct" type="number" min={0} max={100} step="any" defaultValue={c.deposit_pct ?? ""} className="input" /></label>
+              {isAdmin ? (
                 <>
-                  <p className="m-0 text-sm text-ink-2">{T.payment.finalNote}</p>
-                  <ConfirmFinalPayment orderId={o.id} T={T} />
+                  <label className="field"><span>{d.depositReceived}</span><input name="deposit_received_on" type="date" defaultValue={c.deposit_received_on ?? ""} className="input" /></label>
+                  <label className="field"><span>{d.balanceReceived}</span><input name="balance_received_on" type="date" defaultValue={c.balance_received_on ?? ""} className="input" /></label>
+                </>
+              ) : (
+                <>
+                  <Fact label={d.depositReceived}>{formatDate(locale, c.deposit_received_on)}</Fact>
+                  <Fact label={d.balanceReceived}>{formatDate(locale, c.balance_received_on)}</Fact>
+                  <p className="m-0 text-xs text-ink-2">{d.datesAdminOnly}</p>
                 </>
               )}
-              {twoPayments && paid && !c?.balance_received_on && <p className="m-0 text-xs text-ink-2">{H.finalInvoiceAfter}</p>}
-              {o.status === "confirmed" && <p className="m-0 text-sm text-ink-2">{d.productionSteps}</p>}
-              {showPrepare && (
-                <ActionForm action={prepareProduction} submitLabel={d.prepareProduction} resetOnSuccess={false}>
-                  <input type="hidden" name="order_id" value={o.id} />
-                  <p className="m-0 text-sm text-ink-2">{d.prepareNote}</p>
-                  <label className="field"><span>{d.prepareDate}</span><input name="planned_date" type="date" className="input" /></label>
-                </ActionForm>
-              )}
-              {o.status === "ready" && <p className="m-0 text-sm text-ink-2">{d.balanceWarning}</p>}
-              {showCancelPayment && <CancelPayment orderId={o.id} T={T} />}
-              {next.map((s) => (
-                <ActionForm key={s} action={setOrderStatus} submitLabel={o.status === "unpaid" && s === "confirmed" ? d.confirmPayment : d.toStatus[s as "confirmed"]} resetOnSuccess={false}>
-                  <input type="hidden" name="order_id" value={o.id} />
-                  <input type="hidden" name="status" value={s} />
-                </ActionForm>
-              ))}
-            </Card>
-          )}
+              <label className="field"><span>{d.requested}</span><input name="requested_date" type="date" defaultValue={o.requested_date ?? ""} className="input" /></label>
+              <label className="field"><span>{d.customerRef}</span><input name="customer_ref" defaultValue={c.customer_ref ?? ""} className="input" /></label>
+              <label className="field"><span>{d.notes}</span><textarea name="notes" defaultValue={c.notes ?? ""} className="input" /></label>
+            </div>
+          </ActionForm>
+        </Fold>
+      ) : (
+        <Fold title={d.payments}>
+          <Fact label={d.requested}>{formatDate(locale, o.requested_date)}</Fact>
+        </Fold>
+      )}
 
-          {shipped && canEdit && !finalIssued && (
-            <Card title={d.invoiceTitle} id="invoice-due-h">
-              {dueInvoice ? (
-                <>
-                  <p className="m-0 text-sm text-ink-2">{d.invoiceNote}</p>
-                  {invoiceButton(dueInvoice, invoiceOf(dueInvoice) ? d.openInvoice : d.makeInvoice)}
-                </>
-              ) : <p className="m-0 text-sm text-ink-2">{H.finalInvoiceAfter}</p>}
-            </Card>
-          )}
-
-          <DispatchCard orderId={o.id} status={o.status} isAdmin={isAdmin} userId={user.id} locale={locale} t={t}
-            balanceDue={!!c && c.balance_terms === "before_dispatch" && !c.balance_received_on} />
-
-          {c && final && paid && o.status !== "cancelled" && (
-            <Card title={F.title} id="final-h">
-              <p className="m-0 text-sm text-ink-2">{final.done ? F.done : F.pending}</p>
-              {final.done && products.map((l) => {
-                const x = final.lines.find((y) => y.line_id === l.id);
-                return x ? (
-                  <div key={l.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
-                    <span className="min-w-0 break-words">{productName(l)}</span>
-                    <span className="font-semibold">{fmt(F.orderedProduced, { ordered: formatNumber(locale, x.ordered), produced: formatNumber(locale, x.quantity) })}</span>
-                  </div>
-                ) : null;
-              })}
-              {!finalIssued && (
-                <ActionForm action={setOrderTransport} submitLabel={t.common.save} resetOnSuccess={false}>
-                  <input type="hidden" name="order_id" value={o.id} />
-                  <label className="field"><span>{F.transport}</span>
-                    <input name="transport" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={c.transport_amount ?? ""} className="input" />
-                  </label>
-                  <p className="m-0 text-xs text-ink-2">{F.transportNote}</p>
-                </ActionForm>
-              )}
-              {finalIssued && <Fact label={F.transport}>{c.transport_amount ? money(c.transport_amount) : "—"}</Fact>}
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 xl:grid-cols-1">
-                <Fact label={F.total}>{money(final.totals?.gross ?? 0)}</Fact>
-                {twoPayments && <Fact label={F.advance}>{money(advancePaid)}</Fact>}
-                {twoPayments && <Fact label={F.due}><strong>{money(Math.max(0, Number(final.totals?.gross ?? 0) - advancePaid))}</strong></Fact>}
-              </div>
-              {final.done && twoPayments && <Link href={`/orders/${o.id}/proforma?final=1`} className="btn btn-primary self-start">{F.open}</Link>}
-            </Card>
-          )}
-
-          {c ? (
-            <Card title={d.payments} id="payments-h">
-              <p className="m-0 text-sm">
-                {c.deposit_amount != null ? <>{fmt(d.depositAmount, { amount: money(c.deposit_amount) })} · </>
-                  : c.deposit_pct != null && Number(c.deposit_pct) > 0 && <>{fmt(d.depositAmount, { amount: money(total * Number(c.deposit_pct) / 100) })} · </>}
-                {balanceText}
-              </p>
-              <ActionForm action={saveOrder} submitLabel={t.common.save} resetOnSuccess={false}>
-                <input type="hidden" name="order_id" value={o.id} />
-                <div className="grid grid-cols-1 gap-3">
-                  <label className="field"><span>{d.depositPct}</span><input name="deposit_pct" type="number" min={0} max={100} step="any" defaultValue={c.deposit_pct ?? ""} className="input" /></label>
-                  {isAdmin ? (
-                    <>
-                      <label className="field"><span>{d.depositReceived}</span><input name="deposit_received_on" type="date" defaultValue={c.deposit_received_on ?? ""} className="input" /></label>
-                      <label className="field"><span>{d.balanceReceived}</span><input name="balance_received_on" type="date" defaultValue={c.balance_received_on ?? ""} className="input" /></label>
-                    </>
-                  ) : (
-                    <>
-                      <Fact label={d.depositReceived}>{formatDate(locale, c.deposit_received_on)}</Fact>
-                      <Fact label={d.balanceReceived}>{formatDate(locale, c.balance_received_on)}</Fact>
-                      <p className="m-0 text-xs text-ink-2">{d.datesAdminOnly}</p>
-                    </>
-                  )}
-                  <label className="field"><span>{d.requested}</span><input name="requested_date" type="date" defaultValue={o.requested_date ?? ""} className="input" /></label>
-                  <label className="field"><span>{d.customerRef}</span><input name="customer_ref" defaultValue={c.customer_ref ?? ""} className="input" /></label>
-                  <label className="field"><span>{d.notes}</span><textarea name="notes" defaultValue={c.notes ?? ""} className="input" /></label>
-                </div>
-              </ActionForm>
-            </Card>
-          ) : (
-            <Card title={d.payments} id="payments-h">
-              <Fact label={d.requested}>{formatDate(locale, o.requested_date)}</Fact>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      {canEdit && !board && (
-        <Card title={T.title} id="tasks-h">
-          <Empty>{["draft", "unpaid", "cancelled"].includes(o.status) ? T.placeholder : isAdmin ? T.legacyAdmin : T.legacySales}</Empty>
-        </Card>
+      {canEdit && (
+        <Fold title={d.moreActions}>
+          {/* Paid: the invoice replaces the proforma */}
+          {!["draft", "unpaid", "cancelled"].includes(o.status) && (twoPayments ? (
+            <div className="flex flex-wrap items-start gap-3">
+              {invoiceButton("advance", H.advanceInvoice)}
+              {c?.balance_received_on && invoiceButton("final", H.finalInvoice)}
+            </div>
+          ) : invoiceButton("full", d.exportInvoice))}
+          {/* Orders paid before the task manager get their board here */}
+          {showFirstPayment && o.status !== "unpaid" && firstPayment}
+          {showFinalPayment && !primaryFinal && !shipped && <ConfirmFinalPayment orderId={o.id} T={T} />}
+          {showCancelPayment && <CancelPayment orderId={o.id} T={T} />}
+          {next.filter((x) => x !== primaryStatus).map((x) => statusButton(x))}
+          <ActionForm action={copyOrder} submitLabel={d.repeatOrder} resetOnSuccess={false}>
+            <input type="hidden" name="order_id" value={o.id} />
+            <p className="m-0 text-sm text-ink-2">{d.repeatNote}</p>
+          </ActionForm>
+        </Fold>
       )}
     </div>
   );

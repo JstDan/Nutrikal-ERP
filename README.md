@@ -51,7 +51,8 @@ Open http://localhost:3000.
 | Accounting export | Admin: movements, production consumption, stock value, cost of sales and open deliveries for a period, on screen and as an Excel workbook in the user's language |
 | Change history | Admin: every change to key records with who and when, filters, CSV download |
 | Overview | Everyone sees what is waiting for them: their tasks, payments, orders to plan, materials to order, batches to release, orders to dispatch and invoices to issue |
-| Shortcuts | Offer: Make an order. Paid order: Prepare production (Admin; recipe, manufacturing orders, reservations and purchase requests in one step). Any order: Repeat order (same products and prices, new and unpaid). After dispatch: Make the invoice |
+| Order page | One Next step on top; products below; tasks, final proforma, payments and other actions stay folded. The task board shows what needs a person; automatic tasks on request |
+| Shortcuts | Offer: Make an order. Paid order: Prepare production (Admin; recipe, manufacturing orders, reservations and purchase requests in one step; the only way to plan an order). Any order: Repeat order (same products and prices, new and unpaid). After dispatch: Make the invoice |
 | E-mail | Offers, proformas, issued invoices, credit and debit notes and delivery notes go to the client as a PDF from their page; each send is listed there. Needs RESEND_API_KEY and MAIL_FROM |
 | Settings | Admin only, under Settings: general (allowed batch difference, waybill photo rule, expiry warning, next invoice number), calculator settings and price-list links, production costs per format, task templates |
 | Dispatch | Admin: when an order is ready, choose how much of each released batch leaves; stock goes down and a delivery note (DN-00001) is made, in the client's language, without prices; PDF and print |

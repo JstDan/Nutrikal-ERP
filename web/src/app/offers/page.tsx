@@ -2,7 +2,7 @@ import Link from "next/link";
 import { q } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { formatDate, formatNumber } from "@/lib/i18n";
-import { Chip, Empty, PageHeader } from "@/components/ui";
+import { Chip, Empty, Fold, PageHeader } from "@/components/ui";
 import { offerTone } from "@/lib/status";
 import { loadOffers, loadSettings } from "@/lib/calculator/db";
 import { OffersList } from "@/components/calculator/offers-list";
@@ -50,7 +50,8 @@ export default async function OffersPage({ searchParams }: PageProps<"/offers">)
       {/* Offers are created in the calculator (Create offer), not here */}
       <OffersList t={t.calc} locale={locale} offers={calcOffers} settings={settings} userId={user.id} isAdmin={user.role === "admin"} inOrder={inOrder} />
 
-      <h2 className="m-0 text-lg font-bold">{t.offers.formulaOffers}</h2>
+      {rows.length > 0 || status ? (
+      <Fold title={t.offers.formulaOffers} note={t.offers.formulaOffersNote} open={!!status}>
       <nav aria-label={t.offers.status} className="flex flex-wrap gap-1">
         {(["", ...STATUSES] as const).map((s) => (
           <Link
@@ -84,6 +85,8 @@ export default async function OffersPage({ searchParams }: PageProps<"/offers">)
           </div>
         ))}
       </section>
+      </Fold>
+      ) : null}
     </div>
   );
 }

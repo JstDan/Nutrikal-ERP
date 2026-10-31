@@ -46,7 +46,9 @@ type Props = {
 /** The board of an order: filters, stage progress, columns of tasks (accordion on phones), task panel. */
 export function TaskBoard({ orderId, locale, userId, isAdmin, data, T, templates, initialTask, realtime }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
-  const [hideDone, setHideDone] = useState(false);
+  const [hideDone, setHideDone] = useState(true);
+  // Automatic tasks tick themselves: shown on request
+  const [showAuto, setShowAuto] = useState(false);
   const [openTask, setOpenTask] = useState<string | null>(initialTask && data.tasks.some((t) => t.id === initialTask) ? initialTask : null);
   const [columnsOpen, setColumnsOpen] = useState<false | "list" | "new">(false);
   const [adding, setAdding] = useState<string | null>(null);   // column id of the inline "+ Task" form, or "top"
@@ -88,6 +90,7 @@ export function TaskBoard({ orderId, locale, userId, isAdmin, data, T, templates
   });
 
   const shown = (t: BoardTask) => {
+    if (!showAuto && t.kind === "auto") return false;
     if (filter === "mine" && t.assignee_id !== userId) return false;
     if (filter === "waiting" && t.status !== "waiting") return false;
     if (filter === "blocked" && !blockers.has(t.id)) return false;
@@ -115,7 +118,7 @@ export function TaskBoard({ orderId, locale, userId, isAdmin, data, T, templates
   return (
     <section aria-labelledby="tasks-h" className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="tasks-h" className="m-0 text-lg font-bold">{T.title}</h2>
+        <h2 id="tasks-h" className="sr-only">{T.title}</h2>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn btn-outline" onClick={() => setColumnsOpen("list")}>{T.columns}</button>
           <button type="button" className="btn btn-primary" onClick={() => setAdding("top")}>{T.addTask}</button>
@@ -145,6 +148,10 @@ export function TaskBoard({ orderId, locale, userId, isAdmin, data, T, templates
         <button type="button" aria-pressed={hideDone} onClick={() => setHideDone((v) => !v)}
           className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${hideDone ? "border-ink bg-ink text-white" : "border-line-strong bg-white text-ink"}`}>
           {T.filters.hideDone}
+        </button>
+        <button type="button" aria-pressed={showAuto} onClick={() => setShowAuto((v) => !v)}
+          className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${showAuto ? "border-ink bg-ink text-white" : "border-line-strong bg-white text-ink"}`}>
+          {fmt(T.filters.showAuto, { n: data.tasks.filter((t) => t.kind === "auto").length })}
         </button>
       </div>
 
@@ -176,6 +183,8 @@ export function TaskBoard({ orderId, locale, userId, isAdmin, data, T, templates
           const openHere = isOpen(c.id);
           const visibleOpen = open.filter(shown);
           const visibleDone = hideDone || filter === "waiting" || filter === "blocked" ? [] : done.filter(shown);
+          // Stages with nothing to do by hand stay out of the way (the stage strip above still shows them)
+          if (!showAuto && visibleOpen.length === 0 && visibleDone.length === 0 && adding !== c.id) return null;
           return (
             <section key={c.id} aria-label={name}
               className="card flex min-w-0 flex-col gap-2 p-3"

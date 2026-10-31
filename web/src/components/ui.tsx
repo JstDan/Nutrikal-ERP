@@ -51,6 +51,19 @@ export function Card({ title, action, children, className = "", id }: { title?: 
   );
 }
 
+/** A card that stays closed until it is needed. */
+export function Fold({ title, note, open = false, children }: { title: ReactNode; note?: ReactNode; open?: boolean; children: ReactNode }) {
+  return (
+    <details open={open} className="card min-w-0 p-5 sm:p-6">
+      <summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-x-3 text-lg font-bold">
+        <span className="min-w-0 break-words">{title}</span>
+        {note && <span className="text-sm font-normal text-ink-2">{note}</span>}
+      </summary>
+      <div className="mt-4 flex min-w-0 flex-col gap-4">{children}</div>
+    </details>
+  );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="m-0 text-sm text-ink-2">{children}</p>;
 }

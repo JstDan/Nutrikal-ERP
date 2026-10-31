@@ -20,6 +20,7 @@ Talk to the owner in the language they write in (usually Bulgarian).
 - Shelf life is tracked per raw material. Recipes have none (owner, Oct 2026): the expiry date of a finished batch is entered when it is reported.
 - Materials are released on receipt; finished batches need Admin release before dispatch; the COA is optional and can be attached later. Any lot can be blocked (owner, Oct 2026).
 - Documents are e-mailed through the Resend HTTP API (the host, Cloudflare Workers, has no SMTP); every send is logged in `document_sends` (owner, Oct 2026).
+- New offers are made only in the calculator; older ERP offers stay readable and usable but cannot be created. Production of an order is planned with Prepare production (owner, Oct 2026).
 - All settings live under Settings and are Admin only (owner, Oct 2026). New settings go there.
 - Languages: Bulgarian and English only (UI and documents).
 - Roles: admin, sales, production (+ developer, who acts as another user). Inventory was merged into Admin and Partner renamed Production (Oct 2026). Formulation and QC rights sit with admin for now.

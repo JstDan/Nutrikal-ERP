@@ -392,23 +392,6 @@ export async function removeFormulaClaim(fd: FormData) {
 // ----------------------------------------------------------------- offers
 const offerPath = (fd: FormData) => `/offers/${str(fd, "offer_id")}`;
 
-export async function createOffer(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { user } = await getSession();
-  let id: string;
-  try {
-    const [row] = await q<{ id: string }>(
-      user.id,
-      "insert into offers (client_id, project_id, formula_version_id) values ($1, $2, $3) returning id",
-      [str(fd, "client_id"), str(fd, "project_id"), str(fd, "formula_version_id")],
-    );
-    id = row.id;
-  } catch (e) {
-    return { error: errorText(e) };
-  }
-  revalidatePath("/offers");
-  redirect(`/offers/${id}`);
-}
-
 export async function saveOfferTerms(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   try {
@@ -696,24 +679,6 @@ export async function setInvoiceVat(_: ActionState, fd: FormData): Promise<Actio
 }
 
 // ------------------------------------------------------------- production
-export async function createProductionFromLine(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { user } = await getSession();
-  let id: string;
-  try {
-    const [row] = await q<{ id: string }>(
-      user.id,
-      `insert into manufacturing_orders (sales_order_line_id, quantity)
-       select id, quantity from sales_order_line_overview where id = $1 returning id`,
-      [str(fd, "line_id")],
-    );
-    id = row.id;
-  } catch (e) {
-    return { error: errorText(e) };
-  }
-  revalidatePath("/", "layout");
-  redirect(`/production/${id}`);
-}
-
 export async function createSimulation(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user } = await getSession();
   let id: string;
