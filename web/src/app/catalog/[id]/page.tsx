@@ -5,12 +5,13 @@ import { requireRole } from "@/lib/session";
 import { ActionForm } from "@/components/action-form";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { formatMoney, formatNumber, fmt } from "@/lib/i18n";
-import { addCatalogTier, publishCatalogProduct, removeCatalogTier, saveCatalogProduct, unpublishCatalogProduct } from "@/app/catalog-actions";
+import { addCatalogTier, linkCatalogRecipe, publishCatalogProduct, removeCatalogTier, saveCatalogProduct, unpublishCatalogProduct } from "@/app/catalog-actions";
 
 type Product = {
   id: string; code: string; name: string; name_bg: string | null; description: string | null; description_bg: string | null;
   category_id: string | null; sort_order: number; is_published: boolean; problem: string | null;
-  formula_id: string; formula_code: string; product_format: string; client: string | null;
+  formula_id: string | null; formula_code: string | null; product_format: string | null; client: string | null;
+  own_format: string | null; pack: string | null; pack_bg: string | null; min_qty: number; ingredients: { name: string; amount: string }[];
 };
 type Tier = { id: string; min_qty: number; unit_price: string };
 type Category = { id: string; name: string; name_bg: string | null };
@@ -23,14 +24,21 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
 
   const [p] = await q<Product>(user.id,
     `select p.id, p.code, p.name, p.name_bg, p.description, p.description_bg, p.category_id, p.sort_order, p.is_published,
-            catalog_publish_problem(p.id) as problem, f.id as formula_id, f.code as formula_code, f.product_format, c.legal_name as client
+            catalog_publish_problem(p.id) as problem, f.id as formula_id, f.code as formula_code,
+            coalesce(f.product_format, p.product_format) as product_format, c.legal_name as client,
+            p.product_format as own_format, p.pack, p.pack_bg, p.min_qty, p.ingredients
        from catalog_products p
-       join formulas f on f.id = p.formula_id
+       left join formulas f on f.id = p.formula_id
        left join clients c on c.id = f.client_id
       where p.id = $1`, [id]);
   if (!p) notFound();
   const tiers = await q<Tier>(user.id, "select id, min_qty, unit_price::text from catalog_price_tiers where product_id = $1 order by min_qty", [id]);
   const categories = await q<Category>(user.id, "select id, name, name_bg from catalog_categories order by sort_order, name");
+  const recipes = canEdit && !p.formula_id
+    ? await q<{ id: string; code: string; name: string }>(user.id,
+        "select f.id, f.code, f.name from formulas f where f.is_active and not exists (select 1 from catalog_products x where x.formula_id = f.id) order by f.code desc")
+    : [];
+  const formats = Object.entries(t.enums.productFormat);
 
   return (
     <div className="flex flex-col gap-6">
@@ -40,7 +48,7 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <Chip tone={p.is_published ? (p.problem ? "amber" : "green") : "neutral"}>{p.is_published ? (p.problem ? C.hidden : C.published) : C.draft}</Chip>
-            <span>{t.enums.productFormat[p.product_format as "capsule"]}</span>
+            {p.product_format && <span>{t.enums.productFormat[p.product_format as "capsule"]}</span>}
           </span>
         }
       />
@@ -62,6 +70,29 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
                     {categories.map((c) => <option key={c.id} value={c.id}>{locale === "bg" && c.name_bg ? c.name_bg : c.name}</option>)}
                   </select>
                 </label>
+                {!p.formula_id && (
+                  <>
+                    <label className="field"><span>{C.format}</span>
+                      <select name="product_format" defaultValue={p.own_format ?? ""} className="input">
+                        <option value="">—</option>
+                        {formats.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                    </label>
+                    <label className="field"><span>{C.packEn}</span><input name="pack" defaultValue={p.pack ?? ""} className="input" /></label>
+                    <label className="field"><span>{C.packBg}</span><input name="pack_bg" defaultValue={p.pack_bg ?? ""} className="input" /></label>
+                    <label className="field"><span>{C.composition}</span><textarea name="ingredients" rows={8} defaultValue={p.ingredients.map((i) => `${i.name} | ${i.amount}`).join("\n")} className="input" /></label>
+                    <p className="m-0 text-sm text-ink-2">{C.compositionNote}</p>
+                  </>
+                )}
+                {p.formula_id && (
+                  <>
+                    <input type="hidden" name="product_format" value={p.own_format ?? ""} />
+                    <input type="hidden" name="pack" value={p.pack ?? ""} />
+                    <input type="hidden" name="pack_bg" value={p.pack_bg ?? ""} />
+                    <input type="hidden" name="ingredients" value={p.ingredients.map((i) => `${i.name} | ${i.amount}`).join("\n")} />
+                  </>
+                )}
+                <label className="field"><span>{C.minOrder}</span><input name="min_qty" type="number" min={1} step={1} inputMode="numeric" defaultValue={p.min_qty} className="input" /></label>
                 <label className="field"><span>{C.order}</span><input name="sort_order" type="number" inputMode="numeric" defaultValue={p.sort_order} className="input" /></label>
               </ActionForm>
             ) : (
@@ -76,7 +107,7 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
 
           <Card title={C.prices}>
             <div className="flex flex-col gap-4">
-              <p className="m-0 text-sm text-ink-2">{fmt(C.pricesNote, { n: formatNumber(locale, 500) })}</p>
+              <p className="m-0 text-sm text-ink-2">{fmt(C.pricesNote, { n: formatNumber(locale, p.min_qty) })}</p>
               {tiers.length === 0 && <Empty>{C.noPrices}</Empty>}
               {tiers.map((tier) => (
                 <div key={tier.id} className="row grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center border-b border-mist py-2 text-sm last:border-0">
@@ -94,7 +125,7 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
                 <ActionForm action={addCatalogTier} submitLabel={C.addTier}>
                   <input type="hidden" name="product_id" value={p.id} />
                   <div className="grid min-w-0 grid-cols-2 gap-3">
-                    <label className="field"><span>{C.minQty} *</span><input name="min_qty" type="number" min={500} step={1} required inputMode="numeric" className="input" /></label>
+                    <label className="field"><span>{C.minQty} *</span><input name="min_qty" type="number" min={p.min_qty} step={1} required inputMode="numeric" className="input" /></label>
                     <label className="field"><span>{C.unitPrice} *</span><input name="unit_price" required inputMode="decimal" className="input" /></label>
                   </div>
                 </ActionForm>
@@ -122,8 +153,21 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
           </Card>
           <Card title={C.recipe}>
             <div className="flex flex-col gap-2 text-sm">
-              <Link href={`/formulas/${p.formula_id}`} className="font-semibold text-ink">{p.formula_code}</Link>
-              <p className="m-0 text-ink-2">{C.recipeNote}</p>
+              {p.formula_id
+                ? <Link href={`/formulas/${p.formula_id}`} className="font-semibold text-ink">{p.formula_code}</Link>
+                : <p className="m-0 font-semibold">{C.noRecipe}</p>}
+              <p className="m-0 text-ink-2">{p.formula_id ? C.recipeNote : C.noRecipeNote}</p>
+              {recipes.length > 0 && (
+                <form action={linkCatalogRecipe} className="flex min-w-0 flex-wrap items-center gap-2">
+                  <input type="hidden" name="id" value={p.id} />
+                  <label htmlFor="link-recipe" className="sr-only">{C.pickRecipe}</label>
+                  <select id="link-recipe" name="formula_id" required defaultValue="" className="input min-w-0 flex-1">
+                    <option value="" disabled>{C.pickRecipe}</option>
+                    {recipes.map((r) => <option key={r.id} value={r.id}>{r.code} · {r.name}</option>)}
+                  </select>
+                  <button type="submit" className="btn btn-outline">{C.linkRecipe}</button>
+                </form>
+              )}
             </div>
           </Card>
         </div>

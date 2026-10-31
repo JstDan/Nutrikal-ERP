@@ -2,11 +2,11 @@ import Link from "next/link";
 import { q } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { Chip, Empty, Fold, PageHeader } from "@/components/ui";
-import { formatMoney, formatNumber, fmt } from "@/lib/i18n";
-import { createCatalogProduct } from "@/app/catalog-actions";
+import { formatMoney, fmt } from "@/lib/i18n";
+import { createCatalogProduct, publishReadyCatalog } from "@/app/catalog-actions";
 
 type Row = {
-  id: string; code: string; name: string; name_bg: string | null; product_format: string; is_published: boolean;
+  id: string; code: string; name: string; name_bg: string | null; product_format: string | null; is_published: boolean;
   category: string | null; category_bg: string | null; from_price: string | null; problem: string | null;
 };
 type Recipe = { id: string; code: string; name: string; name_bg: string | null };
@@ -18,13 +18,13 @@ export default async function CatalogPage() {
   const canEdit = user.role === "admin" && !user.readOnly;
 
   const rows = await q<Row>(user.id,
-    `select p.id, p.code, p.name, p.name_bg, f.product_format, p.is_published, c.name as category, c.name_bg as category_bg,
+    `select p.id, p.code, p.name, p.name_bg, coalesce(f.product_format, p.product_format) as product_format, p.is_published, c.name as category, c.name_bg as category_bg,
             (select min(t.unit_price)::text from catalog_price_tiers t where t.product_id = p.id) as from_price,
             catalog_publish_problem(p.id) as problem
        from catalog_products p
-       join formulas f on f.id = p.formula_id
+       left join formulas f on f.id = p.formula_id
        left join catalog_categories c on c.id = p.category_id
-      order by p.sort_order, p.code desc`);
+      order by p.sort_order, p.code`);
   const recipes = canEdit
     ? await q<Recipe>(user.id,
         `select f.id, f.code, f.name, f.name_bg from formulas f
@@ -32,6 +32,7 @@ export default async function CatalogPage() {
           order by f.code desc`)
     : [];
   const [waiting] = await q<{ n: number }>(user.id, "select count(*)::int as n from catalog_enquiries where status = 'new'");
+  const ready = rows.filter((r) => !r.is_published && !r.problem).length;
   const local = (name: string, bg: string | null) => (locale === "bg" && bg ? bg : name);
   const grid = "md:grid-cols-[110px_minmax(0,1.6fr)_minmax(0,1fr)_120px_120px]";
 
@@ -41,6 +42,11 @@ export default async function CatalogPage() {
         <>
           <Link href="/catalog/enquiries" className="btn btn-primary">{waiting.n > 0 ? fmt(C.enquiriesNew, { n: waiting.n }) : C.enquiries}</Link>
           <a href="/public-catalog" target="_blank" rel="noopener" className="btn btn-outline">{C.openPublic}</a>
+          {canEdit && ready > 0 && (
+            <form action={publishReadyCatalog}>
+              <button type="submit" className="btn btn-outline">{fmt(C.publishReady, { n: ready })}</button>
+            </form>
+          )}
         </>
       } />
 
@@ -68,7 +74,7 @@ export default async function CatalogPage() {
               <Link href={`/catalog/${p.id}`} className="font-semibold text-ink">{p.code}</Link>
               <span className="block min-w-0 break-words md:inline">
                 {local(p.name, p.name_bg)}
-                <span className="block text-xs text-ink-2">{t.enums.productFormat[p.product_format as "capsule"]}</span>
+                {p.product_format && <span className="block text-xs text-ink-2">{t.enums.productFormat[p.product_format as "capsule"]}</span>}
               </span>
             </div>
             <span className="hide-sm min-w-0 break-words">{p.category ? local(p.category, p.category_bg) : "—"}</span>
@@ -77,7 +83,7 @@ export default async function CatalogPage() {
           </div>
         ))}
       </section>
-      <p className="m-0 text-sm text-ink-2">{fmt(C.minimumNote, { n: formatNumber(locale, 500) })}</p>
+      <p className="m-0 text-sm text-ink-2">{C.minimumNote}</p>
     </div>
   );
 }

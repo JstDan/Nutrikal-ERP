@@ -8,13 +8,14 @@ import type { Dict } from "@/lib/i18n/en";
 type Tier = { min_qty: number; unit_price: number };
 type Product = {
   code: string; name: string; name_bg: string | null; description: string | null; description_bg: string | null;
-  category_id: string | null; format: string; serving_size: number; serving_unit: string; servings_per_pack: number | null;
-  tiers: Tier[]; ingredients: { name: string; name_bg: string | null; amount: number; unit: string }[]; claims: { en: string; bg: string | null }[];
+  category_id: string | null; format: string | null; min_qty: number; image: string | null; pack: string | null; pack_bg: string | null;
+  serving_size: number | null; serving_unit: string | null; servings_per_pack: number | null;
+  tiers: Tier[]; ingredients: { name: string; name_bg: string | null; amount: number | string; unit: string | null }[]; claims: { en: string; bg: string | null }[];
 };
 export type PublicCatalog = { categories: { id: string; name: string; name_bg: string | null }[]; products: Product[] };
 type Basket = Record<string, number>;
 
-const MIN_QTY = 500;
+const MIN_ORDER = 500;
 const STORE = "nk_catalog_basket";
 const priceAt = (p: Product, qty: number) => [...p.tiers].reverse().find((t) => t.min_qty <= qty)?.unit_price ?? p.tiers[0].unit_price;
 
@@ -28,10 +29,14 @@ function readBasket(): Basket {
 }
 
 /** A plain picture by format, until the products have photos. */
-function FormatPicture({ format }: { format: string }) {
-  const pill = ["capsule", "softgel", "tablet"].includes(format);
+function FormatPicture({ format, image, alt, small = false }: { format: string | null; image: string | null; alt: string; small?: boolean }) {
+  const pill = ["capsule", "softgel", "tablet"].includes(format ?? "");
+  if (image) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={image} alt={alt} loading="lazy" width={382} height={460} className={small ? "mx-auto h-64 w-auto rounded-sm" : "aspect-[193/232] w-full rounded-sm object-cover"} />;
+  }
   return (
-    <div aria-hidden="true" className="grid h-32 place-items-center rounded-sm bg-neutral-tint text-ink-2">
+    <div aria-hidden="true" className={`grid place-items-center rounded-sm bg-neutral-tint text-ink-2 ${small ? "h-32" : "aspect-[193/232]"}`}>
       <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
         {pill
           ? <><path d="M10.5 20.5a4.950 4.950 0 0 1-7-7l10-10a4.950 4.950 0 0 1 7 7z" /><path d="m8.500 8.500 7 7" /></>
@@ -75,7 +80,7 @@ export function CatalogBrowser({ data, locale, text, formats }: { data: PublicCa
   useEffect(() => {
     started.current = Date.now();
     const saved = readBasket();
-    const known = Object.fromEntries(Object.entries(saved).filter(([c, q]) => data.products.some((p) => p.code === c) && Number(q) >= MIN_QTY));
+    const known = Object.fromEntries(Object.entries(saved).filter(([c, q]) => data.products.some((p) => p.code === c && Number(q) >= p.min_qty)));
     // Read after the first paint: the server does not know the basket
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setBasket(known);
@@ -93,7 +98,7 @@ export function CatalogBrowser({ data, locale, text, formats }: { data: PublicCa
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const shownFormats = useMemo(() => [...new Set(data.products.map((p) => p.format))], [data.products]);
+  const shownFormats = useMemo(() => [...new Set(data.products.map((p) => p.format).filter((f): f is string => !!f))], [data.products]);
   const find = term.trim().toLowerCase();
   const shown = data.products.filter((p) =>
     (!category || p.category_id === category) && (!format || p.format === format)
@@ -101,13 +106,13 @@ export function CatalogBrowser({ data, locale, text, formats }: { data: PublicCa
   const lines = data.products.filter((p) => basket[p.code]);
   const total = lines.reduce((sum, p) => sum + priceAt(p, basket[p.code]) * basket[p.code], 0);
 
-  const add = (p: Product) => setBasket((b) => ({ ...b, [p.code]: b[p.code] ?? MIN_QTY }));
+  const add = (p: Product) => setBasket((b) => ({ ...b, [p.code]: b[p.code] ?? p.min_qty }));
   const remove = (code: string) => setBasket((b) => Object.fromEntries(Object.entries(b).filter(([c]) => c !== code)));
   const setQty = (code: string, qty: number) => setBasket((b) => ({ ...b, [code]: Math.max(Math.floor(qty) || 0, 0) }));
 
   async function send(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (lines.some((p) => basket[p.code] < MIN_QTY)) { setError(fmt(T.belowMinimum, { n: MIN_QTY })); return; }
+    if (lines.some((p) => basket[p.code] < p.min_qty)) { setError(T.belowMinimum); return; }
     const fd = new FormData(e.currentTarget);
     setSending(true);
     setError("");
@@ -147,7 +152,7 @@ export function CatalogBrowser({ data, locale, text, formats }: { data: PublicCa
       <main className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 py-8">
         <div className="flex max-w-[720px] flex-col gap-2">
           <h1 className="m-0 text-3xl font-bold">{T.title}</h1>
-          <p className="m-0 text-ink-2">{fmt(T.intro, { n: formatNumber(locale, MIN_QTY) })}</p>
+          <p className="m-0 text-ink-2">{fmt(T.intro, { n: formatNumber(locale, MIN_ORDER) })}</p>
         </div>
 
         <div className="flex min-w-0 flex-col gap-3">
@@ -169,9 +174,9 @@ export function CatalogBrowser({ data, locale, text, formats }: { data: PublicCa
         <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((p) => (
             <article key={p.code} className="card flex min-w-0 flex-col gap-3 p-4">
-              <FormatPicture format={p.format} />
+              <FormatPicture format={p.format} image={p.image} alt={local(p.name, p.name_bg)} />
               <div className="flex min-w-0 flex-col gap-1">
-                <span className="text-xs text-ink-2">{formats[p.format as "capsule"]} · {p.code}</span>
+                <span className="text-xs text-ink-2">{[p.format && formats[p.format as "capsule"], p.code].filter(Boolean).join(" · ")}</span>
                 <h2 className="m-0 break-words text-base font-bold">{local(p.name, p.name_bg)}</h2>
               </div>
               <p className="m-0 mt-auto text-sm">{fmt(T.fromPrice, { price: money(p.tiers.at(-1)!.unit_price) })}</p>
@@ -183,26 +188,34 @@ export function CatalogBrowser({ data, locale, text, formats }: { data: PublicCa
           ))}
         </div>
         <p className="m-0 text-sm text-ink-2">{T.priceNote}</p>
+        <footer className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line pt-4 text-sm text-ink-2">
+          <a href="mailto:sales@nutrikal.com" className="flex min-h-11 items-center text-ink-2">sales@nutrikal.com</a>
+          <a href="tel:+359882919140" className="flex min-h-11 items-center text-ink-2">+359 882 919 140</a>
+          <a href="tel:+18888488534" className="flex min-h-11 items-center text-ink-2">+1 (888) 848-8534</a>
+        </footer>
       </main>
 
       {open && (
         <Dialog title={local(open.name, open.name_bg)} close={() => setOpen(null)} closeLabel={T.close}>
+          <FormatPicture small format={open.format} image={open.image} alt={local(open.name, open.name_bg)} />
           <p className="m-0 text-sm text-ink-2">
-            {formats[open.format as "capsule"]} · {open.code}
-            {open.servings_per_pack ? ` · ${fmt(T.pack, { size: formatNumber(locale, open.serving_size), unit: T.units[open.serving_unit as "pcs"], servings: open.servings_per_pack })}` : ""}
+            {[open.format && formats[open.format as "capsule"], open.code,
+              (locale === "bg" ? open.pack_bg ?? open.pack : open.pack)
+                ?? (open.servings_per_pack ? fmt(T.pack, { size: formatNumber(locale, open.serving_size), unit: T.units[open.serving_unit as "pcs"], servings: open.servings_per_pack }) : null),
+              fmt(T.minimum, { n: formatNumber(locale, open.min_qty) })].filter(Boolean).join(" · ")}
           </p>
           {(locale === "bg" ? open.description_bg ?? open.description : open.description) && (
             <p className="m-0 whitespace-pre-wrap break-words text-sm">{locale === "bg" ? open.description_bg ?? open.description : open.description}</p>
           )}
-          <section className="flex flex-col gap-1">
+          {open.ingredients.length > 0 && <section className="flex flex-col gap-1">
             <h3 className="label m-0">{T.composition}</h3>
             {open.ingredients.map((i, n) => (
               <div key={n} className="row grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-mist py-2 text-sm last:border-0">
                 <span className="min-w-0 break-words">{local(i.name, i.name_bg)}</span>
-                <span>{formatNumber(locale, i.amount, 3)} {i.unit}</span>
+                <span>{typeof i.amount === "number" ? `${formatNumber(locale, i.amount, 3)} ${i.unit}` : i.amount}</span>
               </div>
             ))}
-          </section>
+          </section>}
           {open.claims.some((c) => (locale === "bg" ? c.bg : c.en)) && (
             <section className="flex flex-col gap-1">
               <h3 className="label m-0">{T.claims}</h3>
@@ -240,13 +253,13 @@ export function CatalogBrowser({ data, locale, text, formats }: { data: PublicCa
                   <div className="flex min-w-0 flex-wrap items-center gap-3 text-sm">
                     <label className="flex items-center gap-2">
                       <span>{T.quantity}</span>
-                      <input type="number" min={MIN_QTY} step={100} inputMode="numeric" value={basket[p.code] || ""} onChange={(e) => setQty(p.code, Number(e.target.value))} className="input w-28" />
+                      <input type="number" min={p.min_qty} step={100} inputMode="numeric" value={basket[p.code] || ""} onChange={(e) => setQty(p.code, Number(e.target.value))} className="input w-28" />
                     </label>
-                    <span>{basket[p.code] >= MIN_QTY ? fmt(T.each, { price: money(priceAt(p, basket[p.code])) }) : fmt(T.minimum, { n: formatNumber(locale, MIN_QTY) })}</span>
+                    <span>{basket[p.code] >= p.min_qty ? fmt(T.each, { price: money(priceAt(p, basket[p.code])) }) : fmt(T.minimum, { n: formatNumber(locale, p.min_qty) })}</span>
                   </div>
                 </div>
               ))}
-              {lines.every((p) => basket[p.code] >= MIN_QTY) && <p className="m-0 text-sm font-semibold">{fmt(T.total, { total: money(total) })}</p>}
+              {lines.every((p) => basket[p.code] >= p.min_qty) && <p className="m-0 text-sm font-semibold">{fmt(T.total, { total: money(total) })}</p>}
               <p className="m-0 text-xs text-ink-2">{T.priceNote}</p>
               <form onSubmit={send} className="flex flex-col gap-3">
                 <label className="field"><span>{T.company} *</span><input name="company" required maxLength={200} autoComplete="organization" className="input" /></label>

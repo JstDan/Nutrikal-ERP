@@ -2,7 +2,9 @@
 -- Catalogue of stock formulas (owner, Oct 2026)
 --  - any recipe can become a catalogue product and be published, also one
 --    of a client (owner); it needs an approved version
---  - prices by quantity tiers, EUR per pack, minimum order 500 packs
+--  - a product can also stand alone, with its composition and pack as text,
+--    until a recipe is tied to it
+--  - prices by quantity tiers, EUR per pack, minimum order per product (500 packs by default)
 --  - catalog.nutrikal.com is open to everyone: it reads only through
 --    catalog_public() and writes only through catalog_submit_enquiry()
 --
@@ -13,9 +15,6 @@
 -- The public side never sees cost, purchase prices, suppliers, overage,
 -- client data or unpublished products.
 -- =====================================================================
-
-create or replace function public.catalog_min_qty()
-returns integer language sql immutable as $$ select 500 $$;
 
 insert into public.number_series (key, label, prefix, next_number, pad_length)
 values ('catalog_product', 'Catalogue product', 'NK-S-', 1, 4),
@@ -30,23 +29,21 @@ create table public.catalog_categories (
 );
 select public.enable_audit('public.catalog_categories');
 
--- By kind of product, not by health benefit: a name like "for sleep" would be a health claim
-insert into public.catalog_categories (name, name_bg, sort_order) values
-  ('Vitamins and minerals', 'Витамини и минерали', 10),
-  ('Collagen and proteins', 'Колаген и протеини', 20),
-  ('Plant extracts', 'Растителни екстракти', 30),
-  ('Probiotics and fibre', 'Пробиотици и фибри', 40),
-  ('Amino acids', 'Аминокиселини', 50);
-
 create table public.catalog_products (
   id              uuid primary key default gen_random_uuid(),
   code            text not null unique,
-  formula_id      uuid not null unique references public.formulas (id),
+  formula_id      uuid unique references public.formulas (id),
   category_id     uuid references public.catalog_categories (id),
   name            text not null,
   name_bg         text,
   description     text,
   description_bg  text,
+  min_qty         integer not null default 500 check (min_qty > 0),
+  product_format  public.product_format,                 -- without a recipe
+  pack            text,                                  -- without a recipe
+  pack_bg         text,
+  ingredients     jsonb not null default '[]',           -- without a recipe: [{name, amount}]
+  image           text,                                  -- path under web/public
   sort_order      integer not null default 0,
   is_published    boolean not null default false,
   published_at    timestamptz,
@@ -59,11 +56,24 @@ create index catalog_products_category_idx on public.catalog_products (category_
 create table public.catalog_price_tiers (
   id          uuid primary key default gen_random_uuid(),
   product_id  uuid not null references public.catalog_products (id) on delete cascade,
-  min_qty     integer not null check (min_qty >= public.catalog_min_qty()),
+  min_qty     integer not null check (min_qty > 0),
   unit_price  numeric(12, 2) not null check (unit_price > 0),
   unique (product_id, min_qty)
 );
 select public.enable_audit('public.catalog_price_tiers');
+
+create or replace function public.catalog_tier_check()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  if new.min_qty < (select min_qty from catalog_products where id = new.product_id) then
+    raise exception 'catalog_below_minimum';
+  end if;
+  return new;
+end
+$$;
+create trigger catalog_tier_check before insert or update on public.catalog_price_tiers
+  for each row execute function public.catalog_tier_check();
 
 -- What stands between a product and publication: the same answer for the button and for catalog_public()
 create or replace function public.catalog_publish_problem(p_id uuid)
@@ -71,11 +81,11 @@ returns text
 language sql stable security definer set search_path = public
 as $$
   select case
-    when not f.is_active then 'inactive_recipe'
-    when not exists (select 1 from formula_versions v where v.formula_id = f.id and v.status = 'approved') then 'not_approved'
-    when not exists (select 1 from catalog_price_tiers t where t.product_id = p.id and t.min_qty = catalog_min_qty()) then 'no_minimum_tier'
+    when p.formula_id is not null and not f.is_active then 'inactive_recipe'
+    when p.formula_id is not null and not exists (select 1 from formula_versions v where v.formula_id = f.id and v.status = 'approved') then 'not_approved'
+    when not exists (select 1 from catalog_price_tiers t where t.product_id = p.id and t.min_qty = p.min_qty) then 'no_minimum_tier'
   end
-  from catalog_products p join formulas f on f.id = p.formula_id
+  from catalog_products p left join formulas f on f.id = p.formula_id
   where p.id = p_id
 $$;
 
@@ -83,7 +93,7 @@ create or replace function public.catalog_products_defaults()
 returns trigger language plpgsql security definer set search_path = public
 as $$
 begin
-  if tg_op = 'INSERT' then
+  if tg_op = 'INSERT' and (new.code is null or new.code = '') then
     new.code := public.next_number('catalog_product');
   end if;
   if new.is_published and (tg_op = 'INSERT' or not old.is_published) then
@@ -112,12 +122,27 @@ begin
   perform public.require_role('admin');
   select id into v_id from catalog_products where formula_id = p_formula;
   if v_id is null then
-    insert into catalog_products (formula_id, name, name_bg, description)
-    select id, name, name_bg, description from formulas where id = p_formula
+    insert into catalog_products (code, formula_id, name, name_bg, description)
+    select '', id, name, name_bg, description from formulas where id = p_formula
     returning id into v_id;
   end if;
   if v_id is null then raise exception 'Recipe not found'; end if;
   return v_id;
+end
+$$;
+
+-- Everything that can go up, at once. Admin only.
+create or replace function public.catalog_publish_ready()
+returns integer
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_n integer;
+begin
+  perform public.require_role('admin');
+  update catalog_products set is_published = true where not is_published and catalog_publish_problem(id) is null;
+  get diagnostics v_n = row_count;
+  return v_n;
 end
 $$;
 
@@ -144,7 +169,7 @@ create table public.catalog_enquiry_lines (
   product_id    uuid not null references public.catalog_products (id),
   product_code  text not null,
   product_name  text not null,
-  quantity      integer not null check (quantity >= public.catalog_min_qty()),
+  quantity      integer not null check (quantity > 0),
   unit_price    numeric(12, 2) not null          -- the price the client saw
 );
 create index catalog_enquiry_lines_enquiry_idx on public.catalog_enquiry_lines (enquiry_id);
@@ -191,20 +216,26 @@ as $$
       select jsonb_agg(jsonb_build_object(
                'code', p.code, 'name', p.name, 'name_bg', p.name_bg,
                'description', p.description, 'description_bg', p.description_bg,
-               'category_id', p.category_id, 'format', f.product_format,
+               'category_id', p.category_id, 'format', coalesce(f.product_format, p.product_format), 'min_qty', p.min_qty, 'image', p.image,
+               'pack', p.pack, 'pack_bg', p.pack_bg,
                'serving_size', f.serving_size, 'serving_unit', f.serving_unit, 'servings_per_pack', f.servings_per_pack,
                'tiers', (select jsonb_agg(jsonb_build_object('min_qty', t.min_qty, 'unit_price', t.unit_price) order by t.min_qty)
                            from catalog_price_tiers t where t.product_id = p.id),
-               'ingredients', (select coalesce(jsonb_agg(jsonb_build_object('name', i.name, 'name_bg', i.name_bg, 'amount', l.amount, 'unit', l.unit)
-                                                         order by l.sort_order, l.amount_mg desc), '[]')
-                                 from formula_lines l join items i on i.id = l.item_id where l.version_id = v.id),
+               'ingredients', case when p.formula_id is null then
+                                (select coalesce(jsonb_agg(jsonb_build_object('name', x ->> 'name', 'name_bg', null, 'amount', x ->> 'amount', 'unit', null)), '[]')
+                                   from jsonb_array_elements(p.ingredients) x)
+                              else
+                                (select coalesce(jsonb_agg(jsonb_build_object('name', i.name, 'name_bg', i.name_bg, 'amount', l.amount, 'unit', l.unit)
+                                                           order by l.sort_order, l.amount_mg desc), '[]')
+                                   from formula_lines l join items i on i.id = l.item_id where l.version_id = v.id)
+                              end,
                'claims', (select coalesce(jsonb_agg(jsonb_build_object('en', h.claim_en, 'bg', h.claim_bg)), '[]')
                             from formula_version_claims c join health_claims h on h.id = c.claim_id
                            where c.version_id = v.id and h.is_active)
              ) order by p.sort_order, p.name)
         from catalog_products p
-        join formulas f on f.id = p.formula_id
-        join formula_versions v on v.formula_id = f.id and v.status = 'approved'
+        left join formulas f on f.id = p.formula_id
+        left join formula_versions v on v.formula_id = f.id and v.status = 'approved'
        where p.is_published and catalog_publish_problem(p.id) is null), '[]'))
 $$;
 
@@ -254,9 +285,9 @@ begin
 
   for l in select * from jsonb_array_elements(v_lines) loop
     v_qty := case when l ->> 'quantity' ~ '^\d{1,9}$' then (l ->> 'quantity')::integer end;
-    select id, code, name into v_product from catalog_products
+    select id, code, name, min_qty into v_product from catalog_products
      where code = l ->> 'code' and is_published and catalog_publish_problem(id) is null;
-    if v_product.id is null or v_qty is null or v_qty < catalog_min_qty() then
+    if v_product.id is null or v_qty is null or v_qty < v_product.min_qty then
       raise exception 'catalog_invalid';
     end if;
     select unit_price into v_price from catalog_price_tiers
@@ -315,11 +346,13 @@ $$;
 revoke execute on function public.catalog_public() from public;
 revoke execute on function public.catalog_submit_enquiry(jsonb) from public;
 revoke execute on function public.catalog_from_formula(uuid) from public, anon;
+revoke execute on function public.catalog_publish_ready() from public, anon;
 revoke execute on function public.catalog_enquiry_to_client(uuid) from public, anon;
 revoke execute on function public.catalog_publish_problem(uuid) from public, anon;
 grant execute on function public.catalog_public() to anon, authenticated;
 grant execute on function public.catalog_submit_enquiry(jsonb) to anon;
 grant execute on function public.catalog_from_formula(uuid) to authenticated;
+grant execute on function public.catalog_publish_ready() to authenticated;
 grant execute on function public.catalog_enquiry_to_client(uuid) to authenticated;
 grant execute on function public.catalog_publish_problem(uuid) to authenticated;
 
