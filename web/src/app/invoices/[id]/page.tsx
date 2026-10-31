@@ -291,7 +291,7 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
             {payments.map((p) => (
               <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-mist pt-2 text-sm">
                 <span className="min-w-0 break-words">{formatDate(locale, p.paid_on)} · {money(Number(p.amount))} · {W.methods[p.method]}{p.note ? ` · ${p.note}` : ""}</span>
-                {user.role === "admin" && (
+                {user.canPay && (
                   <form action={deleteInvoicePayment}>
                     <input type="hidden" name="id" value={p.id} />
                     <button type="submit" className="min-h-11 text-xs text-ink-2 underline">{N.removeLine}</button>
@@ -299,7 +299,7 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
                 )}
               </div>
             ))}
-            {user.role === "admin" && Number(open ?? 0) > 0 && (
+            {user.canPay && Number(open ?? 0) > 0 && (
               <ActionForm action={addInvoicePayment} submitLabel={W.addPayment}>
                 <input type="hidden" name="invoice_id" value={x.id} />
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

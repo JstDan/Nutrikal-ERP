@@ -36,7 +36,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
           title: t.nav.sales,
           items: [
             { href: "/", label: t.nav.dashboard },
-            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/assistant", label: t.nav.assistant }] : []),
+            ...((user.role === "admin" || user.role === "sales") && !user.readOnly ? [{ href: "/assistant", label: t.nav.assistant }] : []),
             { href: "/clients", label: t.nav.clients },
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/offers", label: t.nav.offers, also: ["/calculator"] }] : []),
             { href: "/orders", label: t.nav.orders },
@@ -68,8 +68,13 @@ export async function AppShell({ children }: { children: ReactNode }) {
           : []),
       ];
 
+  // Designer: the client work only
+  const shown = user.access === "designer"
+    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/clients", "/orders"].includes(i.href ?? "")) })).filter((g) => g.items.length)
+    : groups;
+
   return (
-    <div className="flex min-h-screen flex-wrap">
+    <div data-readonly={user.readOnly || undefined} className="flex min-h-screen flex-wrap">
       <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 py-5 text-side-strong lg:w-[248px] lg:shrink-0 lg:py-6">
         <a href={isProduction ? "/factory" : "/"} className="flex flex-col gap-2 px-2 text-side-strong no-underline">
           <Wordmark height={20} inverted />
@@ -77,7 +82,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
           {isProduction && <span className="text-xs text-side-muted">{t.nav.partnerFacility}</span>}
         </a>
         <MobileMenu label={t.nav.menu} closeLabel={t.nav.close}>
-          <SideNav groups={groups} label={t.nav.main} />
+          <SideNav groups={shown} label={t.nav.main} />
         </MobileMenu>
       </aside>
 
@@ -123,9 +128,12 @@ export async function AppShell({ children }: { children: ReactNode }) {
             )}
           </div>
         </header>
-        <main className="w-full max-w-[1360px] px-4 py-6 sm:px-8 sm:py-8">{children}</main>
+        <main className="w-full max-w-[1360px] px-4 py-6 sm:px-8 sm:py-8">
+          {user.readOnly && <p className="m-0 mb-4 text-sm font-semibold text-ink-2 print:hidden">{t.common.readOnlyNote}</p>}
+          {children}
+        </main>
       </div>
-      {(user.role === "admin" || user.role === "sales") && (
+      {(user.role === "admin" || user.role === "sales") && !user.readOnly && (
         <AssistantPanel models={aiModels()} configured={aiConfigured()} locale={locale} text={t.assistant} />
       )}
     </div>

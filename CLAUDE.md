@@ -27,7 +27,7 @@ Talk to the owner in the language they write in (usually Bulgarian).
 - Production contract (planned, not built; owner, Oct 2026): optional per order, sent with the proforma, never blocks an order. The owner provides the template later. Planned: client accepts through a link (time, address, PDF copy kept) or Admin marks it signed by hand.
 - All settings live under Settings and are Admin only (owner, Oct 2026). New settings go there.
 - Languages: Bulgarian and English only (UI and documents).
-- Roles: admin, sales, production (+ developer, who acts as another user). Inventory was merged into Admin and Partner renamed Production (Oct 2026). Formulation and QC rights sit with admin for now.
+- Roles: admin, sales, production (+ developer, who acts as another user), bookkeeper (works like Sales, and records payments), accountant (sees everything, changes nothing), designer (clients, projects and orders without prices, changes nothing). Accountant and designer run in read-only transactions (`app_session_start`), so the database refuses their writes; the accountant has reading rights only inside such a transaction. Accounts are made under Settings > Users (owner, Oct 2026). Inventory was merged into Admin and Partner renamed Production (Oct 2026). Formulation and QC rights sit with admin for now.
 - Stack: Next.js (web/) + Supabase (Postgres, Auth, Storage). Hosted at app.nutrikal.com.
 - Everything is in Supabase except the calculator's price list, whose source is the Google Sheet (GOOGLE_SHEET_URL): synced daily at 17:00 Sofia time and with the Sync button (Oct 2026).
 

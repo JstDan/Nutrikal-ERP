@@ -8,6 +8,7 @@
 //   in web/.data built from the same migrations, with Supabase's auth
 //   pieces stubbed and demo data.
 import fs from "node:fs";
+import { getDict } from "@/lib/i18n";
 import path from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import type { ClientBase, Pool } from "pg";
@@ -140,6 +141,12 @@ async function init(): Promise<PGlite> {
 }
 
 // ------------------------------------------------------------------ API
+/** A write from a read-only account: said plainly, in both languages (no session here). */
+function readOnlyError(e: unknown): never {
+  if ((e as { code?: string }).code === "25006") throw new Error(`${getDict("bg").common.readOnly} / ${getDict("en").common.readOnly}`);
+  throw e;
+}
+
 /** Run fn inside a transaction as the given user (RLS applies). */
 export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
   if (usesSupabaseDb()) {
@@ -148,14 +155,15 @@ export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): P
     const claims = JSON.stringify({ sub: userId, role: "authenticated" }).replaceAll("'", "''");
     return pgTransaction((c) => fn(c as unknown as Tx),
       `select set_config('request.jwt.claim.sub', '${userId}', true), set_config('request.jwt.claims', '${claims}', true);` +
-      "set local role authenticated;");
+      "set local role authenticated; select public.app_session_start();").catch(readOnlyError);
   }
   const db = await getDb();
   return db.transaction(async (tx) => {
     await tx.query("select set_config('request.jwt.claim.sub', $1, true)", [userId]);
     await tx.exec("set local role authenticated");
+    await tx.query("select public.app_session_start()");
     return fn(tx);
-  });
+  }).catch(readOnlyError) as T;
 }
 
 /** Convenience: rows of one query as the user. */

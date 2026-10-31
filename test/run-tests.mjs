@@ -2536,5 +2536,70 @@ await ok('Gmail is searched for company domains and full public addresses, never
 });
 await fails('the job functions are not for signed-in users', () => as('admin', 'select * from gmail_job_terms()'), 'permission denied');
 
+console.log('\nRoles: bookkeeper, accountant, designer');
+for (const [k, id] of [['bookkeeper', '00000000-0000-0000-0000-0000000000b1'], ['accountant', '00000000-0000-0000-0000-0000000000b2'], ['designer', '00000000-0000-0000-0000-0000000000b3']]) {
+  U[k] = id;
+  await db.query('insert into auth.users (id) values ($1)', [id]);
+  await db.query('insert into public.profiles (id, full_name, email, role) values ($1, $2, $3, $4)', [id, `Test ${k}`, `${k}@nutrikal.test`, k]);
+}
+/** As the app runs it: a transaction opened with app_session_start. */
+const session = async (user, sql, params = []) => {
+  await db.exec('reset role');
+  await db.exec('begin');
+  try {
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [U[user]]);
+    await db.exec('set local role authenticated');
+    await db.query('select public.app_session_start()');
+    const rows = (await db.query(sql, params)).rows;
+    await db.exec('commit');
+    return rows;
+  } catch (e) {
+    await db.exec('rollback');
+    throw e;
+  }
+};
+await ok('accountant sees clients, orders, invoices, payments and stock with their prices', async () => {
+  for (const t of ['clients', 'sales_orders', 'sales_order_lines', 'invoices', 'invoice_payments', 'manufacturing_orders', 'calc_offers']) {
+    eq((await session('accountant', `select count(*)::int as n from ${t}`))[0].n > 0, true, t);
+  }
+  eq((await session('accountant', 'select can_see_purchase_prices() as p'))[0].p, true, 'purchase prices');
+});
+await fails('accountant cannot change a client', () => session('accountant', `update clients set legal_name = 'x' where id = $1`, [client.id]), 'read-only');
+await fails('accountant cannot issue through a function', () => session('accountant', 'select create_client_invoice($1, 20, null, null, null, null)', [client.id]), 'read-only');
+await fails('accountant cannot record a payment', () => session('accountant', 'select add_invoice_payment($1, current_date, 1, null, null)', [dInv]));
+await fails('accountant cannot post stock', () => session('accountant', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, '[]']));
+await ok('outside a read-only transaction the accountant reads nothing', async () => {
+  eq((await as('accountant', 'select id from clients')).length, 0, 'clients');
+  eq((await as('accountant', 'select id from invoices')).length, 0, 'invoices');
+});
+await ok('designer sees clients, projects and order overviews', async () => {
+  eq((await session('designer', 'select id from clients')).length > 0, true, 'clients');
+  eq((await session('designer', 'select id from projects')).length > 0, true, 'projects');
+  eq((await session('designer', 'select id from sales_order_overview')).length > 0, true, 'orders');
+});
+await ok('designer sees no prices: not the orders themselves, invoices, offers, costs or mail', async () => {
+  for (const t of ['sales_orders', 'sales_order_lines', 'invoices', 'calc_offers', 'offers', 'client_emails', 'invoice_payments', 'lot_costs']) {
+    eq((await session('designer', `select count(*)::int as n from ${t}`))[0].n, 0, t);
+  }
+  const cols = (await db.query(`select column_name from information_schema.columns where table_name in ('sales_order_overview', 'sales_order_line_overview')`)).rows.map((r) => r.column_name);
+  eq(cols.some((c) => /price|total$|amount/.test(c)), false, 'no price column in the overviews');
+});
+await fails('designer cannot change anything', () => session('designer', `update clients set legal_name = 'x' where id = $1`, [client.id]), 'read-only');
+await ok('production still sees neither clients nor order overviews', async () => {
+  eq((await as('production', 'select id from clients')).length, 0, 'clients');
+  eq((await as('production', 'select id from sales_order_overview')).length, 0, 'orders');
+});
+await ok('bookkeeper works like Sales and records payments', async () => {
+  const id = (await one('bookkeeper', 'select create_client_invoice($1, 20, null, null, null, null) as id', [client.id])).id;
+  await as('bookkeeper', `select save_note_line($1, null, 'Service', 1, 100)`, [id]);
+  await as('bookkeeper', 'select issue_invoice($1, next_invoice_number(), current_date)', [id]);
+  await as('bookkeeper', 'select add_invoice_payment($1, current_date, 120, null, null)', [id]);
+  eq(Number((await one('bookkeeper', 'select invoice_open_amount($1) as n', [id])).n), 0, 'paid');
+});
+await fails('bookkeeper does not approve recipes', () => as('bookkeeper', 'select approve_formula_version($1)', [v1.id]), 'not allowed');
+await fails('bookkeeper does not dispatch', () => as('bookkeeper', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, '[]']), 'not allowed');
+await fails('bookkeeper does not change other people', () =>
+  as('bookkeeper', `update profiles set role = 'admin' where id = $1 returning id`, [U.bookkeeper]).then((r) => { if (!r.length) throw new Error('refused'); }));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -9,7 +9,11 @@ import { DEFAULT_LOCALE, getDict, isLocale, LOCALE_COOKIE, type Locale } from ".
 /** Developer only: the user they act as. Checked against the database on every request. */
 export const ACT_AS_COOKIE = "nk_act_as";
 
-export type SessionUser = { id: string; name: string; role: Role; locale: Locale; initials: string };
+/**
+ * role is what the screens work with: the accountant reads what Admin reads, the bookkeeper works like Sales.
+ * access is the real role. readOnly: the database refuses every change of this account.
+ */
+export type SessionUser = { id: string; name: string; role: Role; access: Role; readOnly: boolean; canPay: boolean; locale: Locale; initials: string };
 export type ActAsTarget = { id: string; full_name: string; email: string; role: Role; locale: Locale };
 /** Set when the signed-in user is a developer acting as someone else. */
 export type Developer = { id: string; name: string; targets: ActAsTarget[] };
@@ -24,6 +28,13 @@ export const getAuthUser = cache(async (): Promise<{ id: string; email: string |
   const { data } = await (await supabaseServer()).auth.getClaims();
   const sub = data?.claims?.sub;
   return sub ? { id: sub, email: (data.claims.email as string | undefined) ?? null } : null;
+});
+
+const rights = (access: Role) => ({
+  access,
+  role: (access === "accountant" ? "admin" : access === "bookkeeper" ? "sales" : access) as Role,
+  readOnly: access === "accountant" || access === "designer",
+  canPay: access === "admin" || access === "bookkeeper",
 });
 
 /**
@@ -43,13 +54,13 @@ export const getOptionalSession = cache(async () => {
   if (!profile?.is_active) return null;
   const cookieLocale = jar.get(LOCALE_COOKIE)?.value;
 
-  let user: SessionUser = { id: auth.id, name: profile.full_name, role: profile.role, locale: profile.locale, initials: initials(profile.full_name) };
+  let user: SessionUser = { id: auth.id, name: profile.full_name, ...rights(profile.role), locale: profile.locale, initials: initials(profile.full_name) };
   let developer: Developer | null = null;
   if (user.role === "developer") {
     const targets = await q<ActAsTarget>(user.id, "select id, full_name, email, role, locale from impersonation_targets()");
     const target = targets.find((x) => x.id === jar.get(ACT_AS_COOKIE)?.value) ?? targets[0];
     developer = { id: user.id, name: user.name, targets };
-    if (target) user = { id: target.id, name: target.full_name, role: target.role, locale: target.locale, initials: initials(target.full_name) };
+    if (target) user = { id: target.id, name: target.full_name, ...rights(target.role), locale: target.locale, initials: initials(target.full_name) };
   }
 
   const locale: Locale = isLocale(cookieLocale) ? cookieLocale : developer ? profile.locale : user.locale;

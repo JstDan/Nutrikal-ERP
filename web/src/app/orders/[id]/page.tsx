@@ -157,10 +157,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     ? { url: process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(), key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim() }
     : null;
   // Orders paid before the task manager get their board with Confirm first payment too
-  const showFirstPayment = isAdmin && !board && ["unpaid", "confirmed", "in_production", "ready"].includes(o.status);
-  const showFinalPayment = isAdmin && twoPayments && paid && !c?.balance_received_on;
+  const showFirstPayment = user.canPay && !board && ["unpaid", "confirmed", "in_production", "ready"].includes(o.status);
+  const showFinalPayment = user.canPay && twoPayments && paid && !c?.balance_received_on;
   // A payment confirmed by mistake (the database also refuses it once the order is sent to production)
-  const showCancelPayment = isAdmin && o.status === "confirmed" && !!c?.deposit_received_on && !invoices.some((x) => x.status === "issued");
+  const showCancelPayment = user.canPay && o.status === "confirmed" && !!c?.deposit_received_on && !invoices.some((x) => x.status === "issued");
   const invoiceButton = (purpose: OrderInvoice["purpose"], label: string) => {
     const inv = invoiceOf(purpose);
     return (

@@ -228,3 +228,6 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
   .doc-line, .doc-totals, .doc-section { break-inside: avoid; }
 }
 @page { margin: 12mm; }
+
+/* Read-only accounts: nothing to press. The database refuses it anyway. */
+[data-readonly] main form:not([method="get"]) button[type="submit"] { display: none; }
