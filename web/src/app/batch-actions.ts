@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { q } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import { LOT_BUCKET, MAX_FILE_BYTES, newDeliveryPath, putFile } from "@/lib/files";
+import { loadSettings } from "@/lib/calculator/db";
 import type { ActionState } from "@/app/actions";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
@@ -129,8 +130,42 @@ export async function createClientInvoice(_: ActionState, fd: FormData): Promise
 }
 
 export async function saveInvoiceTerms(_: ActionState, fd: FormData): Promise<ActionState> {
-  return run("select set_client_invoice_terms($1, $2, $3::date, $4::date, $5, $6)",
-    [str(fd, "invoice_id"), num(fd, "vat_pct"), str(fd, "tax_date"), str(fd, "due_date"), str(fd, "method"), str(fd, "notes")]);
+  // The basis is kept only at 0 % VAT: the text of the list, or what the person wrote
+  const basis = num(fd, "vat_pct") === 0 ? str(fd, "vat_basis_other") ?? str(fd, "vat_basis") : null;
+  return run("select set_client_invoice_terms($1, $2, $3::date, $4::date, $5, $6, $7)",
+    [str(fd, "invoice_id"), num(fd, "vat_pct"), str(fd, "tax_date"), str(fd, "due_date"), str(fd, "method"), str(fd, "notes"), basis]);
+}
+
+/** A line from the list of services (Settings > Calculator); it can be changed on the draft. */
+export async function addServiceLine(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const preset = (await loadSettings(user.id)).service_presets[Number(str(fd, "service"))];
+  if (!preset) return { error: t.invoices.direct.service };
+  return run("select save_note_line($1, null, $2, 1, $3)", [str(fd, "note_id"), preset.description, preset.price]);
+}
+
+export async function makeProforma(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  const id = str(fd, "invoice_id");
+  try {
+    await q(user.id, "select proforma_from_draft($1)", [id]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/invoices", "layout");
+  redirect(`/invoices/${id}?proforma=1`);
+}
+
+export async function copyInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    id = (await q<{ id: string }>(user.id, "select copy_client_invoice($1) as id", [str(fd, "invoice_id")]))[0].id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/invoices", "layout");
+  redirect(`/invoices/${id}`);
 }
 
 export async function addInvoicePayment(_: ActionState, fd: FormData): Promise<ActionState> {

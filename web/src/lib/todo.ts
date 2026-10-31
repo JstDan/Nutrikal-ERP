@@ -22,7 +22,7 @@ export async function loadTodo(tx: Tx, role: string, locale: Locale): Promise<To
     ["mail", `select w.client_id::text as id, coalesce(w.subject, '—') as title, w.client as sub, count(*) over ()::int as total
                 from emails_waiting_reply w order by w.sent_at`, [], (id) => `/clients/${id}`],
     ["overdue", `select id, number as title, buyer ->> 'name' as sub, count(*) over ()::int as total from invoices
-                   where status = 'issued' and kind = 'invoice' and order_id is null and due_date < current_date and invoice_open_amount(id) > 0
+                   where status = 'issued' and kind = 'invoice' and due_date < current_date and invoice_open_amount(id) > 0
                    order by due_date`, [], (id) => `/invoices/${id}`],
     ["payment", `select ${ORDER} where so.status = 'unpaid' order by so.created_at`, [], orderLink],
     ...(admin ? [

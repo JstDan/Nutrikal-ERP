@@ -25,7 +25,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
        select i.id, i.kind, i.number, i.status, i.issue_date::text, i.created_at::text, i.buyer ->> 'name' as client,
               i.order_id, so.code as order_code, i.total::text, i.currency, i.due_date::text,
               (select coalesce(sum(l.amount), 0) * (1 + i.vat_pct / 100) from invoice_lines l where l.invoice_id = i.id)::text as draft_total,
-              case when i.status = 'issued' and i.order_id is null and i.kind = 'invoice' then invoice_open_amount(i.id)::text end as open
+              case when i.status = 'issued' and i.kind = 'invoice' then invoice_open_amount(i.id)::text end as open
          from invoices i left join sales_orders so on so.id = i.order_id
         where $1 = '' or i.number ilike '%' || $1 || '%' or i.buyer ->> 'name' ilike '%' || $1 || '%' or so.code ilike '%' || $1 || '%'
      ) x

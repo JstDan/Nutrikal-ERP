@@ -2405,9 +2405,9 @@ await ok('a draft for a client, without an order, with free lines', async () => 
   eq(Number((await one('sales', 'select amount from invoice_lines where id = $1', [dLine])).amount), 300, 'amount');
 });
 await ok('terms of a draft can change', async () => {
-  await as('sales', `select set_client_invoice_terms($1, 0, current_date - 1, current_date - 1, 'cash', 'Note')`, [dInv]);
+  await as('sales', `select set_client_invoice_terms($1, 0, current_date - 1, current_date - 1, 'cash', 'Note', 'Basis')`, [dInv]);
   eq(Number((await one('sales', 'select vat_pct from invoices where id = $1', [dInv])).vat_pct), 0, 'vat');
-  await as('sales', `select set_client_invoice_terms($1, 20, null, current_date - 1, 'bank', null)`, [dInv]);
+  await as('sales', `select set_client_invoice_terms($1, 20, null, current_date - 1, 'bank', null, null)`, [dInv]);
 });
 await fails('no payment on a draft', () => as('admin', 'select add_invoice_payment($1, current_date, 10, null, null)', [dInv]), 'issued invoice');
 await ok('issued on the shared series; the date of the taxable event defaults to the issue date', async () => {
@@ -2419,7 +2419,7 @@ await ok('issued on the shared series; the date of the taxable event defaults to
 await fails('an issued invoice stays locked', () =>
   as('sales', `select save_note_line($1, null, 'x', 1, 1)`, [dInv]), 'cannot be changed');
 await fails('the terms of an issued invoice stay locked', () =>
-  as('sales', `select set_client_invoice_terms($1, 0, null, null, null, null)`, [dInv]), 'draft invoice');
+  as('sales', `select set_client_invoice_terms($1, 0, null, null, null, null, null)`, [dInv]), 'draft invoice');
 await fails('sales cannot record a payment', () => as('sales', 'select add_invoice_payment($1, current_date, 10, null, null)', [dInv]), 'not allowed');
 await ok('partial payments lower what is left; the invoice itself does not change', async () => {
   await as('admin', `select add_invoice_payment($1, current_date, 100, 'cash', 'First')`, [dInv]);
@@ -2449,6 +2449,49 @@ await ok('production sees no payments and no open amount', async () => {
 });
 await fails('a draft of an order keeps its lines from the order', () =>
   as('sales', `select save_note_line($1, null, 'x', 1, 1)`, [orig.id]), 'only the lines');
+
+console.log('\nInvoice tools');
+const tool = async (vat = 0) => {
+  const id = (await one('sales', 'select create_client_invoice($1, $2, null, null, null, null) as id', [client.id, vat])).id;
+  await as('sales', `select save_note_line($1, null, 'Service', 1, 100)`, [id]);
+  return id;
+};
+await ok('a proforma has its own series, keeps its number and takes none of the invoice series', async () => {
+  const id = await tool(20);
+  const before = (await one('sales', 'select next_invoice_number() as n')).n;
+  const a = (await one('sales', 'select proforma_from_draft($1) as n', [id])).n;
+  eq(a.startsWith('PF-'), true, 'series');
+  eq((await one('sales', 'select proforma_from_draft($1) as n', [id])).n, a, 'same');
+  eq((await one('sales', 'select next_invoice_number() as n')).n, before, 'invoice series untouched');
+  eq((await one('sales', 'select status, number from invoices where id = $1', [id])).number, null, 'no number');
+  const s = (await one('sales', `select begin_document_send('proforma', $1, 'a@b.co', null, 'Proforma') as id`, [id])).id;
+  await as('sales', 'select finish_document_send($1)', [s]);
+});
+await fails('a proforma needs lines', async () => {
+  const id = (await one('sales', 'select create_client_invoice($1, 20, null, null, null, null) as id', [client.id])).id;
+  await as('sales', 'select proforma_from_draft($1)', [id]);
+}, 'without lines');
+await fails('production cannot make a proforma', async () => as('production', 'select proforma_from_draft($1)', [dInv]), 'not allowed');
+await fails('0 % VAT without a basis is not issued', async () => {
+  const id = await tool(0);
+  await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [id]);
+}, 'basis');
+await ok('with the basis it is issued and printed from the invoice', async () => {
+  const id = await tool(0);
+  await as('sales', `select set_client_invoice_terms($1, 0, null, null, 'bank', null, 'Export')`, [id]);
+  await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [id]);
+  eq((await one('sales', 'select vat_basis from invoices where id = $1', [id])).vat_basis, 'Export', 'kept');
+});
+await ok('a new draft like an earlier invoice: same lines and terms, no number, no due date', async () => {
+  const id = (await one('sales', 'select copy_client_invoice($1) as id', [dInv])).id;
+  const c = await one('sales', 'select status, number, due_date, proforma_no from invoices where id = $1', [id]);
+  eq(c.status, 'draft', 'draft'); eq(c.number, null, 'number'); eq(c.due_date, null, 'due'); eq(c.proforma_no, null, 'proforma');
+  eq((await as('sales', 'select id from invoice_lines where invoice_id = $1', [id])).length, 1, 'lines');
+});
+await fails('an invoice of an order is not copied', () => as('sales', 'select copy_client_invoice($1)', [orig.id]), 'without an order');
+await ok('an invoice of a paid order counts as paid', async () => {
+  eq(Number((await one('sales', 'select invoice_open_amount($1) as n', [orig.id])).n), 0, 'nothing to pay');
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
