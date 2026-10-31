@@ -5,7 +5,7 @@ import { Chip, Empty, PageHeader } from "@/components/ui";
 import { formatDate, formatMoney, formatNumber } from "@/lib/i18n";
 import { enquiryToClient, setEnquiryStatus } from "@/app/catalog-actions";
 
-type Line = { code: string; name: string; name_bg: string | null; quantity: number; unit_price: number };
+type Line = { code: string; name: string; name_bg: string | null; quantity: number; unit_price: number | null };
 type Enquiry = {
   id: string; number: string; company: string; contact_name: string; email: string; phone: string | null; country_code: string | null;
   message: string | null; status: "new" | "handled" | "spam"; client_id: string | null; created_at: string; lines: Line[];
@@ -46,7 +46,7 @@ export default async function CatalogEnquiriesPage() {
               <div key={l.code} className="row grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b border-mist py-2 last:border-0">
                 <span className="min-w-0 break-words">{l.code} · {locale === "bg" && l.name_bg ? l.name_bg : l.name}</span>
                 <span>{formatNumber(locale, l.quantity)}</span>
-                <span className="font-semibold">{formatMoney(locale, l.unit_price, "EUR", 2)}</span>
+                <span className="font-semibold">{l.unit_price == null ? "—" : formatMoney(locale, l.unit_price, "EUR", 2)}</span>
               </div>
             ))}
           </div>

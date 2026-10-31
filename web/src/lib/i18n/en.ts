@@ -2203,6 +2203,7 @@ export const en = {
     markSpam: "Spam",
   },
   publicCatalog: {
+    priceOnRequest: "Price on request",
     whatsapp: "Chat with us on WhatsApp",
     legalTitle: "Important information",
     legal: ["This catalog is for general information only and is not an offer capable of acceptance. An order is binding only once confirmed in a written offer or agreement with Nutrikal Ltd.","We work to keep this catalog accurate, but it may contain errors or omissions. Formulas, ingredients, specifications, packaging, availability, prices, lead times and minimum orders may change at any time without notice. Product images and mock-ups are illustrative.","Prices are EXW (Incoterms 2020) from our facility in Varna, Bulgaria, in EUR, excluding VAT, unless agreed otherwise in writing. Some raw materials have their own minimum order quantities, which may affect price and lead time.","Regulatory compliance in the destination market, including labels and claims, is the responsibility of the client unless agreed otherwise in writing. Product and ingredient information is intended for business customers. It is not medical advice, and food supplements are not intended to diagnose, treat, cure or prevent any disease.","Third-party names and logos belong to their respective owners and do not imply endorsement. Nothing in this catalog may be copied, reproduced or used without our prior written permission. To the extent permitted by law, Nutrikal Ltd. accepts no liability for reliance on this catalog. Bulgarian law applies."],

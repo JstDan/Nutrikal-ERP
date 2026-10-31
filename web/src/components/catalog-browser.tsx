@@ -20,7 +20,7 @@ const STEP = 100;
 const STORE = "nk_catalog_basket";
 const VIDEO = "WF61pORKbUo";
 const COUNTRIES = ["AE", "AT", "AU", "BE", "BG", "CA", "CH", "CY", "CZ", "DE", "DK", "EE", "EG", "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IL", "IT", "JO", "KW", "LB", "LT", "LU", "LV", "MD", "ME", "MK", "MT", "NL", "NO", "OM", "PL", "PT", "QA", "RO", "RS", "SA", "SE", "SI", "SK", "TR", "UA", "US"];
-const priceAt = (p: Product, qty: number) => [...p.tiers].reverse().find((t) => t.min_qty <= qty)?.unit_price ?? p.tiers[0].unit_price;
+const priceAt = (p: Product, qty: number) => [...p.tiers].reverse().find((t) => t.min_qty <= qty)?.unit_price ?? p.tiers[0]?.unit_price ?? null;
 
 const inCategory = (p: Product, id: string) => p.category_id === id || !!p.extra_category_ids?.includes(id);
 
@@ -179,7 +179,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
   const overview = !category && !format && !find;
   const lines = data.products.filter((p) => basket[p.code]);
   const allValid = lines.every((p) => basket[p.code] >= p.min_qty);
-  const total = lines.reduce((sum, p) => sum + priceAt(p, basket[p.code]) * basket[p.code], 0);
+  const total = lines.reduce((sum, p) => sum + (priceAt(p, basket[p.code]) ?? 0) * basket[p.code], 0);
 
   const openBasket = () => { setSent(null); setError(""); setStep("lines"); setShowBasket(true); };
   // Adding opens the list, so the buyer sees it land and can set the quantity at once
@@ -219,7 +219,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
         <span className="min-w-0 text-[11px] text-ink-2">{[p.format && formats[p.format as "capsule"], p.code].filter(Boolean).join(" · ")}</span>
         <span className="line-clamp-2 min-h-10 min-w-0 break-words text-sm leading-5 font-bold">{local(p.name, p.name_bg)}</span>
       </button>
-      <p className="m-0 mt-auto text-sm">{fmt(T.fromPrice, { price: money(p.tiers.at(-1)!.unit_price) })}</p>
+      <p className="m-0 mt-auto text-sm">{p.tiers.length ? fmt(T.fromPrice, { price: money(p.tiers.at(-1)!.unit_price) }) : T.priceOnRequest}</p>
       <button type="button" onClick={() => add(p)} className="btn btn-primary w-full !px-2">{basket[p.code] ? T.inBasket : T.add}</button>
       <button type="button" onClick={() => setOpen(p)} className="btn btn-outline w-full !px-2">{T.learnMore}</button>
     </article>
@@ -331,6 +331,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
           </p>
           <section className="flex flex-col gap-2">
             <h3 className="label m-0">{T.prices}</h3>
+            {open.tiers.length === 0 && <p className="m-0 text-sm font-semibold">{T.priceOnRequest}</p>}
             <div className={`grid gap-2 ${open.tiers.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
               {open.tiers.map((t) => (
                 <div key={t.min_qty} className="flex flex-col rounded-md bg-green-tint px-3 py-2">
@@ -369,7 +370,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
             <>
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-ink-2">{T.approxTotal}</span>
-                <span className="text-lg font-bold">{allValid ? money(total) : "—"}</span>
+                <span className="text-lg font-bold">{allValid && total > 0 ? money(total) : "—"}</span>
               </div>
               {error && <p role="alert" className="m-0 text-sm font-semibold text-red-ink">{error}</p>}
               <button type="button" disabled={!allValid} onClick={() => { setError(""); setStep("details"); }} className="btn btn-primary w-full">{T.continue}</button>
@@ -417,7 +418,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
                         <button type="button" onClick={() => setQty(p.code, qty + STEP)} aria-label={T.more} className="grid h-11 w-11 place-items-center rounded-r-sm border border-line-strong text-lg">+</button>
                       </div>
                       <span className={`text-sm font-semibold ${qty >= p.min_qty ? "" : "text-red-ink"}`}>
-                        {qty >= p.min_qty ? fmt(T.each, { price: money(priceAt(p, qty)) }) : fmt(T.minimum, { n: formatNumber(locale, p.min_qty) })}
+                        {qty >= p.min_qty ? (p.tiers.length ? fmt(T.each, { price: money(priceAt(p, qty) ?? 0) }) : T.priceOnRequest) : fmt(T.minimum, { n: formatNumber(locale, p.min_qty) })}
                       </span>
                     </div>
                     {qty >= p.min_qty && next && <p className="m-0 text-xs text-ink-2">{fmt(T.nextTier, { n: formatNumber(locale, next.min_qty), price: money(next.unit_price) })}</p>}
