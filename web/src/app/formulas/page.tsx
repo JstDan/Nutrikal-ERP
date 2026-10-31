@@ -9,20 +9,22 @@ import { fmt } from "@/lib/i18n";
 type Row = {
   id: string; code: string; name: string; name_bg: string | null; product_format: string;
   client: string | null; client_id: string | null; project_code: string | null; version: number; status: string;
-  offer_no: string | null;
+  offer_no: string | null; in_catalog: boolean;
 };
 
 export default async function FormulasPage({ searchParams }: PageProps<"/formulas">) {
   const { user, locale, t } = await requireStaff();
   const sp = await searchParams;
   const term = typeof sp.q === "string" ? sp.q.trim() : "";
+  const onlyCatalog = sp.in === "catalog";
   const canCreate = user.role === "admin" || user.role === "sales";
 
   // Per formula: the draft if there is one, else the approved version, else the latest
   const rows = await q<Row>(
     user.id,
     `select f.id, f.code, f.name, f.name_bg, f.product_format, c.legal_name as client, c.id as client_id,
-            p.code as project_code, v.version, v.status, o.offer_no
+            p.code as project_code, v.version, v.status, o.offer_no,
+            exists (select 1 from catalog_products cp where cp.formula_id = f.id) as in_catalog
        from formulas f
        left join calc_offers o on o.id = f.calc_offer_id
        left join clients c on c.id = f.client_id
@@ -32,9 +34,10 @@ export default async function FormulasPage({ searchParams }: PageProps<"/formula
           where formula_id = f.id
           order by status = 'draft' desc, status = 'approved' desc, version desc limit 1) v
       where f.is_active
+        and (not $2 or exists (select 1 from catalog_products cp where cp.formula_id = f.id))
         and ($1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%' or o.offer_no ilike '%' || $1 || '%')
       order by f.code desc`,
-    [term],
+    [term, onlyCatalog],
   );
 
   const grid = "md:grid-cols-[110px_minmax(0,1.6fr)_minmax(0,1fr)_150px] lg:grid-cols-[110px_minmax(0,1.6fr)_minmax(0,1fr)_120px_70px_150px]";
@@ -47,10 +50,17 @@ export default async function FormulasPage({ searchParams }: PageProps<"/formula
         actions={canCreate && <Link href="/formulas/new" className="btn btn-primary">{t.formulas.new}</Link>}
       />
 
-      <form method="get" role="search" className="flex min-w-0 justify-end">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap gap-2">
+        <Link href={`/formulas${term ? `?q=${encodeURIComponent(term)}` : ""}`} aria-current={!onlyCatalog ? "page" : undefined} className={`flex min-h-10 items-center rounded-full border px-3.5 text-[13px] no-underline ${!onlyCatalog ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}>{t.formulas.allRecipes}</Link>
+        <Link href={`/formulas?in=catalog${term ? `&q=${encodeURIComponent(term)}` : ""}`} aria-current={onlyCatalog ? "page" : undefined} className={`flex min-h-10 items-center rounded-full border px-3.5 text-[13px] no-underline ${onlyCatalog ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}>{t.formulas.inCatalog}</Link>
+      </div>
+      <form method="get" role="search" className="flex min-w-0 flex-1 justify-end">
+        {onlyCatalog && <input type="hidden" name="in" value="catalog" />}
         <label htmlFor="formula-q" className="sr-only">{t.topbar.search}</label>
         <LiveSearch id="formula-q" defaultValue={term} placeholder={t.formulas.searchPlaceholder} className="input max-w-[360px]" />
       </form>
+      </div>
 
       <section aria-label={t.formulas.title} className="card px-5 pt-2 pb-3">
         <div className={`row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${grid}`}>
@@ -65,6 +75,7 @@ export default async function FormulasPage({ searchParams }: PageProps<"/formula
               <Link href={`/formulas/${f.id}`} className="font-semibold text-ink">{f.code}</Link>
               <span className="block min-w-0 break-words md:inline">
                 {locale === "bg" && f.name_bg ? f.name_bg : f.name}
+                {f.in_catalog && <span className="block text-xs font-semibold text-ink-2">{t.formulas.inCatalog}</span>}
                 {f.offer_no && <span className="block text-xs text-ink-2">{fmt(t.formulas.fromOffer, { no: f.offer_no })}</span>}
               </span>
             </div>

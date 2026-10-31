@@ -2711,5 +2711,100 @@ await ok('only the author edits a message', async () => {
   eq((await as('sales', `update chat_messages set body = 'Второ', edited_at = now() where id = $1 returning id`, [m])).length, 1, 'author');
 });
 
+console.log('\nCatalogue of stock formulas');
+async function asAnon(sql, params = []) {
+  await db.exec('reset role');
+  await db.query(`select set_config('request.jwt.claim.sub', '', false)`);
+  await db.exec('set role anon');
+  try { return (await db.query(sql, params)).rows; } finally { await db.exec('reset role'); }
+}
+const catFormula = (await one('sales', `insert into formulas (name, product_format, serving_size, servings_per_pack) values ('Каталожна', 'powder', 5, 30) returning id`)).id;
+const catVersion = (await one('sales', 'select id from formula_versions where formula_id = $1', [catFormula])).id;
+const catItem = (await one('admin', `select id from items where type = 'raw_material' and is_active limit 1`)).id;
+await as('sales', `insert into formula_lines (version_id, item_id, amount, overage_pct) values ($1, $2, 100, 7)`, [catVersion, catItem]);
+await fails('Sales does not create catalogue products', () => as('sales', 'select catalog_from_formula($1)', [catFormula]), 'not allowed');
+const catProduct = (await one('admin', 'select catalog_from_formula($1) as id', [catFormula])).id;
+await ok('a second press opens the same product', async () => {
+  eq((await one('admin', 'select catalog_from_formula($1) as id', [catFormula])).id, catProduct, 'id');
+});
+await fails('no publishing without an approved recipe', () => as('admin', 'update catalog_products set is_published = true where id = $1', [catProduct]), 'catalog_not_approved');
+await as('admin', 'update formula_versions set shelf_life_months = 24 where id = $1', [catVersion]);
+await as('admin', 'select approve_formula_version($1)', [catVersion]);
+await fails('no publishing without a price at the minimum order', () => as('admin', 'update catalog_products set is_published = true where id = $1', [catProduct]), 'catalog_no_minimum_tier');
+await fails('no price below 500 packs', () => as('admin', 'insert into catalog_price_tiers (product_id, min_qty, unit_price) values ($1, 499, 5)', [catProduct]), 'check');
+await fails('Sales does not change prices', () => as('sales', 'insert into catalog_price_tiers (product_id, min_qty, unit_price) values ($1, 500, 5)', [catProduct]));
+await as('admin', 'insert into catalog_price_tiers (product_id, min_qty, unit_price) values ($1, 500, 5), ($1, 1000, 4)', [catProduct]);
+await ok('nobody signed in sees nothing while it is a draft', async () => {
+  const d = (await asAnon('select catalog_public() as d'))[0].d;
+  eq(d.products.filter((p) => p.name === 'Каталожна').length, 0, 'draft');
+});
+await as('admin', 'update catalog_products set is_published = true where id = $1', [catProduct]);
+const catCode = (await one('admin', 'select code from catalog_products where id = $1', [catProduct])).code;
+await ok('a recipe of a client can be published and the client does not show', async () => {
+  const client = (await one('admin', 'select id, legal_name from clients limit 1'));
+  const f = (await one('sales', `insert into formulas (name, product_format, serving_size, client_id) values ('На клиент', 'powder', 5, $1) returning id`, [client.id])).id;
+  const v = (await one('sales', 'select id from formula_versions where formula_id = $1', [f])).id;
+  await as('sales', 'insert into formula_lines (version_id, item_id, amount) values ($1, $2, 100)', [v, catItem]);
+  await as('admin', 'update formula_versions set shelf_life_months = 24 where id = $1', [v]);
+  await as('admin', 'select approve_formula_version($1)', [v]);
+  const p = (await one('admin', 'select catalog_from_formula($1) as id', [f])).id;
+  await as('admin', 'insert into catalog_price_tiers (product_id, min_qty, unit_price) values ($1, 500, 5)', [p]);
+  await as('admin', 'update catalog_products set is_published = true where id = $1', [p]);
+  const raw = JSON.stringify((await asAnon('select catalog_public() as d'))[0].d);
+  if (!raw.includes('На клиент')) throw new Error('not published');
+  if (raw.includes(client.legal_name)) throw new Error('client shown');
+  await as('admin', 'update catalog_products set is_published = false where id = $1', [p]);
+});
+await ok('the open catalogue shows only the listed fields, no cost or overage', async () => {
+  const d = (await asAnon('select catalog_public() as d'))[0].d;
+  const p = d.products.find((x) => x.code === catCode);
+  eq(p.tiers.length, 2, 'tiers'); eq(p.ingredients.length, 1, 'ingredients');
+  eq(Object.keys(p).sort().join(), 'category_id,claims,code,description,description_bg,format,ingredients,name,name_bg,serving_size,serving_unit,servings_per_pack,tiers', 'fields');
+  eq(Object.keys(p.ingredients[0]).sort().join(), 'amount,name,name_bg,unit', 'ingredient fields');
+});
+await fails('nobody signed in reads no table', () => asAnon('select * from catalog_products'), 'denied');
+await fails('nobody signed in reads no enquiry', () => asAnon('select * from catalog_enquiries'), 'denied');
+await ok('nobody signed in sees no clients, recipes or prices of materials', async () => {
+  for (const t of ['clients', 'formulas', 'formula_lines', 'supplier_prices', 'calc_offers']) eq((await asAnon(`select 1 from ${t}`)).length, 0, t);
+});
+const enquiry = (o = {}) => JSON.stringify({ company: 'Нова фирма', contact_name: 'Иван Иванов', email: 'ivan@nova.test', lines: [{ code: catCode, quantity: 1200, unit_price: 0.01 }], ...o });
+await fails('no enquiry below the minimum', () => asAnon('select catalog_submit_enquiry($1::jsonb)', [enquiry({ lines: [{ code: catCode, quantity: 499 }] })]), 'catalog_invalid');
+await fails('no enquiry without a valid e-mail', () => asAnon('select catalog_submit_enquiry($1::jsonb)', [enquiry({ email: 'x' })]), 'catalog_invalid');
+await fails('no enquiry for an unknown product', () => asAnon('select catalog_submit_enquiry($1::jsonb)', [enquiry({ lines: [{ code: 'X', quantity: 500 }] })]), 'catalog_invalid');
+let enquiryId;
+await ok('an enquiry takes the tier price from the database and tells Sales', async () => {
+  const no = (await asAnon('select catalog_submit_enquiry($1::jsonb) as no', [enquiry()]))[0].no;
+  const e = await one('sales', 'select id, status from catalog_enquiries where number = $1', [no]);
+  enquiryId = e.id; eq(e.status, 'new', 'status');
+  eq(Number((await one('sales', 'select unit_price from catalog_enquiry_lines where enquiry_id = $1', [e.id])).unit_price), 4, 'price');
+  eq((await as('sales', `select id from notifications where kind = 'catalog_enquiry'`)).length, 1, 'told');
+});
+await ok('Production and Design see no enquiries and no catalogue', async () => {
+  for (const r of ['production', 'designer']) {
+    eq((await as(r, 'select id from catalog_enquiries')).length, 0, r);
+    eq((await as(r, 'select id from catalog_products')).length, 0, r);
+    eq((await as(r, 'select id from catalog_price_tiers')).length, 0, r);
+  }
+});
+await fails('what the client wrote cannot be changed', () => as('sales', `update catalog_enquiries set company = 'x' where id = $1`, [enquiryId]), 'denied');
+await fails('Production does not turn an enquiry into a client', () => as('production', 'select catalog_enquiry_to_client($1)', [enquiryId]), 'not allowed');
+await ok('an enquiry becomes a lead with a contact and a note; again gives the same client', async () => {
+  const c = (await one('sales', 'select catalog_enquiry_to_client($1) as id', [enquiryId])).id;
+  const row = await one('sales', 'select status, source from clients where id = $1', [c]);
+  eq(row.status, 'lead', 'lead'); eq(row.source, 'catalogue', 'source');
+  eq((await as('sales', 'select id from contacts where client_id = $1', [c])).length, 1, 'contact');
+  eq((await as('sales', 'select id from activities where client_id = $1', [c])).length, 1, 'note');
+  eq((await one('sales', 'select catalog_enquiry_to_client($1) as id', [enquiryId])).id, c, 'same');
+});
+await ok('a known e-mail finds the same client', async () => {
+  const no = (await asAnon('select catalog_submit_enquiry($1::jsonb) as no', [enquiry({ company: 'Друго име' })]))[0].no;
+  const id = (await one('sales', 'select id from catalog_enquiries where number = $1', [no])).id;
+  const first = (await one('sales', 'select client_id from catalog_enquiries where id = $1', [enquiryId])).client_id;
+  eq((await one('sales', 'select catalog_enquiry_to_client($1) as id', [id])).id, first, 'client');
+});
+await fails('five enquiries an hour from one address, then no more', async () => {
+  for (let i = 0; i < 5; i++) await asAnon('select catalog_submit_enquiry($1::jsonb)', [enquiry()]);
+}, 'catalog_busy');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -186,6 +186,24 @@ export async function seedDemo(db: PGlite) {
      values ('Immune Support', 'Имунна подкрепа', 'capsule', 2, 30, $1) returning id`, [caps],
     [[vitc, 200, "mg", 5], [zn, 50, "mg", 0], [mcc, 150, "mg", 0]], null, []);
 
+  // ---------------------------------------------------------- catalogue
+  const stock = [
+    ["Vitamin C + Zinc", "Витамин C + цинк", "capsule", 2, "pcs", 30, [[vitc, 200, "mg", 5], [zn, 50, "mg", 0], [mcc, 150, "mg", 0]], "Vitamins and minerals", [[500, 3.9], [1000, 3.4], [5000, 2.85]]],
+    ["Magnesium + L-theanine", "Магнезий + L-теанин", "capsule", 2, "pcs", 30, [[mg, 750, "mg", 0], [the, 100, "mg", 5], [mcc, 40, "mg", 0]], "Vitamins and minerals", [[500, 4.6], [2000, 3.95]]],
+    ["Marine Collagen", "Морски колаген", "powder", 10, "g", 30, [[col, 9.5, "g", 0], [vitc, 80, "mg", 10]], "Collagen and proteins", [[500, 9.8], [1000, 8.9], [5000, 7.7]]],
+  ] as const;
+  for (const [name, nameBg, format, size, unit, servings, lines, category, tiers] of stock) {
+    const made = await formula(
+      `insert into formulas (name, name_bg, product_format, serving_size, serving_unit, servings_per_pack, shell_item_id)
+       values ($1, $2, $3, $4, $5, $6, $7) returning id`, [name, nameBg, format, size, unit, servings, format === "capsule" ? caps : null],
+      lines.map((l) => [...l]) as never, 24, []);
+    await as(ADMIN, "select approve_formula_version($1)", [made.v]);
+    const product = await one(ADMIN, "select catalog_from_formula($1) as id", [made.f]);
+    await as(ADMIN, "update catalog_products set category_id = (select id from catalog_categories where name = $2) where id = $1", [product, category]);
+    for (const [qty, price] of tiers) await as(ADMIN, "insert into catalog_price_tiers (product_id, min_qty, unit_price) values ($1, $2, $3)", [product, qty, price]);
+    await as(ADMIN, "update catalog_products set is_published = true where id = $1", [product]);
+  }
+
   // ----------------------------------------------------------- offers
   await as(ADMIN, `update format_costing set fee_per_pack = 0.18, fee_per_1000_units = 2.4, setup_fee = 350, loss_pct = 3,
                      default_margin_pct = 35, min_order_packs = 1000 where product_format = 'capsule'`);

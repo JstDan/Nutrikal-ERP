@@ -3,7 +3,7 @@ import "./globals.css";
 import { getLocale, getOptionalSession } from "@/lib/session";
 import { AppShell } from "@/components/app-shell";
 import { THEME_COOKIE } from "@/lib/theme";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "Nutrikal ERP",
@@ -11,8 +11,11 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const session = await getOptionalSession();
-  const locale = await getLocale();
+  // The open catalogue has no menu and no user, also for someone signed in
+  const h = await headers();
+  const open = h.get("x-nk-public") === "1";
+  const session = open ? null : await getOptionalSession();
+  const locale = open ? (h.get("x-nk-locale") ?? "en") : await getLocale();
   const saved = (await cookies()).get(THEME_COOKIE)?.value;
   const theme = saved === "dark" || saved === "light" ? saved : undefined;
   return (

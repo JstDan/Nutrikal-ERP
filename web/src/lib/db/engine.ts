@@ -180,6 +180,19 @@ export async function qChat<T>(userId: string, sql: string, params: unknown[] = 
 }
 
 /**
+ * The open catalogue: nobody is signed in, so it runs as anon, which reaches
+ * nothing except the functions granted to it (catalog_public, catalog_submit_enquiry).
+ */
+export async function qPublic<T>(sql: string, params: unknown[] = []): Promise<T[]> {
+  if (usesSupabaseDb()) return pgTransaction(async (c) => (await c.query(sql, params)).rows as T[], "set local role anon;");
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    await tx.exec("set local role anon");
+    return (await tx.query<T>(sql, params)).rows;
+  }) as Promise<T[]>;
+}
+
+/**
  * Jobs without a signed-in user (the scheduled price-list sync): runs as
  * the database owner. Only for SQL functions that check this themselves.
  */

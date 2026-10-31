@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { withUser } from "@/lib/db/engine";
+import { q, withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
 import { fmt, formatDate, formatMass, formatNumber, formatQty } from "@/lib/i18n";
 import { Card, Chip, Dot, Empty, Fact, PageHeader, type Tone } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
+import { createCatalogProduct } from "@/app/catalog-actions";
 import { SearchSelect } from "@/components/search-select";
 import { formulaTone } from "@/lib/status";
 import {
@@ -166,6 +167,7 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
     const qs = p.toString();
     return `/formulas/${f.id}${qs ? `?${qs}` : ""}`;
   };
+  const [inCatalog] = await q<{ id: string }>(user.id, "select id from catalog_products where formula_id = $1", [id]);
   const yesNo = (b: boolean | null) => (b == null ? d.unknown : b ? d.yes : d.no);
 
   // columns by the width of the card (.cq), not of the screen
@@ -177,6 +179,14 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
     <div className="flex flex-col gap-6">
       <PageHeader
         crumb={<><Link href="/formulas" className="text-ink-2">{t.formulas.title}</Link> / {f.code}</>}
+        actions={inCatalog
+          ? <Link href={`/catalog/${inCatalog.id}`} className="btn btn-outline">{t.catalog.openProduct}</Link>
+          : user.role === "admin" && !user.readOnly && (
+            <form action={createCatalogProduct}>
+              <input type="hidden" name="formula_id" value={f.id} />
+              <button type="submit" className="btn btn-outline">{t.catalog.createProduct}</button>
+            </form>
+          )}
         title={bgName(f)}
         subtitle={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

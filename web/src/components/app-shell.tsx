@@ -45,6 +45,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
             { href: "/chat", label: t.nav.chat, badge: unread },
             { href: "/clients", label: t.nav.clients },
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/offers", label: t.nav.offers, also: ["/calculator"] }] : []),
+            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/catalog", label: t.nav.catalog }] : []),
             { href: "/orders", label: t.nav.orders },
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/invoices", label: t.nav.invoices }] : []),
           ],
