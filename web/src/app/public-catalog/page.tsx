@@ -6,7 +6,7 @@ import { CatalogBrowser, type PublicCatalog } from "@/components/catalog-browser
 import { CatalogCompany } from "@/components/catalog-sections";
 
 export const metadata: Metadata = {
-  title: "Nutrikal Catalogue",
+  title: "Nutrikal Catalog",
   description: "Ready food supplement formulas for private label",
 };
 
