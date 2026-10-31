@@ -100,53 +100,12 @@ export function CatalogContact({ text, locale }: { text: Dict["publicCatalog"]; 
   );
 }
 
-/** The name on a drawn label: without the note in brackets or the weight, in short lines. */
-function labelLines(name: string) {
-  const words = name.replace(/\(.*\)/, "").replace(/\s[-–]\s.*$/, "").replace(/[™®]/g, "").trim().toUpperCase().split(/\s+/);
-  const lines: string[] = [];
-  for (const w of words) {
-    if (lines.length && (lines.at(-1) + " " + w).length <= 11) lines[lines.length - 1] += " " + w;
-    else lines.push(w);
-  }
-  return lines.slice(0, 4);
-}
-
-/** Until a product has a photo: a blank bottle or doypack, like the mock-ups, with the product name. */
-function DrawnPack({ name, pouch, className }: { name: string; pouch: boolean; className: string }) {
-  const lines = labelLines(name);
-  const room = pouch ? 96 : 80;
-  const size = Math.min(18, room / (Math.max(...lines.map((l) => l.length)) * 0.74));
-  return (
-    <svg aria-hidden="true" viewBox="0 0 193 232" className={className}>
-      <rect width="193" height="232" fill="#b1aeaa" />
-      {pouch ? (
-        <>
-          <path d="M42 26h109l5 12-5 8 8 160q0 8-8 8H42q-8 0-8-8l8-160-5-8z" fill="#fff" stroke="#d9d7d4" />
-          <path d="M42 46h109" stroke="#e3e1de" strokeWidth="2" />
-          <rect x="47" y="31" width="99" height="4" rx="2" fill="#e9e7e4" />
-        </>
-      ) : (
-        <>
-          <rect x="62" y="20" width="69" height="28" rx="4" fill="#f4f3f1" stroke="#d9d7d4" />
-          <path d="M67 48h59v8q17 5 17 22v126q0 12-12 12H62q-12 0-12-12V78q0-17 17-22z" fill="#fff" stroke="#d9d7d4" />
-        </>
-      )}
-      <text x="96.500" y={100} textAnchor="middle" fill="#222831" fontWeight="800" fontSize={size} letterSpacing="-0.3">
-        {lines.map((l, i) => <tspan key={i} x="96.500" dy={i ? size + 2 : 0}>{l}</tspan>)}
-      </text>
-      <rect x={pouch ? 42 : 50} y="176" width={pouch ? 109 : 93} height="16" fill="#4a5160" />
-    </svg>
-  );
-}
-
-/** A photo, or a drawn pack until the product has one. */
+/** The product photo; a new product without one shows a blank pack. */
 function Picture({ product, alt, size = "card" }: { product: Product; alt: string; size?: "card" | "detail" | "line" }) {
   const box = { card: "aspect-[193/232] w-full rounded-md object-cover", detail: "mx-auto h-64 w-auto rounded-md", line: "h-[72px] w-[60px] shrink-0 rounded-sm object-cover" }[size];
-  if (product.image) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={product.image} alt={alt} loading="lazy" width={640} height={769} className={box} />;
-  }
-  return <DrawnPack name={alt} pouch={product.format === "powder" || product.format === "bar"} className={box} />;
+  const src = product.image ?? (product.format === "powder" ? "/catalog/site/blank-pouch.webp" : "/catalog/site/blank-bottle.webp");
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt} loading="lazy" width={640} height={769} className={box} />;
 }
 function Dialog({ title, close, closeLabel, footer, children }: { title: string; close: () => void; closeLabel: string; footer?: ReactNode; children: ReactNode }) {
   return (
@@ -250,7 +209,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
     }
   }
 
-  const chip = (active: boolean) => `min-h-11 rounded-full border px-4 text-sm ${active ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-paper text-ink hover:bg-canvas"}`;
+  const chip = (active: boolean) => `min-h-10 rounded-full border px-3.5 text-[13px] ${active ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-paper text-ink hover:bg-canvas"}`;
   const card = (p: Product) => (
     <article key={p.code} className="flex min-w-0 flex-col gap-2 rounded-lg border border-line bg-paper p-2.5 sm:p-3">
       <button type="button" onClick={() => setOpen(p)} aria-label={fmt(T.detailsOf, { name: local(p.name, p.name_bg) })} className="flex min-w-0 flex-col gap-2 text-left">
@@ -260,7 +219,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
       </button>
       <p className="m-0 mt-auto text-sm">{fmt(T.fromPrice, { price: money(p.tiers.at(-1)!.unit_price) })}</p>
       <button type="button" onClick={() => add(p)} className="btn btn-primary w-full !px-2">{basket[p.code] ? T.inBasket : T.add}</button>
-      <button type="button" onClick={() => setOpen(p)} className="btn btn-outline w-full !px-2">{T.learnMore}</button>
+      <button type="button" onClick={() => setOpen(p)} className="flex min-h-11 items-center justify-center text-sm text-ink-2 underline hover:text-ink">{T.learnMore}</button>
     </article>
   );
   const grid = "grid min-w-0 grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4";
@@ -288,36 +247,37 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
           <h1 className="m-0 text-3xl font-bold">{T.title}</h1>
           <p className="m-0 text-ink-2">{T.intro}</p>
         </div>
+        <dl className="m-0 grid min-w-0 grid-cols-1 gap-x-8 gap-y-3 border-y border-line py-4 sm:grid-cols-2 lg:grid-cols-4">
+          {T.facts.map((f) => (
+            <div key={f.label} className="flex min-w-0 flex-col gap-0.5">
+              <dt className="text-xs text-ink-2">{f.label}</dt>
+              <dd className="m-0 text-sm font-semibold">{f.value}</dd>
+            </div>
+          ))}
+        </dl>
         <div className="flex min-w-0 flex-col gap-3">
-          <label htmlFor="catalog-search" className="sr-only">{T.search}</label>
-          <input id="catalog-search" type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={T.search} className="input max-w-[480px]" />
-          {/* On a phone the buttons would fill the screen before the first product: two plain lists there */}
-          <div className="grid min-w-0 grid-cols-1 gap-2 md:hidden">
-            <label className="min-w-0">
-              <span className="sr-only">{T.categories}</span>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full min-w-0">
-                <option value="">{T.allCategories}</option>
-                {data.categories.map((c) => <option key={c.id} value={c.id}>{local(c.name, c.name_bg)}</option>)}
-              </select>
-            </label>
-            <label className="min-w-0">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+            <label htmlFor="catalog-search" className="sr-only">{T.search}</label>
+            <input id="catalog-search" type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={T.search} className="input min-w-0 flex-1" />
+            <label className="min-w-0 sm:w-48">
               <span className="sr-only">{T.formats}</span>
               <select value={format} onChange={(e) => setFormat(e.target.value)} className="input w-full min-w-0">
                 <option value="">{T.allFormats}</option>
                 {shownFormats.map((f) => <option key={f} value={f}>{formats[f as "capsule"]}</option>)}
               </select>
             </label>
+            <label className="min-w-0 md:hidden">
+              <span className="sr-only">{T.categories}</span>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full min-w-0">
+                <option value="">{T.allCategories}</option>
+                {data.categories.map((c) => <option key={c.id} value={c.id}>{local(c.name, c.name_bg)}</option>)}
+              </select>
+            </label>
           </div>
           <div role="group" aria-label={T.categories} className="hide-sm flex flex-wrap gap-2">
-            <button type="button" aria-pressed={!category} onClick={() => setCategory("")} className={chip(!category)}>{T.allCategories}</button>
-            {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{local(c.name, c.name_bg)}</button>)}
+            <button type="button" aria-pressed={!category} onClick={() => setCategory("")} className={chip(!category)}>{T.all}</button>
+            {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} title={local(c.name, c.name_bg)} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{(T.shortCategories as Record<string, string>)[c.name] ?? local(c.name, c.name_bg)}</button>)}
           </div>
-          {shownFormats.length > 1 && (
-            <div role="group" aria-label={T.formats} className="hide-sm flex flex-wrap gap-2">
-              <button type="button" aria-pressed={!format} onClick={() => setFormat("")} className={chip(!format)}>{T.allFormats}</button>
-              {shownFormats.map((f) => <button key={f} type="button" aria-pressed={format === f} onClick={() => setFormat(f)} className={chip(format === f)}>{formats[f as "capsule"]}</button>)}
-            </div>
-          )}
         </div>
         <div className="flex min-w-0 flex-col gap-8">
             {data.products.length === 0 && <p className="m-0 text-ink-2">{T.empty}</p>}
