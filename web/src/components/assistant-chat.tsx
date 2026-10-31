@@ -218,7 +218,7 @@ export function AssistantChat({ conversations, current, messages, proposals, mod
             className="flex min-w-0 flex-col gap-1 rounded-2xl border border-line-strong bg-paper p-2 focus-within:border-ink">
             <label htmlFor="assistant-text" className="sr-only">{A.question}</label>
             <textarea id="assistant-text" ref={box} rows={1} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey}
-              placeholder={A.placeholder} className="max-h-48 w-full resize-none border-0 bg-transparent px-2 py-2 text-[15px] text-ink outline-none" />
+              placeholder={A.placeholder} className="max-h-48 w-full resize-none border-0 [scrollbar-width:none] bg-transparent px-2 py-2 text-[15px] text-ink outline-none" />
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex min-w-0 flex-wrap items-center gap-3">
                 {models.length > 1 && (

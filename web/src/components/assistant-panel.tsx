@@ -195,7 +195,7 @@ export function AssistantPanel({ models, configured, locale, text, keepsNothing 
           className="flex min-w-0 items-end gap-2 rounded-2xl border border-line-strong bg-paper p-1.5 focus-within:border-ink">
           <label htmlFor="panel-text" className="sr-only">{A.question}</label>
           <textarea id="panel-text" ref={box} rows={1} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey}
-            placeholder={A.placeholder} className="max-h-40 min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2.5 text-sm text-ink outline-none" />
+            placeholder={A.placeholder} className="max-h-40 min-w-0 flex-1 resize-none border-0 [scrollbar-width:none] bg-transparent px-2 py-2.5 text-sm text-ink outline-none" />
           <button type="submit" aria-label={A.send} disabled={pending || !draft.trim() || !configured}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-lg text-white disabled:opacity-40">↑</button>
         </form>
