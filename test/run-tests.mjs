@@ -2290,5 +2290,58 @@ await ok('production sees no AI data', async () => {
   eq((await as('production', 'select id from ai_messages')).length, 0, 'messages');
 });
 
+console.log('\nAI recipe proposals');
+const aiRecipe = (over = {}) => JSON.stringify({
+  name: 'AI Test', name_bg: 'AI тест', product_format: 'capsule', serving_size: 2, serving_unit: 'pcs', servings_per_pack: 30,
+  lines: [{ sku: 'RCP-ZG', amount: 300, unit: 'mg' }], ...over,
+});
+let aiProposal;
+await ok('the database calculates: amounts per pack, capsule fill, no price without the right to see it', async () => {
+  const conv = (await one('admin', `insert into ai_conversations (title) values ('Recipe') returning id`)).id;
+  globalThis.aiConvAdmin = conv;
+  const r = (await one('admin', 'select add_recipe_proposal($1, $2::jsonb, 730) as r', [conv, aiRecipe()])).r;
+  eq(r.saved_for_review, true, 'saved'); aiProposal = r.proposal_id;
+  eq(Number(r.lines[0].qty_per_pack), 0.009, 'kg per pack'); eq(Number(r.mg_per_capsule), 150, 'fill'); eq(r.fits, true, 'fits');
+  const s = (await one('sales', 'select recipe_estimate($1::jsonb, 730) as r', [aiRecipe()])).r;
+  eq(s.prices_hidden, true, 'sales without the right'); eq(s.materials_cost_per_pack, null, 'no cost');
+  eq(s.lines[0].cost_per_pack, null, 'no line cost');
+});
+await ok('too much for a capsule is reported', async () => {
+  const r = (await one('admin', 'select recipe_estimate($1::jsonb, 730) as r', [aiRecipe({ lines: [{ sku: 'RCP-ZG', amount: 2000, unit: 'mg' }] })])).r;
+  eq(r.fits, false, 'fits');
+});
+await ok('an unknown item keeps the proposal out', async () => {
+  const before = (await one('admin', 'select count(*)::int as n from ai_recipe_proposals')).n;
+  const r = (await one('admin', 'select add_recipe_proposal($1, $2::jsonb, 730) as r', [globalThis.aiConvAdmin, aiRecipe({ lines: [{ sku: 'NOPE', amount: 1, unit: 'mg' }] })])).r;
+  eq(r.unknown[0], 'NOPE', 'unknown');
+  eq((await one('admin', 'select count(*)::int as n from ai_recipe_proposals')).n, before, 'nothing saved');
+});
+await ok('materials for a recipe: prices only with the right to see them', async () => {
+  const a = await one('admin', `select price_per_base_unit, available from recipe_materials('RCP-ZG')`);
+  eq(a !== undefined, true, 'found');
+  await db.query('update supplier_prices set price = price');
+  const hidden = await as('sales', `select price_per_base_unit from recipe_materials('')`);
+  eq(hidden.length > 0 && hidden.every((x) => x.price_per_base_unit === null), true, 'no prices for sales');
+  const shown = await as('admin', `select price_per_base_unit from recipe_materials('')`);
+  eq(shown.some((x) => x.price_per_base_unit !== null), true, 'prices for admin');
+});
+await fails('production cannot list recipe materials', () => as('production', "select * from recipe_materials('')"), 'not allowed');
+await fails('production cannot estimate recipes', () => as('production', 'select recipe_estimate($1::jsonb, 730)', [aiRecipe()]), 'not allowed');
+await fails('nobody saves into a conversation of another person', () =>
+  as('sales', 'select add_recipe_proposal($1, $2::jsonb, 730)', [globalThis.aiConvAdmin, aiRecipe()]), 'Conversation not found');
+await fails('a proposal cannot be written directly', () =>
+  as('admin', `insert into ai_recipe_proposals (conversation_id, recipe, estimate) values ($1, '{}', '{}')`, [globalThis.aiConvAdmin]));
+await fails('another person cannot save the proposal', () => as('sales', 'select recipe_from_proposal($1)', [aiProposal]), 'Proposal not found');
+await ok('a person saves it: a new recipe with a draft version, not approved; saving twice gives the same recipe', async () => {
+  const id = (await one('admin', 'select recipe_from_proposal($1) as id', [aiProposal])).id;
+  const v = await one('admin', 'select id, status from formula_versions where formula_id = $1', [id]);
+  eq(v.status, 'draft', 'draft');
+  eq((await as('admin', 'select id from formula_lines where version_id = $1', [v.id])).length, 1, 'lines');
+  eq((await one('admin', 'select recipe_from_proposal($1) as id', [aiProposal])).id, id, 'same');
+});
+await ok('production sees no proposals', async () => {
+  eq((await as('production', 'select id from ai_recipe_proposals')).length, 0, 'none');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

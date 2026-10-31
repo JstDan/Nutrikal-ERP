@@ -1,8 +1,10 @@
 import { q } from "@/lib/db/engine";
+import { CAPSULE_SIZE, CAPSULE_SIZES } from "@/lib/calculator/types";
 import type { ToolDefinition } from "./gateway";
 
 // What the assistant can read. Fixed queries only, each run as the signed-in user, so row-level security decides
-// what comes back. Nothing here writes: text in the data (client notes, for example) cannot make the assistant act.
+// what comes back. Nothing here changes company data: text in the data (client notes, for example) cannot make the
+// assistant act. propose_recipe only keeps a proposal in the conversation; a person turns it into a draft recipe.
 
 const LIMIT = 25;
 type Args = { term?: string; status?: string; code?: string };
@@ -25,6 +27,25 @@ export const AI_TOOLS: ToolDefinition[] = [
   tool("find_recipes", "Recipes by name or code, with format and latest version status.", TERM),
   tool("recipe_details", "Ingredients and amounts per serving of the latest version of one recipe, by its code (NK-F-0001).",
     { code: { type: "string", description: "Recipe code" } }),
+  tool("find_materials", "Raw materials and excipients in the system by name or SKU, with stock, price per base unit when the person may see it, and Novel Food status. Recipes can use only these.", TERM),
+  tool("propose_recipe", "Propose a new recipe from items found with find_materials. The system calculates cost, capsule fill and stock and returns them; use those figures. A person decides whether to save it as a draft.", {
+    name: { type: "string", description: "Recipe name in English" },
+    name_bg: { type: "string", description: "Recipe name in Bulgarian" },
+    product_format: { type: "string", enum: ["capsule", "tablet", "softgel", "powder", "sachet", "stick_pack", "liquid", "gummy", "bar", "other"] },
+    serving_size: { type: "number", description: "Capsules or grams per serving" },
+    serving_unit: { type: "string", enum: ["pcs", "g", "ml"], description: "pcs for capsules and tablets" },
+    servings_per_pack: { type: "integer" },
+    shell_sku: { type: "string", description: "SKU of the capsule shell, for capsules" },
+    description: { type: "string", description: "One sentence on the purpose of the recipe" },
+    lines: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { sku: { type: "string" }, amount: { type: "number", description: "Amount per serving" }, unit: { type: "string", enum: ["mg", "mcg", "g"] } },
+        required: ["sku", "amount", "unit"], additionalProperties: false,
+      },
+    },
+  }),
 ];
 
 const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
@@ -57,6 +78,7 @@ const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
             (select v.status from formula_versions v where v.formula_id = f.id order by v.version desc limit 1) as latest_status
        from formulas f left join clients c on c.id = f.client_id
       where $1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%' order by f.code desc limit ${LIMIT}`, [term(a)]],
+  find_materials: (a) => ["select * from recipe_materials($1)", [term(a)]],
   recipe_details: (a) => [
     `select f.code, f.name, v.version, v.status, f.product_format, f.serving_size, f.serving_unit, f.servings_per_pack,
             (select json_agg(json_build_object('ingredient', d.name, 'amount', d.amount, 'unit', d.unit) order by d.sort_order, d.name)
@@ -66,7 +88,16 @@ const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
 };
 
 /** The result of a tool as text for the model; a failure is reported to the model, not thrown. */
-export async function runTool(userId: string, name: string, rawArgs: string): Promise<string> {
+export async function runTool(userId: string, conversationId: string, name: string, rawArgs: string): Promise<string> {
+  if (name === "propose_recipe") {
+    try {
+      const [{ r }] = await q<{ r: unknown }>(userId, "select add_recipe_proposal($1, $2::jsonb, $3) as r", [conversationId, rawArgs, CAPSULE_SIZES[CAPSULE_SIZE]]);
+      return JSON.stringify(r);
+    } catch (e) {
+      console.error("AI tool propose_recipe", e);
+      return JSON.stringify({ error: e instanceof Error ? e.message.split("\n")[0] : "The proposal could not be saved" });
+    }
+  }
   const query = QUERIES[name];
   if (!query) return JSON.stringify({ error: "Unknown tool" });
   try {

@@ -2,18 +2,79 @@
 
 import { useEffect, useRef, useState, useTransition, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { askAssistant, deleteConversation } from "@/app/assistant-actions";
-import { formatDate, type Locale } from "@/lib/i18n";
+import { askAssistant, deleteConversation, saveProposal } from "@/app/assistant-actions";
+import { ActionForm } from "@/components/action-form";
+import { fmt, formatDate, formatNumber, formatPrice, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
 export type ChatConversation = { id: string; title: string; created_at: string };
-export type ChatLine = { id: string; role: "user" | "assistant"; content: string; model: string | null };
+export type ChatLine = { id: string; role: "user" | "assistant"; content: string; model: string | null; created_at: string };
+type ProposalLine = {
+  sku: string; name: string; name_bg: string | null; amount: number; unit: string; base_unit: string; qty_per_pack: number;
+  cost_per_pack: number | null; available: number | null; novel_food: string | null;
+};
+export type ChatProposal = {
+  id: string; formula_id: string | null; created_at: string;
+  recipe: { name: string; name_bg?: string; product_format: string; serving_size: number; servings_per_pack: number; description?: string };
+  estimate: {
+    lines: ProposalLine[]; mg_per_serving: number; mg_per_capsule: number | null; max_fill_mg: number | null; fits: boolean | null;
+    materials_cost_per_pack: number | null; shell_cost_per_pack: number | null; prices_hidden: boolean; lines_without_price: number;
+  };
+};
+
+/** A proposal with the system's figures; only a person saves it as a draft. */
+function ProposalCard({ p, locale, A }: { p: ChatProposal; locale: Locale; A: Dict["assistant"] }) {
+  const e = p.estimate;
+  const name = locale === "bg" && p.recipe.name_bg ? p.recipe.name_bg : p.recipe.name;
+  const total = e.materials_cost_per_pack == null ? null : e.materials_cost_per_pack + (e.shell_cost_per_pack ?? 0);
+  const short = e.lines.filter((l) => (l.available ?? 0) < l.qty_per_pack);
+  const risky = e.lines.filter((l) => !l.novel_food || !["not_novel", "authorised"].includes(l.novel_food));
+  return (
+    <div className="card flex min-w-0 flex-col gap-3 p-4">
+      <div className="min-w-0">
+        <span className="label">{A.proposal}</span>
+        <h3 className="m-0 text-base font-bold break-words">{name}</h3>
+        <p className="m-0 text-xs text-ink-2">{fmt(A.proposalServing, { size: formatNumber(locale, p.recipe.serving_size), servings: p.recipe.servings_per_pack })}</p>
+      </div>
+      <div className="flex flex-col">
+        {e.lines.map((l) => (
+          <div key={l.sku} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-2 text-sm sm:grid-cols-[minmax(0,1fr)_110px_100px]">
+            <span className="min-w-0 break-words">{locale === "bg" && l.name_bg ? l.name_bg : l.name}</span>
+            <span className="text-right">{formatNumber(locale, l.amount)} {l.unit === "mcg" ? "µg" : l.unit}</span>
+            <span className="hide-sm text-right text-ink-2">{l.cost_per_pack != null ? formatPrice(locale, l.cost_per_pack, "EUR", 2) : "—"}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-1 text-sm">
+        {total != null && <div><strong>{fmt(A.proposalCost, { cost: formatPrice(locale, total, "EUR", 2) })}</strong></div>}
+        {e.prices_hidden && <div className="text-ink-2">{A.proposalNoPrices}</div>}
+        {e.lines_without_price > 0 && !e.prices_hidden && <div className="font-semibold text-amber-ink">{fmt(A.proposalMissingPrices, { n: e.lines_without_price })}</div>}
+        {e.mg_per_capsule != null && (
+          <div className={e.fits ? "text-ink-2" : "font-semibold text-red-ink"}>
+            {fmt(e.fits ? A.proposalFits : A.proposalNoFit, { mg: formatNumber(locale, e.mg_per_capsule), max: formatNumber(locale, e.max_fill_mg ?? 0) })}
+          </div>
+        )}
+        {short.length > 0 && <div className="font-semibold text-amber-ink">{fmt(A.proposalShort, { names: short.map((l) => (locale === "bg" && l.name_bg ? l.name_bg : l.name)).join(", ") })}</div>}
+        {risky.length > 0 && <div className="font-semibold text-amber-ink">{fmt(A.proposalNovel, { names: risky.map((l) => (locale === "bg" && l.name_bg ? l.name_bg : l.name)).join(", ") })}</div>}
+        <div className="text-xs text-ink-2">{A.proposalNotChecked}</div>
+      </div>
+      {p.formula_id
+        ? <Link href={`/formulas/${p.formula_id}`} className="btn btn-outline self-start">{A.proposalOpen}</Link>
+        : (
+          <ActionForm action={saveProposal} submitLabel={A.proposalSave} resetOnSuccess={false}>
+            <input type="hidden" name="id" value={p.id} />
+          </ActionForm>
+        )}
+    </div>
+  );
+}
 
 /** The chat: conversations on the side, messages in the middle, the composer stays at the bottom. Enter sends, Shift+Enter starts a new line. */
-export function AssistantChat({ conversations, current, messages, models, configured, locale, text }: {
+export function AssistantChat({ conversations, current, messages, proposals, models, configured, locale, text }: {
   conversations: ChatConversation[];
   current: ChatConversation | null;
   messages: ChatLine[];
+  proposals: ChatProposal[];
   models: { label: string; id: string }[];
   configured: boolean;
   locale: Locale;
@@ -71,6 +132,8 @@ export function AssistantChat({ conversations, current, messages, models, config
     await navigator.clipboard.writeText(m.content);
     setCopied(m.id);
   };
+  // A proposal is saved just before the answer that presents it
+  const answerOf = (p: ChatProposal) => messages.find((m) => m.role === "assistant" && m.created_at >= p.created_at)?.id;
   const list = (
     <>
       <Link href="/assistant" className="btn btn-outline w-full">{A.newChat}</Link>
@@ -118,8 +181,9 @@ export function AssistantChat({ conversations, current, messages, models, config
               <p className="m-0 whitespace-pre-line break-words">{m.content}</p>
             </div>
           ) : (
-            <div key={m.id} className="flex min-w-0 flex-col gap-1 text-[15px] leading-relaxed">
+            <div key={m.id} className="flex min-w-0 flex-col gap-3 text-[15px] leading-relaxed">
               <p className="m-0 whitespace-pre-line break-words">{m.content}</p>
+              {proposals.filter((p) => answerOf(p) === m.id).map((p) => <ProposalCard key={p.id} p={p} locale={locale} A={A} />)}
               <div className="flex flex-wrap items-center gap-3 text-xs text-ink-2">
                 {m.model && <span>{m.model}</span>}
                 <button type="button" onClick={() => copy(m)} className="min-h-11 min-w-11 text-left underline">{copied === m.id ? A.copied : A.copy}</button>
