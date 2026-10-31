@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { DispatchCard } from "@/components/dispatch-card";
+import { OrderStages } from "@/components/order-stages";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
@@ -259,6 +260,20 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         {c && <Fact label={H.payment}>{paymentText}</Fact>}
         {board && <Fact label={H.progress}>{fmt(T.progress, { done: doneTasks, total: board.tasks.length })}</Fact>}
       </section>
+
+      {o.status !== "cancelled" && (
+        <section aria-label={t.orders.stages.label} className="card p-5 sm:p-6">
+          <OrderStages t={t} done={{
+            paid: paid || ["confirmed", "in_production", "ready", "dispatched", "closed"].includes(o.status),
+            planned: mos.some((m) => m.status !== "cancelled"),
+            produced: !!final?.done || ["ready", "dispatched", "closed"].includes(o.status),
+            ready: ["ready", "dispatched", "closed"].includes(o.status),
+            dispatched: shipped,
+            invoiced: finalIssued,
+            closed: o.status === "closed",
+          }} />
+        </section>
+      )}
 
       {step && <Card title={d.nextStep} id="next-h" className="border-ink">{step}</Card>}
 

@@ -6,6 +6,9 @@ import { q } from "@/lib/db/engine";
 import { PageHeader } from "@/components/ui";
 import { OfferSummary } from "@/components/calculator/offer-summary";
 import { loadSendInfo } from "@/lib/sends";
+import { ActionForm } from "@/components/action-form";
+import { closeOfferFollowup } from "@/app/shortcut-actions";
+import { fmt, formatDate, getDict } from "@/lib/i18n";
 
 export default async function CalculatorOfferPage({ params }: PageProps<"/offers/calc/[id]">) {
   const { user, locale, t } = await requireRole("admin", "sales");
@@ -23,6 +26,14 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
 
   // The offer document is always in English
   const send = await loadSendInfo(user.id, user.name, "calc_offer", offer.id, { to: offer.receiver_email, title: "Offer", no: offer.offer_no, lang: "en" });
+
+  const closed = (await q<{ id: number }>(user.id, "select 1 as id from calc_offer_closed where offer_id = $1", [offer.id])).length > 0;
+  const M = getDict("en").assistant;
+  const reminder = !inOrder && !closed ? {
+    ...send, history: [],
+    subject: fmt(M.offerReminderSubject, { no: offer.offer_no }),
+    body: fmt(M.offerReminderBody, { no: offer.offer_no, date: formatDate("en", offer.created_at.slice(0, 10)), name: user.name }),
+  } : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -44,8 +55,18 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
         settings={settings}
         canDelete={(user.role === "admin" || offer.created_by === user.id) && !inOrder}
         send={send}
+        reminder={reminder}
         sendText={t.send}
+        reminderTitle={t.assistant.offerReminder}
       />
+      {reminder && (
+        <div className="max-w-[960px]">
+          <ActionForm action={closeOfferFollowup} submitLabel={t.assistant.offerClose} resetOnSuccess={false}>
+            <input type="hidden" name="offer_id" value={offer.id} />
+            <p className="m-0 text-xs text-ink-2">{t.assistant.offerCloseNote}</p>
+          </ActionForm>
+        </div>
+      )}
     </div>
   );
 }

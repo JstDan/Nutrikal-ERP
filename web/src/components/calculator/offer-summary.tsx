@@ -19,7 +19,9 @@ type Props = {
   settings: Settings;
   canDelete: boolean;
   send: SendInfo;
+  reminder: SendInfo | null;
   sendText: Dict["send"];
+  reminderTitle: string;
 };
 
 /** Short summary of an offer created in the calculator, with the PDF download. */
@@ -31,7 +33,7 @@ export function OfferSummary(props: Props) {
   );
 }
 
-function Summary({ offer: x, settings, canDelete, send, sendText }: Props) {
+function Summary({ offer: x, settings, canDelete, send, reminder, sendText, reminderTitle }: Props) {
   const { t, locale, eur } = useCalcText();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -113,6 +115,10 @@ function Summary({ offer: x, settings, canDelete, send, sendText }: Props) {
       )}
       <SendDocument info={send} text={sendText} locale={locale}
         makePdf={async () => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings)} />
+      {reminder && (
+        <SendDocument info={reminder} text={sendText} locale={locale} title={reminderTitle}
+          makePdf={async () => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings)} />
+      )}
       <Toast toast={toast} onClose={clear} closeLabel={t.close} />
     </div>
   );

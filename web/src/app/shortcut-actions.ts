@@ -43,6 +43,18 @@ export async function prepareProduction(_: ActionState, fd: FormData): Promise<A
   }
 }
 
+/** Out of the list of offers waiting for a reminder. */
+export async function closeOfferFollowup(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, "insert into calc_offer_closed (offer_id) values ($1) on conflict do nothing", [str(fd, "offer_id")]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: t.common.saved };
+}
+
 /** The send is logged before the e-mail leaves, with its result after. */
 export async function sendDocument(fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();

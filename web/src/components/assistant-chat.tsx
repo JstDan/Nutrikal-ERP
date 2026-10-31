@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, useTransition, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { askAssistant, deleteConversation, saveProposal } from "@/app/assistant-actions";
+import { useRouter } from "next/navigation";
+import { deleteConversation, saveProposal } from "@/app/assistant-actions";
+import { streamAnswer } from "@/lib/ai/stream";
 import { ActionForm } from "@/components/action-form";
 import { fmt, formatDate, formatNumber, formatPrice, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
@@ -83,7 +85,9 @@ export function AssistantChat({ conversations, current, messages, proposals, mod
 }) {
   const A = text;
   const [draft, setDraft] = useState("");
+  const router = useRouter();
   const [waiting, setWaiting] = useState<string | null>(null);
+  const [live, setLive] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [model, setModel] = useState(models[0]?.id ?? "");
   const [copied, setCopied] = useState<string | null>(null);
@@ -92,8 +96,8 @@ export function AssistantChat({ conversations, current, messages, proposals, mod
   const end = useRef<HTMLDivElement>(null);
 
   // The answer has arrived: the question now comes from the saved conversation
-  useEffect(() => { setWaiting(null); }, [messages.length]);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages.length, waiting, current?.id]);
+  useEffect(() => { setWaiting(null); setLive(""); }, [messages.length]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages.length, waiting, live, current?.id]);
   // The box grows with the text, up to its maximum height in the styles
   useEffect(() => {
     const el = box.current;
@@ -114,11 +118,14 @@ export function AssistantChat({ conversations, current, messages, proposals, mod
     fd.set("model", model);
     if (current) fd.set("conversation_id", current.id);
     start(async () => {
-      // On success the action opens the conversation
-      const r = await askAssistant({}, fd);
-      if (r?.error) {
-        setError(r.error);
+      const r = await streamAnswer(fd, setLive).catch(() => ({ id: undefined, error: A.failed }));
+      if (r.id) {
+        // The saved conversation takes over from the text written so far
+        if (current) router.refresh(); else router.push(`/assistant?c=${r.id}`);
+      } else {
+        setError(r.error ?? A.failed);
         setWaiting(null);
+        setLive("");
         setDraft(question);
       }
     });
@@ -196,7 +203,9 @@ export function AssistantChat({ conversations, current, messages, proposals, mod
               <div className="ml-auto max-w-[85%] min-w-0 rounded-2xl rounded-br-sm bg-ink px-4 py-2.5 text-sm text-white">
                 <p className="m-0 whitespace-pre-line break-words">{waiting}</p>
               </div>
-              <p role="status" className="m-0 animate-pulse text-sm text-ink-2">{A.thinking}</p>
+              {live
+                ? <p className="m-0 whitespace-pre-line break-words text-[15px] leading-relaxed">{live}</p>
+                : <p role="status" className="m-0 animate-pulse text-sm text-ink-2">{A.thinking}</p>}
             </>
           )}
           <div ref={end} />

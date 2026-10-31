@@ -27,6 +27,9 @@ export const AI_TOOLS: ToolDefinition[] = [
   tool("find_recipes", "Recipes by name or code, with format and latest version status.", TERM),
   tool("recipe_details", "Ingredients and amounts per serving of the latest version of one recipe, by its code (NK-F-0001).",
     { code: { type: "string", description: "Recipe code" } }),
+  tool("find_invoices", "Invoices and notes by number, client or order code, newest first, with total, due date and what is left to pay.", TERM),
+  tool("production_details", "One batch by its code (MO-00001): status, quantity, dates, recipe and client order.", { code: { type: "string", description: "Manufacturing order code" } }),
+  tool("find_lots", "Lots by lot number, supplier lot or item: quality status and expiry date.", TERM),
   tool("find_materials", "Raw materials and excipients in the system by name or SKU, with stock, price per base unit when the person may see it, and Novel Food status. Recipes can use only these.", TERM),
   tool("eu_health_claims", "The EU Register of health claims: exact wording, conditions of use and status, by substance or words of the claim. Status: authorised (default), non_authorised, revoked.",
     { ...TERM, status: { type: "string", enum: ["authorised", "non_authorised", "revoked"] } }),
@@ -88,6 +91,19 @@ const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
             (select v.status from formula_versions v where v.formula_id = f.id order by v.version desc limit 1) as latest_status
        from formulas f left join clients c on c.id = f.client_id
       where $1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%' order by f.code desc limit ${LIMIT}`, [term(a)]],
+  find_invoices: (a) => [
+    `select i.number, i.kind, i.status, i.buyer ->> 'name' as client, so.code as order_code, i.issue_date::text, i.due_date::text, i.total, i.currency,
+            case when i.status = 'issued' and i.kind = 'invoice' then invoice_open_amount(i.id) end as left_to_pay
+       from invoices i left join sales_orders so on so.id = i.order_id
+      where $1 = '' or i.number ilike '%' || $1 || '%' or i.buyer ->> 'name' ilike '%' || $1 || '%' or so.code ilike '%' || $1 || '%'
+      order by i.created_at desc limit ${LIMIT}`, [term(a)]],
+  production_details: (a) => [
+    `select m.code, m.status, m.quantity, m.produced_quantity, m.planned_date::text, m.produced_on::text, f.code as recipe, f.name as product, so.code as sales_order
+       from manufacturing_orders m
+       left join formula_versions v on v.id = m.formula_version_id left join formulas f on f.id = v.formula_id
+       left join sales_order_lines l on l.id = m.sales_order_line_id left join sales_orders so on so.id = l.order_id
+      where m.code = $1`, [(a.code ?? "").trim().toUpperCase()]],
+  find_lots: (a) => ["select lot_number, supplier_lot, sku, name, qc_status, expires_on::text from trace_find_lots($1) limit 25", [term(a)]],
   mail_waiting_reply: () => [
     `select client, from_address, subject, snippet, sent_at::text from emails_waiting_reply order by sent_at limit ${LIMIT}`, []],
   search_client_mail: (a) => [

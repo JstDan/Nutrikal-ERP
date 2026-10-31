@@ -76,7 +76,7 @@ export default async function Dashboard() {
               </h3>
               {g.items.map((x) => (
                 <Link key={x.id + x.title} href={x.href} className="flex min-h-11 min-w-0 flex-wrap items-center gap-x-2 border-b border-mist py-1 text-sm text-ink no-underline last:border-0 hover:underline">
-                  <span className="font-semibold break-words">{x.title}</span><span className="min-w-0 break-words text-ink-2">{x.sub}</span>
+                  <span className="font-semibold break-words">{x.title}</span><span className="min-w-0 break-words text-ink-2">{g.key === "reorder" ? fmt(T.reorderBy, { date: formatDate(locale, x.sub) }) : x.sub}</span>
                 </Link>
               ))}
               {g.total > g.items.length && <span className="pt-1 text-xs text-ink-2">{fmt(T.more, { n: g.total - g.items.length })}</span>}

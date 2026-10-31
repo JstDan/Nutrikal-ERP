@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useTransition, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { askPanel, openPanelConversation } from "@/app/assistant-actions";
+import { openPanelConversation } from "@/app/assistant-actions";
+import { streamAnswer } from "@/lib/ai/stream";
 import { ProposalCard, type ChatLine, type ChatProposal } from "@/components/assistant-chat";
 import type { Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
@@ -26,6 +27,7 @@ export function AssistantPanel({ models, configured, locale, text }: {
   const [proposals, setProposals] = useState<ChatProposal[]>([]);
   const [draft, setDraft] = useState("");
   const [waiting, setWaiting] = useState<string | null>(null);
+  const [live, setLive] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [model, setModel] = useState(models[0]?.id ?? "");
   const [pending, start] = useTransition();
@@ -40,13 +42,15 @@ export function AssistantPanel({ models, configured, locale, text }: {
     if (saved && saved !== conversation) {
       start(async () => {
         const r = await openPanelConversation(saved);
+        // "New" may have been pressed while this was loading
+        if (storage.get() !== saved) return;
         if (r) { setConversation(saved); setMessages(r.messages); setProposals(r.proposals); } else storage.set(null);
       });
     }
   };
 
   useEffect(() => { if (open) box.current?.focus(); }, [open]);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages.length, waiting, open]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages.length, waiting, live, open]);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -74,19 +78,20 @@ export function AssistantPanel({ models, configured, locale, text }: {
     const fd = new FormData();
     fd.set("text", question);
     fd.set("model", model);
-    fd.set("page", pathname);
+    fd.set("page", pathname + window.location.search);
     if (conversation) fd.set("conversation_id", conversation);
     start(async () => {
       try {
-        const r = await askPanel(fd);
-        if ("error" in r) {
-          setError(r.error);
-          setDraft(question);
-        } else {
+        const r = await streamAnswer(fd, setLive);
+        const c = r.id ? await openPanelConversation(r.id) : null;
+        if (r.id && c) {
           setConversation(r.id);
           storage.set(r.id);
-          setMessages(r.messages);
-          setProposals(r.proposals);
+          setMessages(c.messages);
+          setProposals(c.proposals);
+        } else {
+          setError(r.error ?? A.failed);
+          setDraft(question);
         }
       } catch (e) {
         console.error(e);
@@ -94,6 +99,7 @@ export function AssistantPanel({ models, configured, locale, text }: {
         setDraft(question);
       }
       setWaiting(null);
+      setLive("");
     });
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -163,7 +169,9 @@ export function AssistantPanel({ models, configured, locale, text }: {
             <div className="ml-auto max-w-[88%] min-w-0 rounded-2xl rounded-br-sm bg-ink px-3.5 py-2 text-sm text-white">
               <p className="m-0 whitespace-pre-line break-words">{waiting}</p>
             </div>
-            <p role="status" className="m-0 animate-pulse text-sm text-ink-2">{A.thinking}</p>
+            {live
+              ? <p className="m-0 whitespace-pre-line break-words text-sm leading-relaxed">{live}</p>
+              : <p role="status" className="m-0 animate-pulse text-sm text-ink-2">{A.thinking}</p>}
           </>
         )}
         <div ref={end} />

@@ -183,8 +183,8 @@ export async function deleteInvoicePayment(fd: FormData) {
 export async function saveGeneralSettings(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   try {
-    await q(user.id, `update company_settings set production_variance_pct = $1, require_waybill_photo = $2, expiry_warning_days = coalesce($3, expiry_warning_days)`,
-      [num(fd, "tolerance"), fd.get("waybill") === "on", num(fd, "expiry_days")]);
+    await q(user.id, `update company_settings set production_variance_pct = $1, require_waybill_photo = $2, expiry_warning_days = coalesce($3, expiry_warning_days), offer_followup_days = coalesce($4, offer_followup_days)`,
+      [num(fd, "tolerance"), fd.get("waybill") === "on", num(fd, "expiry_days"), num(fd, "offer_days")]);
     const next = num(fd, "next_invoice");
     if (next) await q(user.id, "update number_series set next_number = $1 where key = 'invoice'", [next]);
   } catch (e) {

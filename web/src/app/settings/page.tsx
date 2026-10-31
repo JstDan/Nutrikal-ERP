@@ -10,8 +10,8 @@ export default async function SettingsPage() {
   const { user, t } = await requireRole("admin");
   const S = t.adminSettings;
   const { c, next } = await withUser(user.id, async (tx) => ({
-    c: (await tx.query<{ production_variance_pct: string | null; require_waybill_photo: boolean; expiry_warning_days: number }>(
-      "select production_variance_pct::text, require_waybill_photo, expiry_warning_days from company_settings limit 1")).rows[0],
+    c: (await tx.query<{ production_variance_pct: string | null; require_waybill_photo: boolean; expiry_warning_days: number; offer_followup_days: number }>(
+      "select production_variance_pct::text, require_waybill_photo, expiry_warning_days, offer_followup_days from company_settings limit 1")).rows[0],
     next: (await tx.query<{ next_number: string }>("select next_number::text from number_series where key = 'invoice'")).rows[0]?.next_number,
   }));
 
@@ -28,6 +28,9 @@ export default async function SettingsPage() {
             </label>
             <label className="field"><span>{S.expiryDays}</span>
               <input name="expiry_days" type="number" min={1} step={1} defaultValue={c?.expiry_warning_days ?? 90} className="input" />
+            </label>
+            <label className="field"><span>{S.offerDays}</span>
+              <input name="offer_days" type="number" min={1} step={1} defaultValue={c?.offer_followup_days ?? 7} className="input" />
             </label>
             <label className="field"><span>{S.nextInvoice}</span>
               <input name="next_invoice" type="number" min={1} step={1} defaultValue={next} className="input" aria-describedby="inv-hint" />

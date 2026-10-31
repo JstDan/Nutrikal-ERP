@@ -2493,5 +2493,48 @@ await ok('an invoice of a paid order counts as paid', async () => {
   eq(Number((await one('sales', 'select invoice_open_amount($1) as n', [orig.id])).n), 0, 'nothing to pay');
 });
 
+console.log('\nFollow-ups');
+const fuClient = await one('sales', `insert into clients (legal_name, billing_email) values ('Followup Ltd', 'x@followup.test') returning id`);
+const fuOffer = (await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, data, results)
+  values ('NK-T-FU', 'Client', 'a@b.co', $1, 'Followup', '{}', '{}') returning id`, [fuClient.id])).id;
+await db.query(`alter table calc_offers disable trigger user`);
+await db.query(`update calc_offers set created_at = now() - interval '10 days' where id = $1`, [fuOffer]);
+await db.query(`alter table calc_offers enable trigger user`);
+await ok('an offer without an order after the set days waits for a reminder; a person takes it out', async () => {
+  const has = async () => (await as('sales', 'select id from offers_waiting where id = $1', [fuOffer])).length;
+  eq(await has(), 1, 'waiting');
+  await db.query('update company_settings set offer_followup_days = 30');
+  eq(await has(), 0, 'not yet');
+  await db.query('update company_settings set offer_followup_days = 7');
+  await as('sales', 'insert into calc_offer_closed (offer_id) values ($1)', [fuOffer]);
+  eq(await has(), 0, 'closed');
+});
+await ok('production sees no offers waiting and no reorder list', async () => {
+  eq((await as('production', 'select id from offers_waiting')).length, 0, 'offers');
+  eq((await as('production', 'select client_id from clients_reorder_due')).length, 0, 'reorder');
+  eq((await as('production', 'select offer_id from calc_offer_closed')).length, 0, 'closed');
+});
+await fails('these lists cannot be written', () => as('admin', `delete from offers_waiting`));
+await ok('a client with regular orders and none open is due; an open order takes the client out', async () => {
+  const c = await one('sales', `insert into clients (legal_name) values ('Regular Ltd') returning id`);
+  const add = async (days, status) => {
+    await db.query(`alter table sales_orders disable trigger user`);
+    await db.query(`insert into sales_orders (code, client_id, currency, status, created_at) values ($4, $1, 'EUR', $2::order_status, now() - make_interval(days => $3::int))`, [c.id, status, days, `T-RE-${days}`]);
+    await db.query(`alter table sales_orders enable trigger user`);
+  };
+  await add(260, 'closed'); await add(170, 'closed'); await add(80, 'closed');
+  const r = await one('sales', 'select usual_gap, expected_on is not null as has from clients_reorder_due where client_id = $1', [c.id]);
+  eq(r?.usual_gap, 90, 'gap');
+  await add(1, 'unpaid');
+  eq((await as('sales', 'select client_id from clients_reorder_due where client_id = $1', [c.id])).length, 0, 'open order');
+});
+await ok('Gmail is searched for company domains and full public addresses, never our own domain', async () => {
+  await db.query(`insert into contacts (client_id, first_name, email) values ($1, 'P', 'petya@gmail.com'), ($1, 'N', 'x@nutrikal.com')`, [fuClient.id]);
+  const t = (await db.query('select term from gmail_job_terms()')).rows.map((r) => r.term);
+  eq(t.includes('followup.test'), true, 'domain'); eq(t.includes('petya@gmail.com'), true, 'public address');
+  eq(t.includes('gmail.com'), false, 'no public domain'); eq(t.some((x) => x.includes('nutrikal.com')), false, 'not our own');
+});
+await fails('the job functions are not for signed-in users', () => as('admin', 'select * from gmail_job_terms()'), 'permission denied');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

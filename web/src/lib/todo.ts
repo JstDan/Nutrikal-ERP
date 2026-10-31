@@ -1,7 +1,7 @@
 import type { Tx } from "@/lib/db/engine";
 import type { Locale } from "@/lib/i18n";
 
-export type TodoKey = "tasks" | "mail" | "overdue" | "payment" | "plan" | "purchases" | "batches" | "dispatch" | "balance" | "invoice";
+export type TodoKey = "tasks" | "mail" | "offers" | "reorder" | "overdue" | "payment" | "plan" | "purchases" | "batches" | "dispatch" | "balance" | "invoice";
 export type TodoGroup = { key: TodoKey; total: number; items: { id: string; title: string; sub: string; href: string }[] };
 type Row = { id: string; title: string; sub: string; total: number };
 
@@ -21,6 +21,10 @@ export async function loadTodo(tx: Tx, role: string, locale: Locale): Promise<To
                 order by so.code`, [locale], (id) => { const [task, order] = id.split("|"); return `/orders/${order}?task=${task}`; }],
     ["mail", `select w.client_id::text as id, coalesce(w.subject, '—') as title, w.client as sub, count(*) over ()::int as total
                 from emails_waiting_reply w order by w.sent_at`, [], (id) => `/clients/${id}`],
+    ["offers", `select id, offer_no as title, client as sub, count(*) over ()::int as total from offers_waiting order by created_at`,
+      [], (id) => `/offers/calc/${id}`],
+    ["reorder", `select client_id as id, client as title, expected_on::text as sub, count(*) over ()::int as total from clients_reorder_due order by expected_on`,
+      [], (id) => `/clients/${id}`],
     ["overdue", `select id, number as title, buyer ->> 'name' as sub, count(*) over ()::int as total from invoices
                    where status = 'issued' and kind = 'invoice' and due_date < current_date and invoice_open_amount(id) > 0
                    order by due_date`, [], (id) => `/invoices/${id}`],

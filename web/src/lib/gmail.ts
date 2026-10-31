@@ -98,21 +98,48 @@ export function toMail(m: Message) {
 }
 
 // ---------------------------------------------------------------- the job
-type State = { email: string; token_enc: string; sync_from: string; page_token: string | null };
+type State = { email: string; token_enc: string; sync_from: string; page_token: string | null; chunk_no: number; address_key: string | null };
 
-/** A few pages of mail; the next run goes on. When a pass is finished, the next one starts from a day before it. */
+/** The list of client addresses is searched in groups. Mail from anyone else is not read at all. */
+const TERMS_PER_SEARCH = 25;
+const searchFor = (terms: string[], from: string) => {
+  const who = terms.flatMap((t) => [`from:${t}`, `to:${t}`]).join(" ");
+  return encodeURIComponent(`after:${from.replaceAll("-", "/")} -in:chats {${who}}`);
+};
+const fingerprint = async (terms: string[]) =>
+  Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(terms.join(",")))).toString("base64");
+
+/** A few pages of client mail; the next run goes on. A finished pass starts the next one from a day before it. */
 export async function syncGmail(): Promise<{ connected: boolean; saved: number; paused?: boolean; error?: string }> {
-  const [state] = await asSystem<State>("select email, token_enc, sync_from::text, page_token from gmail_job_state()");
+  const [state] = await asSystem<State>("select email, token_enc, sync_from::text, page_token, chunk_no, address_key from gmail_job_state()");
   if (!state) return { connected: false, saved: 0 };
+  const terms = (await asSystem<{ term: string }>("select term from gmail_job_terms()")).map((t) => t.term);
+  const key = await fingerprint(terms);
   let saved = 0;
   let pageToken = state.page_token;
+  let chunk = state.chunk_no;
+  let from = state.sync_from;
+  // New clients or addresses: their earlier mail is wanted too
+  if (key !== state.address_key) {
+    await asSystem("select gmail_job_position(0, $1, true)", [key]);
+    [pageToken, chunk] = [null, 0];
+    from = (await asSystem<{ sync_from: string }>("select sync_from::text from gmail_job_state()"))[0].sync_from;
+  }
+  const stop = async () => {
+    await asSystem("select gmail_job_position($1, $2, false)", [chunk, key]);
+    await asSystem("select gmail_job_done($1, null, null)", [pageToken]);
+  };
   try {
+    if (terms.length === 0) {
+      await asSystem("select gmail_job_done(null, null, null)");
+      return { connected: true, saved };
+    }
     const { access_token } = await token({ refresh_token: await decryptToken(state.token_enc), grant_type: "refresh_token" });
     const started = new Date();
     for (let page = 0; page < PAGES_PER_RUN; page++) {
-      const q = encodeURIComponent(`after:${state.sync_from.replaceAll("-", "/")} -in:chats`);
+      const group = terms.slice(chunk * TERMS_PER_SEARCH, (chunk + 1) * TERMS_PER_SEARCH);
       const list = await gmail<{ messages?: { id: string }[]; nextPageToken?: string }>(
-        access_token, `/messages?q=${q}&maxResults=${PER_PAGE}${pageToken ? `&pageToken=${pageToken}` : ""}`);
+        access_token, `/messages?q=${searchFor(group, from)}&maxResults=${PER_PAGE}${pageToken ? `&pageToken=${pageToken}` : ""}`);
       const mails = [];
       let paused = false;
       for (const { id } of list.messages ?? []) {
@@ -128,24 +155,29 @@ export async function syncGmail(): Promise<{ connected: boolean; saved: number; 
       if (mails.length) saved += (await asSystem<{ n: number }>("select gmail_job_save($1::jsonb) as n", [JSON.stringify(mails)]))[0].n;
       // At the limit: what came is kept, and the next run goes on from this page
       if (paused) {
-        await asSystem("select gmail_job_done($1, null, null)", [pageToken]);
+        await stop();
         return { connected: true, saved, paused };
       }
       pageToken = list.nextPageToken ?? null;
-      if (!pageToken) {
+      if (pageToken) continue;
+      chunk += 1;
+      if (chunk * TERMS_PER_SEARCH >= terms.length) {
+        chunk = 0;
         started.setDate(started.getDate() - 1);
+        await asSystem("select gmail_job_position(0, $1, false)", [key]);
         await asSystem("select gmail_job_done(null, $1::date, null)", [started.toISOString().slice(0, 10)]);
         return { connected: true, saved };
       }
     }
-    await asSystem("select gmail_job_done($1, null, null)", [pageToken]);
+    await stop();
   } catch (e) {
     if (isQuota(e)) {
-      await asSystem("select gmail_job_done($1, null, null)", [pageToken]);
+      await stop();
       return { connected: true, saved, paused: true };
     }
     console.error("Gmail sync", e);
     const error = e instanceof Error ? e.message : String(e);
+    await asSystem("select gmail_job_position($1, $2, false)", [chunk, key]);
     await asSystem("select gmail_job_done($1, null, $2)", [pageToken, error]);
     return { connected: true, saved, error };
   }

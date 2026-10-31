@@ -50,7 +50,7 @@ Open http://localhost:3000.
 | Pick list | Printable list of materials for a production order sent to production, lots suggested first-expiry-first from released stock at the facility; Admin and Production |
 | Accounting export | Admin: movements, production consumption, stock value, cost of sales and open deliveries for a period, on screen and as an Excel workbook in the user's language |
 | Change history | Admin: every change to key records with who and when, filters, CSV download |
-| Overview | Everyone sees what is waiting for them: their tasks, payments, orders to plan, materials to order, batches to release, orders to dispatch and invoices to issue |
+| Overview | Everyone sees what is waiting for them: their tasks, offers without an answer after the days set in Settings, clients who usually order again by now, payments, orders to plan, materials to order, batches to release, orders to dispatch and invoices to issue |
 | Order page | One Next step on top; products below; tasks, final proforma, payments and other actions stay folded. The task board shows what needs a person; automatic tasks on request |
 | Shortcuts | Offer: Make an order. Paid order: Prepare production (Admin; recipe, manufacturing orders, reservations and purchase requests in one step; the only way to plan an order). Any order: Repeat order (same products and prices, new and unpaid). After dispatch: Make the invoice |
 | E-mail | Offers, proformas, issued invoices, credit and debit notes and delivery notes go to the client as a PDF from their page; each send is listed there. Needs RESEND_API_KEY and MAIL_FROM |
@@ -98,6 +98,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 | `20261023000400_delivery_docs_storage.sql` | Private bucket `delivery-docs` and its rules (Supabase only) |
 | `20261024000100_calc_scheduled_sync.sql` | Daily 17:00 price-list sync run by the server (`calc_record_scheduled_sync`, not callable by users) |
 | `20261024000200_views_read_only.sql` | Users can only read views (no writes through a view past row-level security) |
+| `20261031002900_followups_mail_filter.sql` | Offers waiting for an answer, clients due to reorder, Gmail searched by client address |
 | `20261031002800_invoice_tools.sql` | Proforma from a draft, basis of 0 % VAT, payments on all invoices, copy of an invoice |
 | `20261031002700_client_invoices.sql` | Invoices without an order, due date, way of payment, payments |
 | `20261031002600_gmail.sql` | Shared mailbox: connection, client mail, threads waiting for a reply |
@@ -138,7 +139,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 
 ```
 cd test && npm install
-node run-tests.mjs          # 451 database rule checks across the roles
+node run-tests.mjs          # 457 database rule checks across the roles
 python3 ui_test.py http://localhost:3000   # 18 browser checks (needs Python Playwright + Chromium)
 ```
 
