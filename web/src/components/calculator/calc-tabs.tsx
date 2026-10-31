@@ -7,10 +7,11 @@ const TABS = [
   { key: "catalog", href: "/calculator/catalog" },
 ] as const;
 
-/** Sub-navigation: the calculator, the raw material price list and the catalog formulas (offers are under Offers). */
+/** Sub-navigation under Offers: back to the offers, the calculator, the raw material price list and the catalog formulas. */
 export function CalcTabs({ t, active }: { t: Dict["calc"]; active: (typeof TABS)[number]["key"] }) {
   return (
     <nav aria-label={t.tabs.label} className="flex flex-wrap gap-1">
+      <Link href="/offers" className="flex min-h-11 items-center px-2 text-[13px] font-semibold text-ink no-underline">← {t.tabs.offers}</Link>
       {TABS.map((tab) => (
         <Link
           key={tab.key}

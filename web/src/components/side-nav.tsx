@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export type NavItem = { href?: string; label: string; soon?: string };
+/** also: other sections that belong to this item (the calculator to Offers). */
+export type NavItem = { href?: string; label: string; soon?: string; also?: string[] };
 export type NavGroup = { title?: string; items: NavItem[] };
 
 export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }) {
   const path = usePathname();
   // "/" and "/factory" are home pages: active only on themselves, not on their sub-pages
-  const isActive = (href: string) => (href === "/" || href === "/factory" ? path === href : path === href || path.startsWith(href + "/"));
+  const under = (href: string) => path === href || path.startsWith(href + "/");
+  const isActive = (href: string, also: string[] = []) => (href === "/" || href === "/factory" ? path === href : under(href) || also.some(under));
 
   return (
     <nav aria-label={label} className="flex flex-col gap-6">
@@ -21,14 +23,14 @@ export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }
               <Link
                 key={it.label}
                 href={it.href}
-                aria-current={isActive(it.href) ? "page" : undefined}
+                aria-current={isActive(it.href, it.also) ? "page" : undefined}
                 className={
-                  isActive(it.href)
+                  isActive(it.href, it.also)
                     ? "flex min-h-11 items-center gap-2.5 rounded bg-ink-3 px-2 text-sm font-semibold text-side-strong no-underline"
                     : "flex min-h-11 items-center gap-2.5 rounded px-2 text-sm text-side-text no-underline hover:bg-ink-3"
                 }
               >
-                <span aria-hidden="true" className={`h-2 w-2 rounded-full ${isActive(it.href) ? "bg-green" : "bg-transparent"}`} />
+                <span aria-hidden="true" className={`h-2 w-2 rounded-full ${isActive(it.href, it.also) ? "bg-green" : "bg-transparent"}`} />
                 {it.label}
               </Link>
             ) : (

@@ -1675,7 +1675,7 @@ export const en = {
   calc: {
     title: "Formula calculator",
     subtitle: "Cost a custom formula, set the price and download the client PDF offer",
-    tabs: { label: "Calculator sections", calculator: "Calculator", materials: "Raw materials", catalog: "Catalog formulas" },
+    tabs: { label: "Calculator sections", offers: "Offers", calculator: "Calculator", materials: "Raw materials", catalog: "Catalog formulas" },
     mode: {
       label: "Formula type",
       custom: "Custom formula",
