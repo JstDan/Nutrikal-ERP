@@ -305,6 +305,13 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
 
       {children}
 
+      {!showBasket && !open && (
+        <a href="https://wa.me/359882919140" target="_blank" rel="noopener" aria-label={T.whatsapp} title={T.whatsapp}
+          className={`fixed right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-[#fff] shadow-lg transition-transform hover:scale-105 lg:bottom-6 lg:right-6 ${lines.length ? "bottom-[88px]" : "bottom-4"}`}>
+          <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path fillRule="evenodd" d="M17.5 14.4c-.3-.1-1.800-.9-2-1-.3-.1-.5-.1-.7.2-.2.3-.8 1-.9 1.200-.2.2-.3.2-.6.1-.3-.2-1.300-.5-2.400-1.500-.9-.8-1.500-1.800-1.700-2.100-.2-.3 0-.5.1-.6l.5-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5-.1-.1-.7-1.600-.9-2.200-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.400s1 2.800 1.200 3c.1.200 2 3.100 4.900 4.300.7.3 1.200.5 1.600.6.7.2 1.300.2 1.800.1.600-.1 1.800-.7 2-1.400.2-.7.2-1.300.2-1.400-.1-.1-.3-.2-.6-.4zM12 2a10 10 0 0 0-8.600 15L2 22l5.100-1.300A10 10 0 1 0 12 2z" /></svg>
+        </a>
+      )}
+
       {lines.length > 0 && !showBasket && !open && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper p-3 lg:hidden">
           <button type="button" onClick={openBasket} className="btn btn-primary w-full">{fmt(T.basketBar, { n: lines.length })}</button>

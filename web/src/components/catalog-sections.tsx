@@ -88,9 +88,9 @@ export function CatalogCompany({ text, locale }: { text: Dict["publicCatalog"]; 
         </div>
       </section>
 
-      <footer className="bg-paper">
-        <div className="mx-auto flex max-w-[1200px] flex-col gap-2 px-4 py-8 text-xs leading-5 text-ink-2">
-          <p className="m-0 font-semibold text-ink">{T.legalTitle}</p>
+      <footer className="border-t border-ink-3 bg-side">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-2 px-4 py-8 text-xs leading-5 text-side-muted">
+          <p className="m-0 font-semibold text-side-strong">{T.legalTitle}</p>
           {T.legal.map((l) => <p key={l} className="m-0">{l}</p>)}
           <p className="m-0 pt-2">© {new Date().getFullYear()} {T.legalCompany}</p>
         </div>
