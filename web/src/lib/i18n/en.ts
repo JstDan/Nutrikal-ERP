@@ -2128,6 +2128,11 @@ export const en = {
     },
   },
   catalog: {
+    review: { draft_formulation: "Draft formulation", concept_review: "Concept review", supplier_review: "Supplier / regulatory review", technology_review: "Technology review", evidence_gap: "Evidence gap, no formula" },
+    reviewLabel: "Review status",
+    reviewCleared: "Cleared by a person",
+    internalNotes: "Internal notes (never public)",
+    alsoIn: "Also in",
     format: "Format",
     packEn: "Pack in English",
     packBg: "Pack in Bulgarian",
@@ -2185,6 +2190,8 @@ export const en = {
     publishedNow: "Published",
     clientRecipe: "This recipe belongs to {client}. Their name is not shown, but check that the recipe may be sold to others.",
     problems: {
+      in_review: "This product is still in review. Clear its review status first.",
+      no_formula: "This concept has no formula, so it cannot be published.",
       not_approved: "The recipe has no approved version.",
       inactive_recipe: "The recipe is not active.",
       no_minimum_tier: "Add a price for the minimum order of this product.",

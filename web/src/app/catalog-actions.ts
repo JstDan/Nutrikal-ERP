@@ -10,10 +10,10 @@ const text = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : St
 const val = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const opt = (fd: FormData, k: string) => val(fd, k) || null;
 
-/** One ingredient on a line: name | amount */
+/** One ingredient on a line: name | amount | specification | basis. Only name and amount are public. */
 const ingredientLines = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
-  const [name, ...amount] = l.split("|");
-  return { name: name.trim(), amount: amount.join("|").trim() };
+  const [name, amount = "", spec = "", basis = ""] = l.split("|").map((p) => p.trim());
+  return { name, amount, ...(spec && { spec }), ...(basis && { basis }) };
 });
 
 /** A recipe becomes a product in one step; a second press opens the same product. */
@@ -29,9 +29,9 @@ export async function saveCatalogProduct(_: ActionState, fd: FormData): Promise<
   try {
     await q(user.id,
       `update catalog_products set name = $2, name_bg = $3, description = $4, description_bg = $5, category_id = $6, sort_order = $7,
-              min_qty = $8, product_format = $9, pack = $10, pack_bg = $11, ingredients = $12::jsonb where id = $1`,
+              min_qty = $8, product_format = $9, pack = $10, pack_bg = $11, ingredients = $12::jsonb, review_status = $13, internal_notes = $14 where id = $1`,
       [val(fd, "id"), val(fd, "name"), opt(fd, "name_bg"), opt(fd, "description"), opt(fd, "description_bg"), opt(fd, "category_id"), Number(val(fd, "sort_order")) || 0,
-       Number(val(fd, "min_qty")) || 500, opt(fd, "product_format"), opt(fd, "pack"), opt(fd, "pack_bg"), JSON.stringify(ingredientLines(val(fd, "ingredients")))]);
+       Number(val(fd, "min_qty")) || 500, opt(fd, "product_format"), opt(fd, "pack"), opt(fd, "pack_bg"), JSON.stringify(ingredientLines(val(fd, "ingredients"))), opt(fd, "review_status"), opt(fd, "internal_notes")]);
   } catch (e) {
     return { error: text(e) };
   }

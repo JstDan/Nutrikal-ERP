@@ -11,7 +11,8 @@ type Product = {
   id: string; code: string; name: string; name_bg: string | null; description: string | null; description_bg: string | null;
   category_id: string | null; sort_order: number; is_published: boolean; problem: string | null;
   formula_id: string | null; formula_code: string | null; product_format: string | null; client: string | null;
-  own_format: string | null; pack: string | null; pack_bg: string | null; min_qty: number; ingredients: { name: string; amount: string }[];
+  own_format: string | null; pack: string | null; pack_bg: string | null; min_qty: number; ingredients: { name: string; amount: string; spec?: string; basis?: string }[];
+  review_status: string | null; internal_notes: string | null; sources: string | null; extra: string[];
 };
 type Tier = { id: string; min_qty: number; unit_price: string };
 type Category = { id: string; name: string; name_bg: string | null };
@@ -26,7 +27,8 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
     `select p.id, p.code, p.name, p.name_bg, p.description, p.description_bg, p.category_id, p.sort_order, p.is_published,
             catalog_publish_problem(p.id) as problem, f.id as formula_id, f.code as formula_code,
             coalesce(f.product_format, p.product_format) as product_format, c.legal_name as client,
-            p.product_format as own_format, p.pack, p.pack_bg, p.min_qty, p.ingredients
+            p.product_format as own_format, p.pack, p.pack_bg, p.min_qty, p.ingredients, p.review_status, p.internal_notes, p.sources,
+            coalesce((select array_agg(x.name order by x.sort_order) from catalog_product_categories l join catalog_categories x on x.id = l.category_id where l.product_id = p.id), '{}') as extra
        from catalog_products p
        left join formulas f on f.id = p.formula_id
        left join clients c on c.id = f.client_id
@@ -80,7 +82,7 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
                     </label>
                     <label className="field"><span>{C.packEn}</span><input name="pack" defaultValue={p.pack ?? ""} className="input" /></label>
                     <label className="field"><span>{C.packBg}</span><input name="pack_bg" defaultValue={p.pack_bg ?? ""} className="input" /></label>
-                    <label className="field"><span>{C.composition}</span><textarea name="ingredients" rows={8} defaultValue={p.ingredients.map((i) => `${i.name} | ${i.amount}`).join("\n")} className="input" /></label>
+                    <label className="field"><span>{C.composition}</span><textarea name="ingredients" rows={8} defaultValue={p.ingredients.map((i) => [i.name, i.amount, i.spec, i.basis].filter((x) => x != null).join(" | ")).join("\n")} className="input" /></label>
                     <p className="m-0 text-sm text-ink-2">{C.compositionNote}</p>
                   </>
                 )}
@@ -89,9 +91,16 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
                     <input type="hidden" name="product_format" value={p.own_format ?? ""} />
                     <input type="hidden" name="pack" value={p.pack ?? ""} />
                     <input type="hidden" name="pack_bg" value={p.pack_bg ?? ""} />
-                    <input type="hidden" name="ingredients" value={p.ingredients.map((i) => `${i.name} | ${i.amount}`).join("\n")} />
+                    <input type="hidden" name="ingredients" value={p.ingredients.map((i) => [i.name, i.amount, i.spec, i.basis].filter((x) => x != null).join(" | ")).join("\n")} />
                   </>
                 )}
+                <label className="field"><span>{C.reviewLabel}</span>
+                  <select name="review_status" defaultValue={p.review_status ?? ""} className="input">
+                    <option value="">{C.reviewCleared}</option>
+                    {Object.entries(C.review).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </label>
+                <label className="field"><span>{C.internalNotes}</span><textarea name="internal_notes" rows={4} defaultValue={p.internal_notes ?? ""} className="input" /></label>
                 <label className="field"><span>{C.minOrder}</span><input name="min_qty" type="number" min={1} step={1} inputMode="numeric" defaultValue={p.min_qty} className="input" /></label>
                 <label className="field"><span>{C.order}</span><input name="sort_order" type="number" inputMode="numeric" defaultValue={p.sort_order} className="input" /></label>
               </ActionForm>
@@ -138,6 +147,7 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
           <Card title={C.publication}>
             <div className="flex flex-col gap-3 text-sm">
               {p.client && <p className="m-0 font-semibold">{fmt(C.clientRecipe, { client: p.client })}</p>}
+              {p.extra.length > 0 && <p className="m-0 text-ink-2">{C.alsoIn}: {p.extra.join(", ")}</p>}
               {p.problem && <p className="m-0 text-ink-2">{C.problems[p.problem as "not_approved"] ?? p.problem}</p>}
               {canEdit && (p.is_published ? (
                 <form action={unpublishCatalogProduct}>
@@ -151,6 +161,14 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
               ))}
             </div>
           </Card>
+          {(p.internal_notes || p.sources) && (
+            <Card title={C.internalNotes}>
+              <div className="flex min-w-0 flex-col gap-2 text-sm">
+                {p.internal_notes && <p className="m-0 break-words whitespace-pre-wrap">{p.internal_notes}</p>}
+                {p.sources && <p className="m-0 break-words whitespace-pre-wrap text-ink-2">{p.sources}</p>}
+              </div>
+            </Card>
+          )}
           <Card title={C.recipe}>
             <div className="flex flex-col gap-2 text-sm">
               {p.formula_id

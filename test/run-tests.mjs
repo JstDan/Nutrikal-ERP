@@ -2759,7 +2759,7 @@ await ok('the open catalogue shows only the listed fields, no cost or overage', 
   const d = (await asAnon('select catalog_public() as d'))[0].d;
   const p = d.products.find((x) => x.code === catCode);
   eq(p.tiers.length, 2, 'tiers'); eq(p.ingredients.length, 1, 'ingredients');
-  eq(Object.keys(p).sort().join(), 'category_id,claims,code,description,description_bg,format,image,ingredients,min_qty,name,name_bg,pack,pack_bg,serving_size,serving_unit,servings_per_pack,tiers', 'fields');
+  eq(Object.keys(p).sort().join(), 'category_id,claims,code,description,description_bg,extra_category_ids,format,image,ingredients,min_qty,name,name_bg,pack,pack_bg,serving_size,serving_unit,servings_per_pack,tiers', 'fields');
   eq(Object.keys(p.ingredients[0]).sort().join(), 'amount,name,name_bg,unit', 'ingredient fields');
 });
 await fails('nobody signed in reads no table', () => asAnon('select * from catalog_products'), 'denied');
@@ -2781,6 +2781,37 @@ await ok('Essentials and Mushrooms are capsules, softgels and powders stay what 
   eq(f['NTL-EN101'], 'capsule', 'nutrient'); eq(f['NTL-M101'], 'capsule', 'mushroom');
   eq(f['NTL-EN103'], 'softgel', 'D3'); eq(f['NTL-EN104'], 'softgel', 'omega'); eq(f['NTL-EN120'], 'powder', 'colostrum');
 });
+await ok('the 46 new formulations are drafts in their categories, none public', async () => {
+  const rows = await as('admin', "select code, review_status, is_published from catalog_products where code like 'NEW-%'");
+  eq(rows.length, 46, 'count'); eq(rows.filter((r) => r.is_published).length, 0, 'published');
+  eq(rows.filter((r) => r.review_status === 'evidence_gap').length, 2, 'no formula');
+  const raw = JSON.stringify((await asAnon('select catalog_public() as d'))[0].d);
+  if (raw.includes('NEW-0') || raw.includes('Preglad') || raw.includes('Healthy Ageing')) throw new Error('visible');
+  const l = await as('admin', "select c.name, x.membership from catalog_product_categories x join catalog_products p on p.id = x.product_id join catalog_categories c on c.id = x.category_id where p.code = 'NEW-042' order by c.name");
+  eq(l.length, 3, 'links'); eq(l.find((r) => r.name === 'Healthy Ageing 50+').membership, 'collection', 'collection');
+  const m = await one('admin', "select jsonb_array_length(ingredients) as n, ingredients -> 0 ->> 'spec' as spec, ingredients -> 0 ->> 'amount' as amount from catalog_products where code = 'NEW-008'");
+  eq(m.n, 20, 'lines'); eq(m.spec, 'Retinyl acetate', 'spec'); eq(m.amount, '400 mcg RE', 'amount');
+});
+await fails('a product in review is not published even with a price', async () => {
+  const p = (await one('admin', "select id from catalog_products where code = 'NEW-002'")).id;
+  await as('admin', 'insert into catalog_price_tiers (product_id, min_qty, unit_price) values ($1, 500, 5)', [p]);
+  await as('admin', 'select catalog_publish_ready()');
+  await as('admin', 'update catalog_products set is_published = true where id = $1', [p]);
+}, 'catalog_in_review');
+await fails('a concept without a formula is not published', () => as('admin', "update catalog_products set is_published = true where code = 'NEW-040'"), 'catalog_no_formula');
+await ok('a person clears the review, then a product with a second category shows there', async () => {
+  await as('admin', "update catalog_products set review_status = null where code = 'NEW-002'");
+  await as('admin', "update catalog_products set is_published = true where code = 'NEW-002'");
+  const d = (await asAnon('select catalog_public() as d'))[0].d;
+  eq(d.products.filter((p) => p.code === 'NEW-002').length, 1, 'public');
+  const r = d.products.find((p) => p.code === 'NEW-002');
+  eq(Object.keys(r.ingredients[0]).sort().join(), 'amount,name,name_bg,unit', 'no specification');
+  await as('admin', "update catalog_products set is_published = false, review_status = 'draft_formulation' where code = 'NEW-002'");
+});
+await ok('Production and Design see no review notes or category links; nobody signed in neither', async () => {
+  for (const r of ['production', 'designer']) eq((await as(r, 'select product_id from catalog_product_categories')).length, 0, r);
+});
+await fails('nobody signed in reads no category link', () => asAnon('select * from catalog_product_categories'), 'denied');
 await fails('Sales does not publish everything', () => as('sales', 'select catalog_publish_ready()'), 'not allowed');
 await ok('publish all ready takes what is ready and leaves out what has no price', async () => {
   await as('admin', "update catalog_products set is_published = false where code = 'NTL-TH101'");

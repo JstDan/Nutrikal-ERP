@@ -7,7 +7,7 @@ import { createCatalogProduct, publishReadyCatalog } from "@/app/catalog-actions
 
 type Row = {
   id: string; code: string; name: string; name_bg: string | null; product_format: string | null; is_published: boolean;
-  category: string | null; category_bg: string | null; from_price: string | null; problem: string | null;
+  category: string | null; category_bg: string | null; review_status: string | null; from_price: string | null; problem: string | null;
 };
 type Recipe = { id: string; code: string; name: string; name_bg: string | null };
 
@@ -18,7 +18,7 @@ export default async function CatalogPage() {
   const canEdit = user.role === "admin" && !user.readOnly;
 
   const rows = await q<Row>(user.id,
-    `select p.id, p.code, p.name, p.name_bg, coalesce(f.product_format, p.product_format) as product_format, p.is_published, c.name as category, c.name_bg as category_bg,
+    `select p.id, p.code, p.name, p.name_bg, coalesce(f.product_format, p.product_format) as product_format, p.is_published, p.review_status, c.name as category, c.name_bg as category_bg,
             (select min(t.unit_price)::text from catalog_price_tiers t where t.product_id = p.id) as from_price,
             catalog_publish_problem(p.id) as problem
        from catalog_products p
@@ -79,7 +79,7 @@ export default async function CatalogPage() {
             </div>
             <span className="hide-sm min-w-0 break-words">{p.category ? local(p.category, p.category_bg) : "—"}</span>
             <span className="hide-sm">{p.from_price ? formatMoney(locale, p.from_price, "EUR", 2) : "—"}</span>
-            <span><Chip tone={p.is_published ? (p.problem ? "amber" : "green") : "neutral"}>{p.is_published ? (p.problem ? C.hidden : C.published) : C.draft}</Chip></span>
+            <span><Chip tone={p.review_status === "evidence_gap" ? "red" : p.review_status ? "amber" : p.is_published ? (p.problem ? "amber" : "green") : "neutral"}>{p.review_status ? C.review[p.review_status as "draft_formulation"] : p.is_published ? (p.problem ? C.hidden : C.published) : C.draft}</Chip></span>
           </div>
         ))}
       </section>

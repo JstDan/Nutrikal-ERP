@@ -8,7 +8,7 @@ import type { Dict } from "@/lib/i18n/en";
 type Tier = { min_qty: number; unit_price: number };
 type Product = {
   code: string; name: string; name_bg: string | null; description: string | null; description_bg: string | null;
-  category_id: string | null; format: string | null; min_qty: number; image: string | null; pack: string | null; pack_bg: string | null;
+  category_id: string | null; extra_category_ids?: string[]; format: string | null; min_qty: number; image: string | null; pack: string | null; pack_bg: string | null;
   serving_size: number | null; serving_unit: string | null; servings_per_pack: number | null;
   tiers: Tier[]; ingredients: { name: string; name_bg: string | null; amount: number | string; unit: string | null }[]; claims: { en: string; bg: string | null }[];
 };
@@ -22,13 +22,7 @@ const VIDEO = "WF61pORKbUo";
 const COUNTRIES = ["AE", "AT", "AU", "BE", "BG", "CA", "CH", "CY", "CZ", "DE", "DK", "EE", "EG", "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IL", "IT", "JO", "KW", "LB", "LT", "LU", "LV", "MD", "ME", "MK", "MT", "NL", "NO", "OM", "PL", "PT", "QA", "RO", "RS", "SA", "SE", "SI", "SK", "TR", "UA", "US"];
 const priceAt = (p: Product, qty: number) => [...p.tiers].reverse().find((t) => t.min_qty <= qty)?.unit_price ?? p.tiers[0].unit_price;
 
-/** Minimum order (boxes), lead time (clock), included (tick), not included (cross). */
-const FACT_ICONS = [
-  <><path key="a" d="M21 8 12 3 3 8v8l9 5 9-5z" /><path key="b" d="m3 8 9 5 9-5M12 13v8" /></>,
-  <><circle key="a" cx="12" cy="12" r="9" /><path key="b" d="M12 7v5l3 2" /></>,
-  <path key="a" d="m5 13 4 4L19 7" />,
-  <path key="a" d="M6 6l12 12M18 6 6 18" />,
-];
+const inCategory = (p: Product, id: string) => p.category_id === id || !!p.extra_category_ids?.includes(id);
 
 function readBasket(): Basket {
   try {
@@ -180,7 +174,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
   }, [locale]);
   const find = term.trim().toLowerCase();
   const shown = data.products.filter((p) =>
-    (!category || p.category_id === category) && (!format || p.format === format)
+    (!category || inCategory(p, category)) && (!format || p.format === format)
     && (!find || [p.code, p.name, p.name_bg, p.description, p.description_bg, ...p.ingredients.flatMap((i) => [i.name, i.name_bg])].some((x) => x?.toLowerCase().includes(find))));
   const overview = !category && !format && !find;
   const lines = data.products.filter((p) => basket[p.code]);
@@ -256,15 +250,10 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
           <p className="m-0 text-ink-2">{T.intro}</p>
         </div>
         <dl className="m-0 grid min-w-0 grid-cols-1 gap-x-8 gap-y-3 border-y border-line py-4 sm:grid-cols-2 lg:grid-cols-4">
-          {T.facts.map((f, i) => (
-            <div key={f.label} className="flex min-w-0 items-start gap-3">
-              <span aria-hidden="true" className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${i === 2 ? "bg-green-tint text-green-ink" : "bg-neutral-tint text-ink"}`}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{FACT_ICONS[i]}</svg>
-              </span>
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <dt className="text-xs text-ink-2">{f.label}</dt>
-                <dd className="m-0 text-sm font-semibold">{f.value}</dd>
-              </div>
+          {T.facts.map((f) => (
+            <div key={f.label} className="flex min-w-0 flex-col gap-0.5">
+              <dt className="text-xs text-ink-2">{f.label}</dt>
+              <dd className="m-0 text-sm font-semibold">{f.value}</dd>
             </div>
           ))}
         </dl>
@@ -295,7 +284,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
         <div className="flex min-w-0 flex-col gap-8">
             {data.products.length === 0 && <p className="m-0 text-ink-2">{T.empty}</p>}
             {overview ? data.categories.map((c) => {
-              const items = shown.filter((p) => p.category_id === c.id);
+              const items = shown.filter((p) => inCategory(p, c.id));
               return (
                 <section key={c.id} aria-label={local(c.name, c.name_bg)} className="flex min-w-0 flex-col gap-3">
                   <h3 className="m-0 text-lg font-bold">{local(c.name, c.name_bg)}</h3>
