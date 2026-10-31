@@ -219,7 +219,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
       </button>
       <p className="m-0 mt-auto text-sm">{fmt(T.fromPrice, { price: money(p.tiers.at(-1)!.unit_price) })}</p>
       <button type="button" onClick={() => add(p)} className="btn btn-primary w-full !px-2">{basket[p.code] ? T.inBasket : T.add}</button>
-      <button type="button" onClick={() => setOpen(p)} className="flex min-h-11 items-center justify-center text-sm text-ink-2 underline hover:text-ink">{T.learnMore}</button>
+      <button type="button" onClick={() => setOpen(p)} className="btn btn-outline w-full !px-2">{T.learnMore}</button>
     </article>
   );
   const grid = "grid min-w-0 grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4";
