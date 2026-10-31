@@ -53,5 +53,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Everything except static files, images and the cron route (which has its own secret)
-  matcher: ["/((?!_next/static|_next/image|api/cron|.*\.(?:ico|svg|png|jpg|jpeg|webp)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|api/cron|.*\.(?:ico|svg|png|jpg|jpeg|webp|pdf)$).*)"],
 };
