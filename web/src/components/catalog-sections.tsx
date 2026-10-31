@@ -8,32 +8,20 @@ const light = "inline-flex min-h-11 items-center justify-center rounded-full bg-
 const outline = "inline-flex min-h-11 items-center justify-center rounded-full border border-side-muted px-6 text-sm font-semibold text-side-strong no-underline";
 const eyebrow = "m-0 font-mono text-xs tracking-[2px] uppercase";
 
-/** The top of the open catalogue, in the style of the company presentation. */
-export function CatalogHero({ text }: { text: Dict["publicCatalog"] }) {
-  const T = text;
-  return (
-    <section className="bg-side text-side-strong">
-      <div className="mx-auto flex max-w-[860px] flex-col items-center gap-5 px-4 py-10 text-center lg:py-14">
-        <h1 className="m-0 text-3xl leading-tight font-bold sm:text-[40px]">{T.title}</h1>
-        <p className="m-0 max-w-[560px] text-side-text">{T.intro}</p>
-        <div className="w-full"><CatalogVideo title={T.videoTitle} /></div>
-        <a href="#products" className={light}>{T.heroProducts}</a>
-      </div>
-    </section>
-  );
-}
-
-/** Who makes it: capabilities, brands, certificates and contact. */
+/** Who makes it: video, capabilities, brands, certificates and contact. */
 export function CatalogCompany({ text }: { text: Dict["publicCatalog"] }) {
   const T = text;
   return (
     <>
       <section id="about" className="scroll-mt-16 border-t border-line bg-paper">
-        <div className="mx-auto flex max-w-[760px] flex-col items-center gap-3 px-4 py-10 text-center">
-          <h2 className="m-0 text-2xl font-bold">{T.aboutTitle}</h2>
-          <p className="m-0 text-ink-2">{T.aboutText}</p>
-          <p className="m-0 text-ink-2">{T.aboutText2}</p>
-          <a href={PRESENTATION} target="_blank" rel="noopener" className="btn btn-outline">{T.heroPresentation}</a>
+        <div className="mx-auto grid max-w-[1200px] grid-cols-1 items-center gap-8 px-4 py-10 lg:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-3">
+            <h2 className="m-0 text-2xl font-bold">{T.aboutTitle}</h2>
+            <p className="m-0 text-ink-2">{T.aboutText}</p>
+            <p className="m-0 text-ink-2">{T.aboutText2}</p>
+            <a href={PRESENTATION} target="_blank" rel="noopener" className="btn btn-outline self-start">{T.heroPresentation}</a>
+          </div>
+          <CatalogVideo title={T.videoTitle} />
         </div>
       </section>
 

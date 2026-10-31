@@ -15,7 +15,7 @@ type Product = {
 export type PublicCatalog = { categories: { id: string; name: string; name_bg: string | null }[]; products: Product[] };
 type Basket = Record<string, number>;
 
-const OVERVIEW = 6;
+const OVERVIEW = 8;
 const STEP = 100;
 const STORE = "nk_catalog_basket";
 const VIDEO = "WF61pORKbUo";
@@ -85,8 +85,8 @@ function Dialog({ title, close, closeLabel, footer, children }: { title: string;
 }
 
 /** The open catalogue: browse, filter, a basket, and one enquiry in two steps. */
-export function CatalogBrowser({ data, locale, text, formats, hero, children }: {
-  data: PublicCatalog; locale: Locale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; hero: ReactNode; children: ReactNode;
+export function CatalogBrowser({ data, locale, text, formats, children }: {
+  data: PublicCatalog; locale: Locale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; children: ReactNode;
 }) {
   const T = text;
   const money = (n: number) => formatMoney(locale, n, "EUR", 2);
@@ -140,7 +140,6 @@ export function CatalogBrowser({ data, locale, text, formats, hero, children }: 
   const lines = data.products.filter((p) => basket[p.code]);
   const allValid = lines.every((p) => basket[p.code] >= p.min_qty);
   const total = lines.reduce((sum, p) => sum + priceAt(p, basket[p.code]) * basket[p.code], 0);
-  const count = (id: string) => data.products.filter((p) => p.category_id === id).length;
 
   const add = (p: Product) => setBasket((b) => ({ ...b, [p.code]: b[p.code] ?? p.min_qty }));
   const remove = (code: string) => setBasket((b) => Object.fromEntries(Object.entries(b).filter(([c]) => c !== code)));
@@ -171,7 +170,7 @@ export function CatalogBrowser({ data, locale, text, formats, hero, children }: 
     }
   }
 
-  const side = (active: boolean) => `flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 text-left text-sm ${active ? "bg-ink font-semibold text-white" : "text-ink hover:bg-neutral-tint"}`;
+  const chip = (active: boolean) => `min-h-11 rounded-full border px-4 text-sm ${active ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-paper text-ink hover:bg-canvas"}`;
   const card = (p: Product) => (
     <article key={p.code} className="flex min-w-0 flex-col gap-2 rounded-lg border border-line bg-paper p-2.5 sm:p-3">
       <button type="button" onClick={() => setOpen(p)} aria-label={fmt(T.detailsOf, { name: local(p.name, p.name_bg) })} className="flex min-w-0 flex-col gap-2 text-left">
@@ -183,7 +182,7 @@ export function CatalogBrowser({ data, locale, text, formats, hero, children }: 
       <button type="button" onClick={() => add(p)} disabled={!!basket[p.code]} className="btn btn-primary w-full">{basket[p.code] ? T.inBasket : T.add}</button>
     </article>
   );
-  const grid = "grid min-w-0 grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3";
+  const grid = "grid min-w-0 grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4";
 
   return (
     <div className={`min-h-dvh bg-canvas text-ink ${lines.length ? "pb-20 lg:pb-0" : ""}`}>
@@ -203,52 +202,43 @@ export function CatalogBrowser({ data, locale, text, formats, hero, children }: 
         </div>
       </header>
 
-      {hero}
-
       <main ref={productsTop} id="products" className="mx-auto flex max-w-[1200px] scroll-mt-16 flex-col gap-5 px-4 py-8">
-        <h2 className="m-0 text-2xl font-bold">{T.productsTitle}</h2>
-        <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[230px_minmax(0,1fr)]">
-          <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-20 lg:self-start">
-            <label htmlFor="catalog-search" className="sr-only">{T.search}</label>
-            <input id="catalog-search" type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={T.search} className="input" />
-
-            {/* A phone gets two plain lists: nothing to scroll sideways, nothing to hunt for */}
-            <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:hidden">
-              <label className="min-w-0">
-                <span className="sr-only">{T.categories}</span>
-                <select value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full min-w-0">
-                  <option value="">{T.allCategories}</option>
-                  {data.categories.map((c) => <option key={c.id} value={c.id}>{local(c.name, c.name_bg)} ({count(c.id)})</option>)}
-                </select>
-              </label>
-              <label className="min-w-0">
-                <span className="sr-only">{T.formats}</span>
-                <select value={format} onChange={(e) => setFormat(e.target.value)} className="input w-full min-w-0">
-                  <option value="">{T.allFormats}</option>
-                  {shownFormats.map((f) => <option key={f} value={f}>{formats[f as "capsule"]}</option>)}
-                </select>
-              </label>
-            </div>
-
-            <div className="hide-md flex flex-col gap-4">
-              <div role="group" aria-label={T.categories} className="flex flex-col gap-0.5">
-                <span className="label px-3 pb-1">{T.categories}</span>
-                <button type="button" aria-pressed={!category} onClick={() => setCategory("")} className={side(!category)}>{T.allCategories}<span className="text-xs opacity-70">{data.products.length}</span></button>
-                {data.categories.map((c) => (
-                  <button key={c.id} type="button" aria-pressed={category === c.id} onClick={() => setCategory(c.id)} className={side(category === c.id)}>
-                    <span className="min-w-0">{local(c.name, c.name_bg)}</span><span className="text-xs opacity-70">{count(c.id)}</span>
-                  </button>
-                ))}
-              </div>
-              <div role="group" aria-label={T.formats} className="flex flex-col gap-0.5">
-                <span className="label px-3 pb-1">{T.formats}</span>
-                <button type="button" aria-pressed={!format} onClick={() => setFormat("")} className={side(!format)}>{T.allFormats}</button>
-                {shownFormats.map((f) => <button key={f} type="button" aria-pressed={format === f} onClick={() => setFormat(f)} className={side(format === f)}>{formats[f as "capsule"]}</button>)}
-              </div>
-            </div>
+        <div className="flex max-w-[720px] flex-col gap-2">
+          <h1 className="m-0 text-3xl font-bold">{T.title}</h1>
+          <p className="m-0 text-ink-2">{T.intro}</p>
+        </div>
+        <div className="flex min-w-0 flex-col gap-3">
+          <label htmlFor="catalog-search" className="sr-only">{T.search}</label>
+          <input id="catalog-search" type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={T.search} className="input max-w-[480px]" />
+          {/* On a phone the buttons would fill the screen before the first product: two plain lists there */}
+          <div className="grid min-w-0 grid-cols-1 gap-2 md:hidden">
+            <label className="min-w-0">
+              <span className="sr-only">{T.categories}</span>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full min-w-0">
+                <option value="">{T.allCategories}</option>
+                {data.categories.map((c) => <option key={c.id} value={c.id}>{local(c.name, c.name_bg)}</option>)}
+              </select>
+            </label>
+            <label className="min-w-0">
+              <span className="sr-only">{T.formats}</span>
+              <select value={format} onChange={(e) => setFormat(e.target.value)} className="input w-full min-w-0">
+                <option value="">{T.allFormats}</option>
+                {shownFormats.map((f) => <option key={f} value={f}>{formats[f as "capsule"]}</option>)}
+              </select>
+            </label>
           </div>
-
-          <div className="flex min-w-0 flex-col gap-8">
+          <div role="group" aria-label={T.categories} className="hide-sm flex flex-wrap gap-2">
+            <button type="button" aria-pressed={!category} onClick={() => setCategory("")} className={chip(!category)}>{T.allCategories}</button>
+            {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{local(c.name, c.name_bg)}</button>)}
+          </div>
+          {shownFormats.length > 1 && (
+            <div role="group" aria-label={T.formats} className="hide-sm flex flex-wrap gap-2">
+              <button type="button" aria-pressed={!format} onClick={() => setFormat("")} className={chip(!format)}>{T.allFormats}</button>
+              {shownFormats.map((f) => <button key={f} type="button" aria-pressed={format === f} onClick={() => setFormat(f)} className={chip(format === f)}>{formats[f as "capsule"]}</button>)}
+            </div>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-col gap-8">
             {data.products.length === 0 && <p className="m-0 text-ink-2">{T.empty}</p>}
             {overview ? data.categories.map((c) => {
               const items = shown.filter((p) => p.category_id === c.id);
@@ -260,13 +250,12 @@ export function CatalogBrowser({ data, locale, text, formats, hero, children }: 
                 </section>
               );
             }) : (
-              <section aria-label={T.productsTitle} className="flex min-w-0 flex-col gap-3">
+              <section aria-label={T.navProducts} className="flex min-w-0 flex-col gap-3">
                 <p role="status" className="m-0 text-sm text-ink-2">{shown.length ? fmt(T.results, { n: shown.length }) : T.noResults}</p>
                 <div className={grid}>{shown.map(card)}</div>
               </section>
             )}
             <p className="m-0 text-sm text-ink-2">{T.priceNote}</p>
-          </div>
         </div>
       </main>
 
