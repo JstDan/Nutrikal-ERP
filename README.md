@@ -36,7 +36,7 @@ Open http://localhost:3000.
 | Projects | All projects with stage filter |
 | Inventory | Stock per item: on hand, quarantine, reserved, available, next expiry and status; expand an item for lots and reservations; filter by type, search |
 | Receive goods | New lot into quarantine, lot number assigned, expiry from shelf life if left empty |
-| Quality | Admin: finished batches wait in quarantine and are released with their certificate of analysis (COA file); any lot can be blocked with a reason and released again. A blocked lot cannot be used or dispatched |
+| Quality | Admin: finished batches wait in quarantine until released; the certificate of analysis (COA file) is optional and can be attached before or after the release; any lot can be blocked with a reason and released again. A blocked lot cannot be used or dispatched |
 | Traceability | Admin, Sales: find a lot, see the materials and suppliers behind it, the batches made with it, what is left and which clients received it (Reg. 178/2002 art. 18); printable report |
 | Formulas | Formula per serving (capsules, tablets, powders…), linked to a project or kept as a stock formula; versions (draft → approved → archived); ingredients with overage, input per unit and per 1000 packs; checks for Novel Food, shelf life, allergens, vegan/vegetarian and capsule fill; vitamins and minerals with % NRV; health claims with their conditions; Admin approves |
 | Offers | Offer for a client on an approved formula version; packaging per pack; quantities priced from a margin or a fixed price; cost per pack from purchase prices (with price breaks), capsule shells, production costs of the format and set-up spread over the quantity; cost breakdown for users who may see purchase prices; status; offer document in the offer's language (print or save as PDF from the browser) |
@@ -90,6 +90,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 | `20261023000400_delivery_docs_storage.sql` | Private bucket `delivery-docs` and its rules (Supabase only) |
 | `20261024000100_calc_scheduled_sync.sql` | Daily 17:00 price-list sync run by the server (`calc_record_scheduled_sync`, not callable by users) |
 | `20261024000200_views_read_only.sql` | Users can only read views (no writes through a view past row-level security) |
+| `20261031002100_release_without_coa.sql` | A finished batch can be released without a COA |
 | `20261031002000_batches_dispatch_trace_notes.sql` | Finished batches start in quarantine and need a COA; expiry entered with the batch; lots can be blocked; dispatch with delivery notes and stock movements; traceability functions; credit and debit notes; production costs for Admin only |
 | `20261019000900_formulation.sql` | Formulas (NK-F-0001), versions, lines, nutrients with NRV (Reg. 1169/2011 Annex XIII), item nutrient content, health claims, checks and access rules |
 
@@ -98,7 +99,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 - **Stock is a ledger.** Balances are always summed from `stock_movements`. Rows cannot be edited or deleted; corrections are new movements.
 - **Writes go through functions** that check the caller's role: `receive_lot`, `transfer_stock`, `post_stock_movement`, `reserve_stock`, `close_reservation`, `set_lot_qc_status`, `request_stock_adjustment`, `decide_stock_adjustment`.
 - **No negative stock** per lot and location (locked per lot/location against concurrent writes).
-- **QC gate.** Materials are released on receipt; Admin can block any lot (reason required). A finished batch starts in quarantine and only Admin releases it, with its COA. Unreleased or expired lots cannot be consumed or dispatched.
+- **QC gate.** Materials are released on receipt; Admin can block any lot (reason required). A finished batch starts in quarantine and only Admin releases it; the COA is optional. Unreleased or expired lots cannot be consumed or dispatched.
 - **Expiry of a finished batch** is entered when the batch is reported, or comes from a known shelf life; without either the batch cannot be reported.
 - **Dispatch.** An order goes to dispatched only with its batches (`dispatch_order`): delivery note, stock out of the ledger. Admin only; dispatching before the balance is paid must be confirmed and is recorded.
 - **Credit and debit notes** are against an issued invoice, with a reason, on the shared series; a credit note cannot exceed what is left on the invoice.

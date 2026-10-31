@@ -18,7 +18,7 @@ Talk to the owner in the language they write in (usually Bulgarian).
 - Payment terms: usually deposit + balance before dispatch; editable per client and per order.
 - The ERP issues FINAL invoices. Invoice numbers: one 10-digit series shared by invoices, credit and debit notes; editable on a draft before issue with duplicate/gap warnings and audit log; locked after issue; corrections only via credit/debit notes. Design the invoice data to map to EN 16931 (Bulgaria plans mandatory structured e-invoicing from 2028).
 - Shelf life is tracked per raw material. Recipes have none (owner, Oct 2026): the expiry date of a finished batch is entered when it is reported.
-- Materials are released on receipt; finished batches need Admin release with a COA before dispatch. Any lot can be blocked (owner, Oct 2026).
+- Materials are released on receipt; finished batches need Admin release before dispatch; the COA is optional and can be attached later. Any lot can be blocked (owner, Oct 2026).
 - All settings live under Settings and are Admin only (owner, Oct 2026). New settings go there.
 - Languages: Bulgarian and English only (UI and documents).
 - Roles: admin, sales, production (+ developer, who acts as another user). Inventory was merged into Admin and Partner renamed Production (Oct 2026). Formulation and QC rights sit with admin for now.

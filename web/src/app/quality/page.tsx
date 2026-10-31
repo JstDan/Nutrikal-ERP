@@ -17,7 +17,7 @@ const LOT_SQL = `select l.id, l.lot_number, i.sku, i.name, i.name_bg, i.base_uni
          i.type as item_type, coalesce((select sum(m.quantity) from stock_movements m where m.lot_id = l.id), 0)::text as on_hand
     from lots l join items i on i.id = l.item_id`;
 
-/** Finished batches to release (with their COA), blocked lots, and blocking any lot. */
+/** Finished batches to release (the COA is optional), blocked lots, and blocking any lot. */
 export default async function QualityPage({ searchParams }: PageProps<"/quality">) {
   const { user, locale, t } = await requireRole("admin");
   const sp = await searchParams;
@@ -47,8 +47,23 @@ export default async function QualityPage({ searchParams }: PageProps<"/quality"
         <Chip tone={qcTone(x.qc_status)}>{t.enums.qcStatus[x.qc_status as "released"]}</Chip>
         <Link href={`/traceability?lot=${x.id}`} className="text-xs font-semibold text-ink">{Q.trace}</Link>
         {x.coa_path && <a href={`/files/coa/${x.id}`} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-ink">{Q.viewCoa}</a>}
+        {!x.coa_path && x.item_type === "finished_good" && <span className="text-xs text-ink-2">{Q.noCoa}</span>}
       </div>
     </div>
+  );
+  const coaForm = (x: Lot) => (
+    <ActionForm action={attachCoa} submitLabel={Q.attachCoa} resetOnSuccess={false}>
+      <input type="hidden" name="lot_id" value={x.id} />
+      <label className="field"><span>{Q.coaFile}</span>
+        <input name="coa" type="file" required accept="application/pdf,image/*" className="input" />
+      </label>
+    </ActionForm>
+  );
+  const releaseForm = (x: Lot) => (
+    <ActionForm action={setLotStatus} submitLabel={Q.release} resetOnSuccess={false}>
+      <input type="hidden" name="lot_id" value={x.id} />
+      <input type="hidden" name="status" value="released" />
+    </ActionForm>
   );
   const blockForm = (x: Lot) => (
     <ActionForm action={setLotStatus} submitLabel={Q.block} resetOnSuccess={false} className="flex-[1_1_220px]">
@@ -69,18 +84,8 @@ export default async function QualityPage({ searchParams }: PageProps<"/quality"
           <div key={x.id} className="flex flex-wrap items-start gap-4 border-t border-mist pt-4">
             {head(x)}
             <div className="flex min-w-0 flex-[1_1_260px] flex-col gap-3">
-              <ActionForm action={attachCoa} submitLabel={Q.attachCoa} resetOnSuccess={false}>
-                <input type="hidden" name="lot_id" value={x.id} />
-                <label className="field"><span>{Q.coaFile}</span>
-                  <input name="coa" type="file" required accept="application/pdf,image/*" className="input" />
-                </label>
-              </ActionForm>
-              {x.coa_path ? (
-                <ActionForm action={setLotStatus} submitLabel={Q.release} resetOnSuccess={false}>
-                  <input type="hidden" name="lot_id" value={x.id} />
-                  <input type="hidden" name="status" value="released" />
-                </ActionForm>
-              ) : <p className="m-0 text-sm text-ink-2">{Q.coaNeeded}</p>}
+              {releaseForm(x)}
+              {coaForm(x)}
               <ActionForm action={setLotStatus} submitLabel={Q.reject} resetOnSuccess={false}>
                 <input type="hidden" name="lot_id" value={x.id} />
                 <input type="hidden" name="status" value="rejected" />
@@ -97,12 +102,7 @@ export default async function QualityPage({ searchParams }: PageProps<"/quality"
         {blocked.map((x) => (
           <div key={x.id} className="flex flex-wrap items-start gap-4 border-t border-mist pt-4">
             {head(x)}
-            {x.item_type !== "finished_good" || x.coa_path ? (
-              <ActionForm action={setLotStatus} submitLabel={Q.release} resetOnSuccess={false}>
-                <input type="hidden" name="lot_id" value={x.id} />
-                <input type="hidden" name="status" value="released" />
-              </ActionForm>
-            ) : <p className="m-0 text-sm text-ink-2">{Q.coaNeeded}</p>}
+            {releaseForm(x)}
           </div>
         ))}
       </Card>
@@ -117,7 +117,10 @@ export default async function QualityPage({ searchParams }: PageProps<"/quality"
         {found.map((x) => (
           <div key={x.id} className="flex flex-wrap items-start gap-4 border-t border-mist pt-4">
             {head(x)}
-            {blockForm(x)}
+            <div className="flex min-w-0 flex-[1_1_260px] flex-col gap-3">
+              {x.item_type === "finished_good" && coaForm(x)}
+              {blockForm(x)}
+            </div>
           </div>
         ))}
       </Card>

@@ -2088,8 +2088,8 @@ await fails('blocking a lot needs a reason', () =>
   as('admin', `select set_lot_qc_status($1, 'rejected')`, [lot.id]), 'reason');
 await fails('sales cannot block a lot', () =>
   as('sales', `select set_lot_qc_status($1, 'rejected', 'x')`, [lot.id]), 'not allowed');
-await fails('a finished batch is not released without its COA', () =>
-  as('admin', `select set_lot_qc_status($1, 'released')`, [fgLot]), 'certificate of analysis');
+await fails('sales cannot release a finished batch', () =>
+  as('sales', `select set_lot_qc_status($1, 'released')`, [fgLot]), 'not allowed');
 await fails('a batch without any shelf life needs an expiry date', async () => {
   const p = await one('sales', `insert into projects (client_id, name) values ($1, 'No shelf life') returning id`, [client2.id]);
   const f = await one('sales', `insert into formulas (name, product_format, serving_size, servings_per_pack) values ('No shelf', 'capsule', 1, 30) returning id`);
@@ -2122,14 +2122,20 @@ await fails('a batch in quarantine cannot be dispatched', async () => {
   await as('admin', 'update sales_orders set balance_received_on = current_date where id = $1', [order.id]);
   await as('admin', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, qcDispatch()]);
 }, 'not released');
-await ok('with its COA the batch is released and dispatched: delivery note, stock out, order and project move on', async () => {
-  await as('admin', 'select set_lot_coa($1, $2)', [fgLot, `${fgLot}/00000000-0000-4000-8000-000000000001.pdf`]);
-  await as('admin', `select set_lot_qc_status($1, 'released', 'COA OK')`, [fgLot]);
+await ok('without a COA the batch is released and dispatched: delivery note, stock out, order and project move on', async () => {
+  await as('admin', `select set_lot_qc_status($1, 'released')`, [fgLot]);
+  eq((await one('admin', 'select qc_status from lots where id = $1', [fgLot])).qc_status, 'released', 'released');
   const r = await one('admin', `select dispatch_order($1, current_date, $2::jsonb, 'DHL', 'T-1') as id`, [order.id, qcDispatch()]);
   eq((await one('sales', 'select code from dispatches where id = $1', [r.id])).code, 'DN-00001', 'delivery note');
   eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [fgLot])).q), 490, 'left');
   eq((await one('sales', 'select status from sales_orders where id = $1', [order.id])).status, 'dispatched', 'order');
   eq((await one('sales', 'select status from projects where id = $1', [project.id])).status, 'completed', 'project');
+});
+await ok('the COA can be attached after the release', async () => {
+  const path = `${fgLot}/00000000-0000-4000-8000-000000000001.pdf`;
+  await as('admin', 'select set_lot_coa($1, $2)', [fgLot, path]);
+  eq((await one('admin', 'select coa_path from lots where id = $1', [fgLot])).coa_path, path, 'path');
+  eq((await one('admin', 'select qc_status from lots where id = $1', [fgLot])).qc_status, 'released', 'still released');
 });
 await ok('the rest can follow on a second delivery note', async () => {
   const lines = JSON.stringify([{ lot_id: fgLot, location_id: L['PF-QUAR'], quantity: 90 }]);
