@@ -2789,6 +2789,16 @@ await fails('no enquiry for a bar below its minimum', async () => {
 const enquiry = (o = {}) => JSON.stringify({ company: 'Нова фирма', contact_name: 'Иван Иванов', email: 'ivan@nova.test', lines: [{ code: catCode, quantity: 1200, unit_price: 0.01 }], ...o });
 await fails('no enquiry below the minimum', () => asAnon('select catalog_submit_enquiry($1::jsonb)', [enquiry({ lines: [{ code: catCode, quantity: 499 }] })]), 'catalog_invalid');
 await fails('no enquiry without a valid e-mail', () => asAnon('select catalog_submit_enquiry($1::jsonb)', [enquiry({ email: 'x' })]), 'catalog_invalid');
+await fails('no empty enquiry', () => asAnon('select catalog_submit_enquiry($1::jsonb)', [enquiry({ lines: [] })]), 'catalog_invalid');
+await ok('a question without products arrives with the enquiries', async () => {
+  const no = (await asAnon('select catalog_submit_enquiry($1::jsonb) as no', [enquiry({ email: 'q@nova.test', lines: [], message: 'Do you make gummies?' })]))[0].no;
+  const e = await one('sales', 'select message from catalog_enquiries where number = $1', [no]);
+  eq(e.message, 'Do you make gummies?', 'message');
+});
+await ok('Premium Blends are powders in a doypack', async () => {
+  const p = await one('admin', "select product_format, pack from catalog_products where code = 'NTL-PB101'");
+  eq(p.product_format, 'powder', 'format'); eq(p.pack, 'Powder in a doypack', 'pack');
+});
 await fails('no enquiry for an unknown product', () => asAnon('select catalog_submit_enquiry($1::jsonb)', [enquiry({ lines: [{ code: 'X', quantity: 500 }] })]), 'catalog_invalid');
 let enquiryId;
 await ok('an enquiry takes the tier price from the database and tells Sales', async () => {
@@ -2796,7 +2806,7 @@ await ok('an enquiry takes the tier price from the database and tells Sales', as
   const e = await one('sales', 'select id, status from catalog_enquiries where number = $1', [no]);
   enquiryId = e.id; eq(e.status, 'new', 'status');
   eq(Number((await one('sales', 'select unit_price from catalog_enquiry_lines where enquiry_id = $1', [e.id])).unit_price), 4, 'price');
-  eq((await as('sales', `select id from notifications where kind = 'catalog_enquiry'`)).length, 1, 'told');
+  if (!(await as('sales', `select id from notifications where kind = 'catalog_enquiry'`)).length) throw new Error('not told');
 });
 await ok('Production and Design see no enquiries and no catalogue', async () => {
   for (const r of ['production', 'designer']) {

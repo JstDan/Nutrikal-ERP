@@ -239,7 +239,7 @@ as $$
        where p.is_published and catalog_publish_problem(p.id) is null), '[]'))
 $$;
 
--- An enquiry from the open page. The prices come from the database, never from the browser.
+-- An enquiry from the open page, or a question without products. The prices come from the database, never from the browser.
 create or replace function public.catalog_submit_enquiry(p jsonb)
 returns text
 language plpgsql security definer set search_path = public
@@ -265,7 +265,8 @@ begin
      or length(coalesce(p ->> 'message', '')) > 2000
      or (v_country is not null and v_country !~ '^[A-Z]{2}$')
      or jsonb_typeof(v_lines) is distinct from 'array'
-     or jsonb_array_length(v_lines) not between 1 and 50 then
+     or jsonb_array_length(v_lines) > 50
+     or (jsonb_array_length(v_lines) = 0 and nullif(trim(p ->> 'message'), '') is null) then
     raise exception 'catalog_invalid';
   end if;
 

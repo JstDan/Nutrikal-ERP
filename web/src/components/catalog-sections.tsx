@@ -1,4 +1,5 @@
-import { CatalogVideo } from "@/components/catalog-browser";
+import { CatalogContact, CatalogVideo } from "@/components/catalog-browser";
+import type { Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
 const SITE = "/catalog/site";
@@ -9,7 +10,7 @@ const outline = "inline-flex min-h-11 items-center justify-center rounded-full b
 const eyebrow = "m-0 font-mono text-xs tracking-[2px] uppercase";
 
 /** Who makes it: video, capabilities, brands, certificates and contact. */
-export function CatalogCompany({ text }: { text: Dict["publicCatalog"] }) {
+export function CatalogCompany({ text, locale }: { text: Dict["publicCatalog"]; locale: Locale }) {
   const T = text;
   return (
     <>
@@ -69,18 +70,21 @@ export function CatalogCompany({ text }: { text: Dict["publicCatalog"] }) {
       </section>
 
       <section id="contact" className="scroll-mt-16 bg-side text-side-strong">
-        <div className="mx-auto flex max-w-[1200px] flex-col items-center gap-4 px-4 py-12 text-center">
-          <p className={`${eyebrow} text-side-muted`}>{T.contactEyebrow}</p>
-          <h2 className="m-0 max-w-[640px] text-3xl leading-tight font-bold">{T.contactTitle}</h2>
-          <p className="m-0 max-w-[560px] text-side-text">{T.contactText}</p>
-          <div className="flex flex-wrap justify-center gap-3 pt-1">
-            <a href="mailto:sales@nutrikal.com" className={light}>sales@nutrikal.com</a>
-            <a href="https://wa.me/359882919140" target="_blank" rel="noopener" className={outline}>WhatsApp</a>
+        <div className="mx-auto grid max-w-[1200px] grid-cols-1 items-start gap-8 px-4 py-12 lg:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-4">
+            <p className={`${eyebrow} text-side-muted`}>{T.contactEyebrow}</p>
+            <h2 className="m-0 text-3xl leading-tight font-bold">{T.contactTitle}</h2>
+            <p className="m-0 text-side-text">{T.contactText}</p>
+            <div className="flex flex-wrap gap-3">
+              <a href="mailto:sales@nutrikal.com" className={light}>sales@nutrikal.com</a>
+              <a href="https://wa.me/359882919140" target="_blank" rel="noopener" className={outline}>WhatsApp</a>
+            </div>
+            <div className="flex flex-col text-sm">
+              <a href="tel:+359882919140" className="flex min-h-11 items-center text-side-text no-underline">{T.phoneEu}: +359 882 919 140</a>
+              <a href="tel:+18888488534" className="flex min-h-11 items-center text-side-text no-underline">{T.phoneUs}: +1 (888) 848 8534</a>
+            </div>
           </div>
-          <div className="flex flex-wrap justify-center gap-x-6 text-sm">
-            <a href="tel:+359882919140" className="flex min-h-11 items-center text-side-text no-underline">{T.phoneEu}: +359 882 919 140</a>
-            <a href="tel:+18888488534" className="flex min-h-11 items-center text-side-text no-underline">{T.phoneUs}: +1 (888) 848 8534</a>
-          </div>
+          <CatalogContact text={T} locale={locale} />
         </div>
       </section>
     </>

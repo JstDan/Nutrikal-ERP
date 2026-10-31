@@ -19,7 +19,7 @@ export default async function PublicCatalogPage() {
   const t = getDict(locale);
   return (
     <CatalogBrowser data={row.data} locale={locale} text={t.publicCatalog} formats={t.enums.productFormat}>
-      <CatalogCompany text={t.publicCatalog} />
+      <CatalogCompany text={t.publicCatalog} locale={locale} />
     </CatalogBrowser>
   );
 }

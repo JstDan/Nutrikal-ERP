@@ -51,24 +51,103 @@ export function CatalogVideo({ title }: { title: string }) {
   );
 }
 
-/** A photo, or a plain picture by format until the product has one. */
-function Picture({ product, alt, small = false }: { product: Product; alt: string; small?: boolean }) {
-  const pill = ["capsule", "softgel", "tablet"].includes(product.format ?? "");
-  if (product.image) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={product.image} alt={alt} loading="lazy" width={382} height={460} className={small ? "mx-auto h-56 w-auto rounded-md" : "aspect-[193/232] w-full rounded-md object-cover"} />;
+/** A question without products: it arrives with the enquiries. */
+export function CatalogContact({ text, locale }: { text: Dict["publicCatalog"]; locale: Locale }) {
+  const T = text;
+  const [form, setForm] = useState({ company: "", contact_name: "", email: "", message: "", website: "" });
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const started = useRef(0);
+  useEffect(() => { started.current = Date.now(); }, []);
+  const field = (k: keyof typeof form) => ({ value: form[k], onChange: (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value })) });
+
+  async function send(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSending(true);
+    setError("");
+    try {
+      const r = await fetch("/api/catalog-enquiry", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...form, locale, started_at: started.current, lines: [] }),
+      });
+      const out = await r.json();
+      if (!r.ok) { setError(out.error === "busy" ? T.busy : out.error === "invalid" ? T.invalid : T.failed); return; }
+      setDone(true);
+    } catch {
+      setError(T.failed);
+    } finally {
+      setSending(false);
+    }
   }
+
+  if (done) return <div role="status" className="flex flex-col gap-1 rounded-lg bg-paper p-5 text-ink"><p className="m-0 font-bold">{T.thanks}</p><p className="m-0 text-sm text-ink-2">{T.contactThanks}</p></div>;
   return (
-    <div aria-hidden="true" className={`grid place-items-center rounded-md bg-neutral-tint text-ink-2 ${small ? "h-28" : "aspect-[193/232]"}`}>
-      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-        {pill
-          ? <><path d="M10.5 20.5a4.950 4.950 0 0 1-7-7l10-10a4.950 4.950 0 0 1 7 7z" /><path d="m8.500 8.500 7 7" /></>
-          : <><path d="M8 3h8v3H8z" /><path d="M7 6h10a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z" /><path d="M6 11h12M6 16h12" /></>}
-      </svg>
-    </div>
+    <form onSubmit={send} aria-label={T.contactFormTitle} className="flex min-w-0 flex-col gap-3 rounded-lg bg-paper p-5 text-ink">
+      <h3 className="m-0 text-lg font-bold">{T.contactFormTitle}</h3>
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="field min-w-0"><span>{T.company} *</span><input required maxLength={200} autoComplete="organization" className="input w-full min-w-0" {...field("company")} /></label>
+        <label className="field min-w-0"><span>{T.contact} *</span><input required maxLength={200} autoComplete="name" className="input w-full min-w-0" {...field("contact_name")} /></label>
+      </div>
+      <label className="field"><span>{T.email} *</span><input type="email" required maxLength={254} autoComplete="email" className="input" {...field("email")} /></label>
+      <label className="field"><span>{T.contactQuestion} *</span><textarea required rows={4} maxLength={2000} className="input" {...field("message")} /></label>
+      <input tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-px w-px opacity-0" {...field("website")} />
+      <p className="m-0 text-xs text-ink-2">{T.privacy}</p>
+      {error && <p role="alert" className="m-0 text-sm font-semibold text-red-ink">{error}</p>}
+      <button type="submit" disabled={sending} className="btn btn-primary self-start">{sending ? "…" : T.contactSend}</button>
+    </form>
   );
 }
 
+/** The name on a drawn label: without the note in brackets or the weight, in short lines. */
+function labelLines(name: string) {
+  const words = name.replace(/\(.*\)/, "").replace(/\s[-–]\s.*$/, "").replace(/[™®]/g, "").trim().toUpperCase().split(/\s+/);
+  const lines: string[] = [];
+  for (const w of words) {
+    if (lines.length && (lines.at(-1) + " " + w).length <= 11) lines[lines.length - 1] += " " + w;
+    else lines.push(w);
+  }
+  return lines.slice(0, 4);
+}
+
+/** Until a product has a photo: a blank bottle or doypack, like the mock-ups, with the product name. */
+function DrawnPack({ name, pouch, className }: { name: string; pouch: boolean; className: string }) {
+  const lines = labelLines(name);
+  const room = pouch ? 96 : 80;
+  const size = Math.min(18, room / (Math.max(...lines.map((l) => l.length)) * 0.74));
+  return (
+    <svg aria-hidden="true" viewBox="0 0 193 232" className={className}>
+      <rect width="193" height="232" fill="#b1aeaa" />
+      {pouch ? (
+        <>
+          <path d="M42 26h109l5 12-5 8 8 160q0 8-8 8H42q-8 0-8-8l8-160-5-8z" fill="#fff" stroke="#d9d7d4" />
+          <path d="M42 46h109" stroke="#e3e1de" strokeWidth="2" />
+          <rect x="47" y="31" width="99" height="4" rx="2" fill="#e9e7e4" />
+        </>
+      ) : (
+        <>
+          <rect x="62" y="20" width="69" height="28" rx="4" fill="#f4f3f1" stroke="#d9d7d4" />
+          <path d="M67 48h59v8q17 5 17 22v126q0 12-12 12H62q-12 0-12-12V78q0-17 17-22z" fill="#fff" stroke="#d9d7d4" />
+        </>
+      )}
+      <text x="96.500" y={100} textAnchor="middle" fill="#222831" fontWeight="800" fontSize={size} letterSpacing="-0.3">
+        {lines.map((l, i) => <tspan key={i} x="96.500" dy={i ? size + 2 : 0}>{l}</tspan>)}
+      </text>
+      <rect x={pouch ? 42 : 50} y="176" width={pouch ? 109 : 93} height="16" fill="#4a5160" />
+    </svg>
+  );
+}
+
+/** A photo, or a drawn pack until the product has one. */
+function Picture({ product, alt, size = "card" }: { product: Product; alt: string; size?: "card" | "detail" | "line" }) {
+  const box = { card: "aspect-[193/232] w-full rounded-md object-cover", detail: "mx-auto h-64 w-auto rounded-md", line: "h-[72px] w-[60px] shrink-0 rounded-sm object-cover" }[size];
+  if (product.image) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={product.image} alt={alt} loading="lazy" width={640} height={769} className={box} />;
+  }
+  return <DrawnPack name={alt} pouch={product.format === "powder" || product.format === "bar"} className={box} />;
+}
 function Dialog({ title, close, closeLabel, footer, children }: { title: string; close: () => void; closeLabel: string; footer?: ReactNode; children: ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-[#00000066]" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
@@ -141,11 +220,12 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
   const allValid = lines.every((p) => basket[p.code] >= p.min_qty);
   const total = lines.reduce((sum, p) => sum + priceAt(p, basket[p.code]) * basket[p.code], 0);
 
-  const add = (p: Product) => setBasket((b) => ({ ...b, [p.code]: b[p.code] ?? p.min_qty }));
+  const openBasket = () => { setSent(null); setError(""); setStep("lines"); setShowBasket(true); };
+  // Adding opens the list, so the buyer sees it land and can set the quantity at once
+  const add = (p: Product) => { setBasket((b) => ({ ...b, [p.code]: b[p.code] ?? p.min_qty })); setOpen(null); openBasket(); };
   const remove = (code: string) => setBasket((b) => Object.fromEntries(Object.entries(b).filter(([c]) => c !== code)));
   const setQty = (code: string, qty: number) => setBasket((b) => ({ ...b, [code]: Math.max(Math.floor(qty) || 0, 0) }));
   const field = (k: keyof typeof form) => ({ value: form[k], onChange: (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value })) });
-  const openBasket = () => { setSent(null); setError(""); setStep("lines"); setShowBasket(true); };
   const pick = (id: string) => { setCategory(id); productsTop.current?.scrollIntoView(); };
 
   async function send(e: FormEvent<HTMLFormElement>) {
@@ -179,7 +259,8 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
         <span className="line-clamp-2 min-h-10 min-w-0 break-words text-sm leading-5 font-bold">{local(p.name, p.name_bg)}</span>
       </button>
       <p className="m-0 mt-auto text-sm">{fmt(T.fromPrice, { price: money(p.tiers.at(-1)!.unit_price) })}</p>
-      <button type="button" onClick={() => add(p)} disabled={!!basket[p.code]} className="btn btn-primary w-full">{basket[p.code] ? T.inBasket : T.add}</button>
+      <button type="button" onClick={() => add(p)} className="btn btn-primary w-full !px-2">{basket[p.code] ? T.inBasket : T.add}</button>
+      <button type="button" onClick={() => setOpen(p)} className="btn btn-outline w-full !px-2">{T.learnMore}</button>
     </article>
   );
   const grid = "grid min-w-0 grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4";
@@ -269,9 +350,9 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
 
       {open && (
         <Dialog title={local(open.name, open.name_bg)} close={() => setOpen(null)} closeLabel={T.close} footer={
-          <button type="button" onClick={() => { add(open); setOpen(null); }} disabled={!!basket[open.code]} className="btn btn-primary w-full">{basket[open.code] ? T.inBasket : T.add}</button>
+          <button type="button" onClick={() => add(open)} className="btn btn-primary w-full">{basket[open.code] ? T.inBasket : T.add}</button>
         }>
-          <Picture small product={open} alt={local(open.name, open.name_bg)} />
+          <Picture size="detail" product={open} alt={local(open.name, open.name_bg)} />
           <p className="m-0 text-sm text-ink-2">
             {[open.format && formats[open.format as "capsule"], open.code,
               (locale === "bg" ? open.pack_bg ?? open.pack : open.pack)
@@ -348,8 +429,12 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
                 const next = p.tiers.find((t) => t.min_qty > qty);
                 return (
                   <div key={p.code} className="flex min-w-0 flex-col gap-2 border-b border-mist pb-3">
-                    <div className="flex min-w-0 items-start justify-between gap-2">
-                      <span className="min-w-0 break-words pt-2 text-sm font-semibold">{local(p.name, p.name_bg)}</span>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Picture size="line" product={p} alt={local(p.name, p.name_bg)} />
+                      <span className="flex min-w-0 flex-1 flex-col pt-1">
+                        <span className="break-words text-sm font-semibold">{local(p.name, p.name_bg)}</span>
+                        <span className="text-xs text-ink-2">{p.code}</span>
+                      </span>
                       <button type="button" onClick={() => remove(p.code)} aria-label={fmt(T.remove, { name: local(p.name, p.name_bg) })} className="grid h-11 w-11 shrink-0 place-items-center text-lg text-ink-2 hover:text-ink">×</button>
                     </div>
                     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
