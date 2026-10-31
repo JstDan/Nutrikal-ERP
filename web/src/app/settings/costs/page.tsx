@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { q } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { ActionForm } from "@/components/action-form";
 import { Card, PageHeader } from "@/components/ui";
+import { SettingsTabs } from "@/components/settings-tabs";
 import { saveFormatCosting } from "@/app/actions";
 
 type Row = {
@@ -11,9 +11,8 @@ type Row = {
 };
 
 export default async function CostingPage() {
-  const { user, t } = await requireRole("admin", "sales");
+  const { user, t } = await requireRole("admin");
   const c = t.offers.costingPage;
-  const isAdmin = user.role === "admin";
   const rows = await q<Row>(
     user.id,
     `select product_format, fee_per_pack::text, fee_per_1000_units::text, fee_per_kg::text, setup_fee::text, loss_pct::text,
@@ -24,14 +23,15 @@ export default async function CostingPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={c.title} subtitle={c.subtitle} crumb={<Link href="/offers" className="text-ink-2">{t.offers.title}</Link>} />
-      {!isAdmin && <p className="m-0 text-sm text-ink-2">{c.adminOnly}</p>}
+      <PageHeader title={t.adminSettings.title} subtitle={t.adminSettings.subtitle} />
+      <SettingsTabs t={t} active="costs" />
+      <p className="m-0 text-sm text-ink-2">{c.subtitle}</p>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {rows.map((r) => (
           <Card key={r.product_format} title={t.enums.productFormat[r.product_format as "capsule"]}>
             <ActionForm action={saveFormatCosting} submitLabel={t.common.save} resetOnSuccess={false}>
               <input type="hidden" name="product_format" value={r.product_format} />
-              <fieldset disabled={!isAdmin} className="m-0 grid grid-cols-1 gap-3 border-0 p-0 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-4">
+              <fieldset className="m-0 grid grid-cols-1 gap-3 border-0 p-0 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-4">
                 <label className="field"><span>{c.feePerPack}</span><input name="fee_per_pack" type="number" min={0} step="any" defaultValue={n(r.fee_per_pack)} className="input" /></label>
                 <label className="field"><span>{c.feePer1000}</span><input name="fee_per_1000_units" type="number" min={0} step="any" defaultValue={n(r.fee_per_1000_units)} className="input" /></label>
                 <label className="field"><span>{c.feePerKg}</span><input name="fee_per_kg" type="number" min={0} step="any" defaultValue={n(r.fee_per_kg)} className="input" /></label>

@@ -163,6 +163,10 @@ export default async function FactoryOrderPage({ params }: PageProps<"/factory/o
                   <label className="field"><span>{O.batchNumber} *</span><input name="batch_number" required className="input" /></label>
                   <label className="field"><span>{O.produced} *</span><input name="produced_quantity" type="number" min={1} step={1} required defaultValue={mo.quantity} className="input" /></label>
                   <label className="field"><span>{O.producedOn} *</span><input name="produced_on" type="date" required className="input" /></label>
+                  <label className="field"><span>{O.expiresOn} *</span>
+                    <input name="expires_on" type="date" required className="input" aria-describedby="expiry-hint" />
+                    <small id="expiry-hint" className="text-xs text-ink-2">{O.expiresHint}</small>
+                  </label>
                 </div>
               </ActionForm>
             </Card>

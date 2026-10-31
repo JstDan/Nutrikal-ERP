@@ -20,9 +20,13 @@ export type CommitmentRow = {
   code: string; supplier: string | null; sku: string; name: string; name_bg: string | null; base_unit: string;
   expected_on: string | null; remaining: string; unit_price: string | null; value: string | null; po_reference: string | null;
 };
+export type CogsRow = {
+  date: string; note: string; order_code: string; client: string; lot_number: string; name: string; name_bg: string | null;
+  quantity: string; unit_cost: string | null; value: string | null;
+};
 export type AccountingData = {
-  movements: MovementRow[]; consumption: ConsumptionRow[]; stock: StockRow[]; commitments: CommitmentRow[];
-  totals: { received: number; consumed: number; stock: number; commitments: number; noCost: number };
+  movements: MovementRow[]; consumption: ConsumptionRow[]; stock: StockRow[]; commitments: CommitmentRow[]; cogs: CogsRow[];
+  totals: { received: number; consumed: number; stock: number; commitments: number; noCost: number; cogs: number };
 };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -86,15 +90,31 @@ export async function loadAccounting(userId: string, from: string, to: string): 
         order by d.expected_on nulls last, d.code`,
     )).rows;
 
+    const cogs = (await tx.query<CogsRow>(
+      `select d.dispatched_on::text as date, d.code as note, so.code as order_code, c.legal_name as client, l.lot_number,
+              i.name, i.name_bg, dl.quantity::text, lc.unit_cost::text, (dl.quantity * lc.unit_cost)::text as value
+         from dispatch_lines dl
+         join dispatches d on d.id = dl.dispatch_id
+         join sales_orders so on so.id = d.order_id
+         join clients c on c.id = so.client_id
+         join lots l on l.id = dl.lot_id
+         join items i on i.id = dl.item_id
+         left join lot_costs lc on lc.lot_id = dl.lot_id
+        where d.dispatched_on between $1::date and $2::date
+        order by d.dispatched_on, d.code, l.lot_number`,
+      [from, to],
+    )).rows;
+
     const sum = <T>(rows: T[], f: (r: T) => string | null) => rows.reduce((a, r) => a + Number(f(r) ?? 0), 0);
     return {
-      movements, consumption, stock, commitments,
+      movements, consumption, stock, commitments, cogs,
       totals: {
         received: sum(movements.filter((m) => m.type === "receipt"), (m) => m.value),
         consumed: sum(consumption, (c) => c.value),
         stock: sum(stock, (s) => s.value),
         commitments: sum(commitments, (c) => c.value),
         noCost: movements.filter((m) => m.unit_cost == null).length,
+        cogs: sum(cogs, (c) => c.value),
       },
     };
   });

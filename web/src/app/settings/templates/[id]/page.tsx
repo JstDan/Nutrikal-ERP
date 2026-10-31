@@ -23,7 +23,7 @@ const RULES = [
 const CONDITIONS = ["payment:split", "payment:full", "service:free_sale", "service:label_design"] as const;
 
 /** One task template (admin): its columns and the tasks in them. Changes apply to future orders only. */
-export default async function TemplatePage({ params }: PageProps<"/orders/templates/[id]">) {
+export default async function TemplatePage({ params }: PageProps<"/settings/templates/[id]">) {
   const { id } = await params;
   const { user, locale, t } = await requireRole("admin");
   const T = t.tasks.templates;
@@ -121,7 +121,7 @@ export default async function TemplatePage({ params }: PageProps<"/orders/templa
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        crumb={<><Link href="/orders" className="text-ink-2">{t.orders.title}</Link> / <Link href="/orders/templates" className="text-ink-2">{T.title}</Link></>}
+        crumb={<><Link href="/orders" className="text-ink-2">{t.orders.title}</Link> / <Link href="/settings/templates" className="text-ink-2">{T.title}</Link></>}
         title={locale === "en" ? tpl.name_en || tpl.name_bg : tpl.name_bg}
         subtitle={T.subtitle}
       />

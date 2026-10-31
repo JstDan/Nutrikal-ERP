@@ -33,6 +33,7 @@ export async function GET(request: Request) {
     [A.receivedValue, d.totals.received],
     [A.consumedValue, d.totals.consumed],
     [A.stockValue, d.totals.stock],
+    [A.cogs, d.totals.cogs],
     [A.openDeliveries, d.totals.commitments],
     [A.sheetNote, ""],
   ], [40, 24]), A.sheets.summary);
@@ -49,6 +50,12 @@ export async function GET(request: Request) {
     [C.production, C.project, C.sku, C.item, C.quantity, C.unit, C.value],
     ...d.consumption.map((c) => [c.mo_code, c.project_code, c.sku, nm(c), n(c.quantity), unit(c.base_unit), n(c.value)]),
   ], [16, 12, 12, 34, 12, 7, 12]), A.sheets.consumption);
+
+  const G = A.cogsCols;
+  XLSX.utils.book_append_sheet(wb, sheet([
+    [G.date, G.note, G.order, G.client, G.lot, G.item, G.quantity, G.unitCost, G.value],
+    ...d.cogs.map((c) => [day(c.date), c.note, c.order_code, c.client, c.lot_number, nm(c), n(c.quantity), n(c.unit_cost), n(c.value)]),
+  ], [11, 12, 12, 30, 14, 34, 11, 12, 12]), A.cogsSheet);
 
   XLSX.utils.book_append_sheet(wb, sheet([
     [C.sku, C.item, C.lot, C.location, C.qcStatus, C.expires, C.quantity, C.unit, C.unitCost, C.value],

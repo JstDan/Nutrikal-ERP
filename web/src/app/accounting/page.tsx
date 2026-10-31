@@ -14,6 +14,7 @@ export default async function AccountingPage({ searchParams }: PageProps<"/accou
     { label: A.receivedValue, value: money(data.totals.received) },
     { label: A.consumedValue, value: money(data.totals.consumed) },
     { label: A.stockValue, value: money(data.totals.stock) },
+    { label: A.cogs, value: money(data.totals.cogs) },
     { label: A.openDeliveries, value: money(data.totals.commitments) },
   ];
 

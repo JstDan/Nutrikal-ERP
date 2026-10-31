@@ -511,7 +511,7 @@ export async function saveFormatCosting(_: ActionState, fd: FormData): Promise<A
   } catch (e) {
     return { error: errorText(e) };
   }
-  revalidatePath("/offers/costing");
+  revalidatePath("/settings/costs");
   return { ok: true, message: t.common.saved };
 }
 
@@ -805,8 +805,8 @@ export async function completeProduction(_: ActionState, fd: FormData): Promise<
   }
   const batch = str(fd, "batch_number") ?? "";
   const qty = num(fd, "produced_quantity");
-  return moCall(fd, "select complete_production($1, $2, $3::int, $4::date, $5::jsonb, $6::jsonb)",
-    [str(fd, "mo_id"), batch, qty, str(fd, "produced_on"), JSON.stringify(usage), JSON.stringify(reasons)],
+  return moCall(fd, "select complete_production($1, $2, $3::int, $4::date, $5::jsonb, $6::jsonb, $7::date)",
+    [str(fd, "mo_id"), batch, qty, str(fd, "produced_on"), JSON.stringify(usage), JSON.stringify(reasons), str(fd, "expires_on")],
     () => fmt(t.factory.order.done, { batch, qty: qty ?? 0 }));
 }
 

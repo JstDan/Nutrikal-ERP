@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SettingsTabs } from "@/components/settings-tabs";
 import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { Card, Chip, PageHeader } from "@/components/ui";
@@ -20,13 +21,14 @@ export default async function TemplatesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader crumb={<Link href="/orders" className="text-ink-2">{t.orders.title}</Link>} title={T.title} subtitle={T.subtitle} />
+      <PageHeader title={t.adminSettings.title} subtitle={t.adminSettings.subtitle} />
+      <SettingsTabs t={t} active="templates" />
       <Card>
         <ul className="m-0 flex list-none flex-col p-0">
           {rows.map((x) => (
             <li key={x.id} className="flex min-h-11 flex-wrap items-center justify-between gap-3 border-b border-mist py-2 last:border-0">
               <span className="flex min-w-0 flex-wrap items-center gap-2">
-                <Link href={`/orders/templates/${x.id}`} className="font-semibold break-words text-ink">{name(x)}</Link>
+                <Link href={`/settings/templates/${x.id}`} className="font-semibold break-words text-ink">{name(x)}</Link>
                 {x.is_default && <Chip tone="green">{T.isDefault}</Chip>}
                 {!x.active && <Chip tone="neutral">{T.inactive}</Chip>}
               </span>

@@ -182,3 +182,47 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
 @container (max-width: 767px) { .cq-hide-md { display: none !important; } }
 
 
+
+/* Nutrikal documents (offer, proforma, invoice, delivery note, purchase order, reports):
+   always light paper, also in the dark theme; same look on screen, printed and in the PDF files. */
+.doc {
+  --color-ink: #222831; --color-ink-2: #4a5160; --color-ink-strong: #000000; --color-white: #ffffff; --color-paper: #ffffff;
+  --color-mist: #ebebeb; --color-line: #dde1e8; --color-line-strong: #c6cdd9; --color-canvas: #f4f5f7;
+  --color-green-tint: #e3f3d8; --color-green-ink: #2e6b14; --color-amber-tint: #fff1d1; --color-amber-ink: #6e4a00;
+  --color-red-tint: #fce5e0; --color-red-ink: #a3240b; --color-neutral-tint: #edeff3;
+  display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  background: #ffffff; color: #222831; border: 1px solid #dde1e8; border-radius: 4px; font-size: 14px; line-height: 1.5;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.doc-band { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 22px 20px; background: #222831; color: #ffffff; }
+.doc-title { margin: 0; color: #ffffff; font-size: 22px; font-weight: 300; letter-spacing: 4px; line-height: 1.2; text-transform: uppercase; overflow-wrap: anywhere; }
+.doc-logo { height: 30px; width: auto; padding: 4px 8px; background: #ffffff; border-radius: 2px; }
+.doc-meta { display: flex; flex-wrap: wrap; gap: 8px 36px; margin: 0; padding: 12px 20px; background: #f4f5f7; border-bottom: 1px solid #dde1e8; }
+.doc-meta dt { font-size: 10px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: #4a5160; }
+.doc-meta dd { margin: 0; font-weight: 600; }
+.doc-body { display: flex; flex-direction: column; gap: 26px; padding: 22px 20px; }
+.doc-section { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.doc-label { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 1.6px; text-transform: uppercase; color: #4a5160; }
+.doc-th { padding: 0 0 8px; border-bottom: 1px solid #222831; font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: #4a5160; }
+.doc-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 12px; align-items: baseline; }
+.doc-line { padding: 11px 0; border-bottom: 1px solid #ebebeb; }
+.doc-cell-main { grid-column: 1 / -1; }
+.doc-num { text-align: right; font-variant-numeric: tabular-nums; }
+.doc-totals { display: flex; flex-direction: column; gap: 5px; width: 100%; max-width: 340px; margin-left: auto; padding-top: 14px; font-variant-numeric: tabular-nums; }
+.doc-total { display: flex; justify-content: space-between; gap: 16px; padding: 0 12px; color: #4a5160; }
+.doc-total-due { display: flex; justify-content: space-between; gap: 16px; margin-top: 4px; padding: 10px 12px; background: #222831; color: #ffffff; font-size: 16px; font-weight: 700; }
+.doc-foot { padding: 12px 20px; border-top: 1px solid #dde1e8; font-size: 11px; text-align: center; color: #4a5160; }
+@media (min-width: 768px), print {
+  .doc-band { padding: 26px 40px; }
+  .doc-title { font-size: 26px; }
+  .doc-meta { padding: 12px 40px; }
+  .doc-body { padding: 28px 40px; }
+  .doc-foot { padding: 12px 40px; }
+  .doc-row { grid-template-columns: minmax(0, 1fr) 96px 112px 120px; }
+  .doc-cell-main { grid-column: auto; }
+}
+@media print {
+  .doc { border: 0; border-radius: 0; }
+  .doc-line, .doc-totals, .doc-section { break-inside: avoid; }
+}
+@page { margin: 12mm; }

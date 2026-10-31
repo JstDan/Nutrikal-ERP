@@ -41,7 +41,6 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
         subtitle={t.orders.subtitle}
         actions={seesPrices ? (
           <span className="flex flex-wrap gap-2">
-            {user.role === "admin" && <Link href="/orders/templates" className="btn btn-outline">{t.tasks.templates.title}</Link>}
             <Link href="/orders/new" className="btn btn-primary">+ {t.orders.newOrder}</Link>
           </span>
         ) : undefined}

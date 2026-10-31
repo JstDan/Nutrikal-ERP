@@ -46,7 +46,6 @@ export default async function OffersPage({ searchParams }: PageProps<"/offers">)
       <PageHeader
         title={t.offers.title}
         subtitle={t.offers.subtitle}
-        actions={<Link href="/offers/costing" className="btn btn-outline">{t.offers.costing}</Link>}
       />
       {/* Offers are created in the calculator (Create offer), not here */}
       <OffersList t={t.calc} locale={locale} offers={calcOffers} settings={settings} userId={user.id} isAdmin={user.role === "admin"} inOrder={inOrder} />

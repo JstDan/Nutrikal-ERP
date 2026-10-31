@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { supabaseAdmin, supabaseConfigured } from "./supabase/server";
 
 export const DELIVERY_BUCKET = "delivery-docs";
+export const LOT_BUCKET = "lot-documents";
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 const EXT: Record<string, string> = {

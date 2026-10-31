@@ -17,7 +17,7 @@ const str = (fd: FormData, k: string) => {
 };
 const COLORS = ["grey", "blue", "purple", "orange", "teal"];
 const CONDITIONS = ["payment:split", "payment:full", "service:free_sale", "service:label_design"];
-const path = (id: string | null) => `/orders/templates/${id ?? ""}`;
+const path = (id: string | null) => `/settings/templates/${id ?? ""}`;
 
 /** "BG | EN" per line -> [{bg, en}] */
 function checklist(raw: string | null) {
@@ -83,7 +83,7 @@ export async function deleteTemplate(fd: FormData) {
   const { user } = await getSession();
   await q(user.id, `delete from order_task_templates where id = $1
                       and not exists (select 1 from order_task_boards where template_id = $1)`, [uuid(fd.get("template_id"))]);
-  redirect("/orders/templates");
+  redirect("/settings/templates");
 }
 
 export async function addTemplateColumn(_: ActionState, fd: FormData): Promise<ActionState> {

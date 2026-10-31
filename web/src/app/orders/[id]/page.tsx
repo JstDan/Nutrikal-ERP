@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DispatchCard } from "@/components/dispatch-card";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
@@ -39,7 +40,7 @@ const NEXT: Record<string, string[]> = {
   // in_production comes by itself when a manufacturing order is sent to Production (release_mo)
   confirmed: ["cancelled"],
   in_production: ["ready", "cancelled"],
-  ready: ["dispatched"],
+  // ready: dispatched with its batches on the Dispatch card
   dispatched: ["closed"],
 };
 
@@ -341,6 +342,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
               ))}
             </Card>
           )}
+
+          <DispatchCard orderId={o.id} status={o.status} isAdmin={isAdmin} userId={user.id} locale={locale} t={t}
+            balanceDue={!!c && c.balance_terms === "before_dispatch" && !c.balance_received_on} />
 
           {c && final && paid && o.status !== "cancelled" && (
             <Card title={F.title} id="final-h">

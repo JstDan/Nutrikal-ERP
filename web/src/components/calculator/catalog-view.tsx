@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveCatalogSheetUrl, syncCatalog } from "@/app/calculator/actions";
+import { syncCatalog } from "@/app/calculator/actions";
 import { extractSheetId } from "@/lib/calculator/materialImport";
 import { matchesQuery } from "@/lib/calculator/search";
 import type { CatalogProduct, CatalogSyncRun, Settings } from "@/lib/calculator/types";
@@ -45,7 +45,7 @@ function Catalog({ products, settings, lastSync, isAdmin }: Props) {
 
   return (
     <div className="flex flex-col gap-5">
-      <CatalogSyncCard settings={settings} lastSync={lastSync} isAdmin={isAdmin} onDone={(ok, message) => show(ok ? "success" : "error", message)} />
+      <CatalogSyncCard settings={settings} lastSync={lastSync} onDone={(ok, message) => show(ok ? "success" : "error", message)} />
       <Notice>{c.managedInSheet}</Notice>
 
       <div className="flex flex-wrap items-center gap-4">
@@ -88,19 +88,15 @@ function Catalog({ products, settings, lastSync, isAdmin }: Props) {
   );
 }
 
-function CatalogSyncCard({ settings, lastSync, isAdmin, onDone }: {
-  settings: Settings; lastSync: CatalogSyncRun | null; isAdmin: boolean; onDone: (ok: boolean, message: string) => void;
+function CatalogSyncCard({ settings, lastSync, onDone }: {
+  settings: Settings; lastSync: CatalogSyncRun | null; onDone: (ok: boolean, message: string) => void;
 }) {
   const { t, locale } = useCalcText();
   const c = t.catalogTab;
   const s = t.sync;
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
-  const [url, setUrl] = useState(settings.catalog_sheet_url);
-  const [saving, setSaving] = useState(false);
   const fileId = extractSheetId(settings.catalog_sheet_url);
-  const urlOk = !!extractSheetId(url);
-  const editable = isAdmin && !settings.catalog_sheet_from_env;
   const when = (iso: string) => formatDate(locale, iso, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
   const sync = async () => {
@@ -111,15 +107,6 @@ function CatalogSyncCard({ settings, lastSync, isAdmin, onDone }: {
     const run = res.data;
     if (run.status === "success") onDone(true, fmt(c.okShort, { added: run.added, changed: run.changed, removed: run.removed }));
     else onDone(false, `${s.failed}: ${run.error ?? ""}`);
-    router.refresh();
-  };
-
-  const saveUrl = async () => {
-    setSaving(true);
-    const res = await saveCatalogSheetUrl(url);
-    setSaving(false);
-    if (!res.ok) return onDone(false, res.error);
-    onDone(true, c.linkSaved);
     router.refresh();
   };
 
@@ -156,32 +143,6 @@ function CatalogSyncCard({ settings, lastSync, isAdmin, onDone }: {
           <br />
           {lastSync.error}
         </Notice>
-      )}
-      {isAdmin && (
-        <div className="flex flex-wrap items-end gap-3 border-t border-mist pt-4">
-          <Field
-            label={c.sheetUrl}
-            htmlFor="catalog-sheet-url"
-            error={urlOk ? undefined : s.sheetUrlInvalid}
-            hint={settings.catalog_sheet_from_env ? c.sheetUrlFromEnv : c.sheetUrlHint}
-            className="min-w-0 flex-[1_1_320px]"
-          >
-            <input
-              id="catalog-sheet-url"
-              readOnly={!editable}
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              aria-describedby="catalog-sheet-url-msg"
-              aria-invalid={!urlOk || undefined}
-              className={inputClass(!urlOk)}
-            />
-          </Field>
-          {editable && (
-            <button type="button" onClick={saveUrl} disabled={!urlOk || saving || url.trim() === settings.catalog_sheet_url} className="btn btn-outline">
-              {saving ? "…" : t.settings.saveSettings}
-            </button>
-          )}
-        </div>
       )}
     </section>
   );

@@ -9,7 +9,6 @@ import type { RawMaterial, Settings, SyncRun } from "@/lib/calculator/types";
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import { Chip, Empty } from "@/components/ui";
 import { CalcTextProvider, Notice, Toast, Toggle, useCalcText, useToast, type CalcDict } from "./kit";
-import { SettingsPanel } from "./settings-panel";
 
 type Props = {
   t: CalcDict;
@@ -93,7 +92,6 @@ function Materials({ materials, settings, lastSync, isAdmin }: Props) {
         ))}
       </section>
 
-      <SettingsPanel settings={settings} isAdmin={isAdmin} onSaved={(message) => show("success", message)} />
       <Toast toast={toast} onClose={clear} closeLabel={t.close} />
     </div>
   );

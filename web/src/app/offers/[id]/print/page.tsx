@@ -4,7 +4,7 @@ import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice, getDict } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
-import { Wordmark } from "@/components/logo";
+import { DocHeader } from "@/components/sales-document";
 
 type Doc = {
   code: string; locale: "bg" | "en"; currency: string; incoterm: string; valid_until: string | null; created_at: string;
@@ -61,25 +61,20 @@ export default async function OfferPrintPage({ params }: PageProps<"/offers/[id]
         <Link href={`/offers/${id}`} className="btn btn-outline">{ui.offers.doc.back}</Link>
       </div>
 
-      <article lang={l} className="card flex flex-col gap-6 p-6 text-sm sm:p-10 print:border-0 print:p-0">
-        <header className="flex flex-wrap justify-between gap-6">
-          <div className="min-w-0">
-            <Wordmark height={26} className="mb-2" />
-            <div className="text-ink-2">
-              {[co?.legal_name, co?.address_line1, [co?.postal_code, co?.city].filter(Boolean).join(" "), co?.vat_number].filter(Boolean).join(" · ")}
-            </div>
-            <div className="text-ink-2 break-all">{[co?.email, co?.phone, co?.website].filter(Boolean).join(" · ")}</div>
+      <article lang={l} className="doc">
+        <DocHeader title={D.title} meta={[`${D.number}: ${o.code}`, `${D.date}: ${formatDate(l, o.sent_at ?? o.created_at)}`, `${D.validUntil}: ${formatDate(l, o.valid_until)}`]} sellerName={co?.trade_name ?? "Nutrikal"} logoDataUrl={null} />
+        <div className="doc-body">
+        <section className="doc-section">
+          <h2 className="doc-label">{D.from}</h2>
+          <div className="font-semibold">{co?.legal_name ?? co?.trade_name}</div>
+          <div className="text-ink-2">
+            {[co?.address_line1, [co?.postal_code, co?.city].filter(Boolean).join(" "), co?.vat_number].filter(Boolean).join(" · ")}
           </div>
-          <div className="min-w-0 text-right">
-            <h1 className="m-0 text-[28px] font-extrabold tracking-[0.6px]">{D.title}</h1>
-            <div>{D.number} <strong>{o.code}</strong></div>
-            <div>{D.date}: {formatDate(l, o.sent_at ?? o.created_at)}</div>
-            <div>{D.validUntil}: {formatDate(l, o.valid_until)}</div>
-          </div>
-        </header>
+          <div className="text-ink-2 break-all">{[co?.email, co?.phone, co?.website].filter(Boolean).join(" · ")}</div>
+        </section>
 
         <section className="flex flex-col gap-1">
-          <h2 className="label m-0">{D.to}</h2>
+          <h2 className="doc-label">{D.to}</h2>
           <div className="font-semibold">{o.client}</div>
           <div className="text-ink-2">
             {[o.client_address, [o.client_postal, o.client_city].filter(Boolean).join(" "), o.client_country, o.client_vat].filter(Boolean).join(" · ")}
@@ -87,7 +82,7 @@ export default async function OfferPrintPage({ params }: PageProps<"/offers/[id]
         </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="label m-0">{D.product}</h2>
+          <h2 className="doc-label">{D.product}</h2>
           <div className="text-lg font-bold">{l === "bg" && o.product_bg ? o.product_bg : o.product}</div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <div><span className="text-ink-2">{D.format}: </span>{t.enums.productFormat[o.product_format as "capsule"]}</div>
@@ -97,7 +92,7 @@ export default async function OfferPrintPage({ params }: PageProps<"/offers/[id]
         </section>
 
         <section className="flex flex-col gap-2">
-          <h2 className="label m-0">{D.composition}</h2>
+          <h2 className="doc-label">{D.composition}</h2>
           <div className="row grid-cols-[minmax(0,1fr)_120px] border-b border-line py-1.5 font-semibold">
             <span>{D.ingredient}</span><span className="text-right">{D.amount}</span>
           </div>
@@ -125,7 +120,7 @@ export default async function OfferPrintPage({ params }: PageProps<"/offers/[id]
         </section>
 
         <section className="flex flex-col gap-2">
-          <h2 className="label m-0">{D.prices}</h2>
+          <h2 className="doc-label">{D.prices}</h2>
           <div className="row grid-cols-[minmax(0,1fr)_110px_120px] border-b border-line py-1.5 font-semibold">
             <span>{D.quantity}</span><span className="text-right">{D.unitPrice}</span><span className="text-right">{D.total}</span>
           </div>
@@ -139,7 +134,7 @@ export default async function OfferPrintPage({ params }: PageProps<"/offers/[id]
         </section>
 
         <section className="flex flex-col gap-1">
-          <h2 className="label m-0">{D.terms}</h2>
+          <h2 className="doc-label">{D.terms}</h2>
           <div>{fmt(D.delivery, { incoterm: o.incoterm })}</div>
           <div>{fmt(D.payment, { terms })}</div>
           <div>{D.exclVat}</div>
@@ -147,10 +142,11 @@ export default async function OfferPrintPage({ params }: PageProps<"/offers/[id]
 
         {o.notes && (
           <section className="flex flex-col gap-1">
-            <h2 className="label m-0">{D.notes}</h2>
+            <h2 className="doc-label">{D.notes}</h2>
             <p className="m-0 whitespace-pre-line">{o.notes}</p>
           </section>
         )}
+        </div>
       </article>
     </div>
   );

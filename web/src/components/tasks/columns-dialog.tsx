@@ -123,7 +123,7 @@ export function ColumnsDialog({ orderId, data, T, locale, isAdmin, templates, st
               {templates.map((x) => (
                 <li key={x.id} className="flex min-h-11 items-center justify-between gap-3 border-b border-mist text-sm last:border-0">
                   <span className="min-w-0 break-words">{locale === "en" ? x.name_en || x.name_bg : x.name_bg}{x.is_default ? ` · ${T.templates.isDefault}` : ""}</span>
-                  <a href={`/orders/templates/${x.id}`} className="btn btn-outline shrink-0">{C.edit}</a>
+                  <a href={`/settings/templates/${x.id}`} className="btn btn-outline shrink-0">{C.edit}</a>
                 </li>
               ))}
             </ul>

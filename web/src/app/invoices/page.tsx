@@ -7,6 +7,7 @@ import { Chip, Empty, PageHeader } from "@/components/ui";
 type Row = {
   id: string; number: string | null; status: "draft" | "issued"; issue_date: string | null; created_at: string;
   client: string; order_id: string; order_code: string; total: string | null; draft_total: string; currency: string;
+  kind: "invoice" | "credit_note" | "debit_note";
 };
 
 /** Invoices of paid orders: drafts first, then the issued ones by number (newest first). */
@@ -15,7 +16,7 @@ export default async function InvoicesPage() {
   const I = t.invoices;
 
   const rows = await withUser(user.id, async (tx) => (await tx.query<Row>(
-    `select i.id, i.number, i.status, i.issue_date::text, i.created_at::text, i.buyer ->> 'name' as client,
+    `select i.id, i.kind, i.number, i.status, i.issue_date::text, i.created_at::text, i.buyer ->> 'name' as client,
             i.order_id, so.code as order_code, i.total::text, i.currency,
             (select coalesce(sum(l.amount), 0) * (1 + i.vat_pct / 100) from invoice_lines l where l.invoice_id = i.id)::text as draft_total
        from invoices i join sales_orders so on so.id = i.order_id
@@ -37,7 +38,10 @@ export default async function InvoicesPage() {
               <Link href={`/invoices/${x.id}`} className="font-semibold text-ink underline after:absolute after:inset-0 after:content-['']">
                 {x.number ?? I.statusDraft}
               </Link>
-              <span className="block min-w-0 break-words md:inline">{x.client}</span>
+              <span className="block min-w-0 break-words md:inline">
+                {x.client}
+                {x.kind !== "invoice" && <span className="block text-xs text-ink-2">{x.kind === "credit_note" ? I.notes.credit : I.notes.debit}</span>}
+              </span>
             </div>
             <span className="hide-md">{x.order_code}</span>
             <span className="hide-sm">{formatDate(locale, x.issue_date ?? x.created_at)}</span>

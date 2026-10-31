@@ -668,3 +668,8 @@ grant execute on function
   public.delete_note_line(uuid, uuid),
   public.delete_invoice_note(uuid)
 to authenticated;
+
+-- Production costs are a setting: Admin only (costing functions run as owner)
+drop policy format_costing_select on public.format_costing;
+create policy format_costing_select on public.format_costing for select to authenticated
+  using (public.has_role('admin'));

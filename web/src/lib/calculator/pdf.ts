@@ -99,10 +99,11 @@ export interface PdfFonts {
   robotoBold: string;
 }
 
-const NAVY: [number, number, number] = [27, 31, 59];
-const TEXT: [number, number, number] = [31, 35, 40];
-const LINE: [number, number, number] = [150, 155, 160];
-const HEAD_BG: [number, number, number] = [229, 231, 233];
+const NAVY: [number, number, number] = [34, 40, 49];   // brand ink
+const TEXT: [number, number, number] = [34, 40, 49];
+const LINE: [number, number, number] = [221, 225, 232];
+const HEAD_BG: [number, number, number] = [244, 245, 247];
+const WHITE: [number, number, number] = [255, 255, 255];
 const CYRILLIC = /[Ѐ-ӿ]/;
 
 type Weight = 'regular' | 'semibold' | 'bold';
@@ -295,29 +296,36 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
   const COL2 = 103;
   const bottomLimit = pageH - 18;
 
-  // 1. Header: Nutrikal logo (or uploaded logo) + OFFER meta
+  // 1. Header: ink band with the wordmark (or the uploaded logo on a white plate) and the title
+  doc.setFillColor(...NAVY);
+  doc.rect(0, 0, pageW, 24, 'F');
   if (m.customLogo) {
-    const ratio = Math.min(60 / m.customLogo.width, 24 / m.customLogo.height);
-    doc.addImage(m.customLogo.dataUrl, imageFormat(m.customLogo), 12, 12, m.customLogo.width * ratio, m.customLogo.height * ratio);
+    const ratio = Math.min(46 / m.customLogo.width, 13 / m.customLogo.height);
+    const w = m.customLogo.width * ratio;
+    const h = m.customLogo.height * ratio;
+    doc.setFillColor(...WHITE);
+    doc.rect(L - 2, 12 - h / 2 - 1.5, w + 4, h + 3, 'F');
+    doc.addImage(m.customLogo.dataUrl, imageFormat(m.customLogo), L, 12 - h / 2, w, h);
   } else if (m.brandLogo) {
-    const w = 62;
-    doc.addImage(m.brandLogo.dataUrl, imageFormat(m.brandLogo), L, 12, w, w * (m.brandLogo.height / m.brandLogo.width), 'brand');
+    const w = 52;
+    const h = w * (m.brandLogo.height / m.brandLogo.width);
+    doc.addImage(m.brandLogo.dataUrl, imageFormat(m.brandLogo), L, 12 - h / 2, w, h, 'brand');
   } else {
-    write(m.supplier.name.toUpperCase(), 12, 24, { weight: 'bold', size: 20, color: NAVY });
+    write(m.supplier.name.toUpperCase(), L, 15, { weight: 'bold', size: 16, color: WHITE });
   }
-  write(PDF.offer, COL2, 17.5, { weight: 'bold', size: 24, color: NAVY });
-  labelValue(`${PDF.number}:`, m.offerNo, COL2, 24, false);
-  labelValue(`${PDF.date}:`, formatDate(m.offerDate), COL2, 30, false);
+  write(PDF.offer, R, 15, { size: 18, color: WHITE, align: 'right' });
+  labelValue(`${PDF.number}:`, m.offerNo, COL2, 31, false);
+  labelValue(`${PDF.date}:`, formatDate(m.offerDate), COL2, 36.5, false);
 
   // Nutrikal contact person, phone and sales email under the logos (top left).
-  let top = 51;
+  let top = 46;
   const contactLines = [
     [PDF.contactPerson, m.contact.name],
     [PDF.phone, m.contact.phone],
     [PDF.email, m.contact.email],
   ].filter(([, value]) => value);
   if (contactLines.length) {
-    let yh = 28;
+    let yh = 31;
     for (const [label, value] of contactLines) {
       const w = write(`${label}: `, L, yh, { size: 8.5 });
       write(value, L + w, yh, { weight: 'bold', size: 8.5 });
@@ -484,16 +492,16 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
-    doc.setDrawColor(...TEXT);
-    doc.setLineWidth(0.4);
-    doc.line(5, pageH - 10, pageW - 5, pageH - 10);
-    if (m.footerText.trim()) write(m.footerText, 5, pageH - 4.5, { size: 8.5 });
+    doc.setDrawColor(...LINE);
+    doc.setLineWidth(0.2);
+    doc.line(L, pageH - 10, R, pageH - 10);
+    if (m.footerText.trim()) write(m.footerText, L, pageH - 5.5, { size: 8 });
     // Websites from the right.
-    let x = pageW - 5;
+    let x = R;
     [...m.websites].reverse().forEach((site) => {
-      x -= write(site, x, pageH - 4.5, { size: 8.5, align: 'right' }) + 4.5;
+      x -= write(site, x, pageH - 5.5, { size: 8, align: 'right' }) + 4.5;
     });
-    if (pages > 1) write(fmt(PDF.page, { n: i, m: pages }), pageW / 2, pageH - 4.5, { size: 8, align: 'left' });
+    if (pages > 1) write(fmt(PDF.page, { n: i, m: pages }), pageW / 2, pageH - 5.5, { size: 8, align: 'left' });
   }
 
   return doc;
@@ -525,6 +533,27 @@ export function loadImage(dataUrl: string | null): Promise<PdfImage | null> {
   });
 }
 
+/** The NUTRIKAL wordmark in white, as a PNG (jsPDF has no WebP). */
+function whiteWordmark(): Promise<PdfImage | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth * 2;
+      canvas.height = img.naturalHeight * 2;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(null);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.globalCompositeOperation = 'source-in';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      resolve({ dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height });
+    };
+    img.onerror = () => resolve(null);
+    img.src = '/nutrikal-wordmark.webp';
+  });
+}
+
 export function loadAssets() {
   assetCache ??= (async () => {
     // Served from web/public/calculator.
@@ -537,7 +566,7 @@ export function loadAssets() {
       }),
     );
     const [poppinsRegular, poppinsSemiBold, poppinsBold, robotoRegular, robotoBold, nk] = base64;
-    const brandLogo = await loadImage(`data:image/png;base64,${nk}`);
+    const brandLogo = (await whiteWordmark()) ?? (await loadImage(`data:image/png;base64,${nk}`));
     return {
       fonts: { poppinsRegular, poppinsSemiBold, poppinsBold, robotoRegular, robotoBold },
       brandLogo,

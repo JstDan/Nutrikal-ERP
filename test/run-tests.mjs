@@ -390,6 +390,9 @@ await fails('production cannot create a formula version', () => as('production',
 console.log('\nCosting and offers');
 let offer, client2, jar;
 const tier = async (qty) => one('sales', 'select * from offer_tiers where offer_id = $1 and quantity = $2', [offer.id, qty]);
+await ok('production costs are for Admin only', async () => {
+  eq((await as('sales', 'select * from format_costing')).length, 0, 'sales reads nothing');
+});
 await ok('admin sets capsule production costs; sales cannot change them', async () => {
   await as('admin', `update format_costing set fee_per_pack = 0.10, fee_per_1000_units = 2, setup_fee = 300, loss_pct = 0,
                        default_margin_pct = 30 where product_format = 'capsule'`);

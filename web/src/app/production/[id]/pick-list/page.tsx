@@ -4,7 +4,7 @@ import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatQty } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
-import { Wordmark } from "@/components/logo";
+import { DocHeader } from "@/components/sales-document";
 
 type Mo = { id: string; code: string; project_code: string; product: string; product_bg: string | null; quantity: number; planned_date: string | null; status: string };
 type Req = { item_id: string; sku: string; name: string; name_bg: string | null; base_unit: string; required: string };
@@ -60,20 +60,13 @@ export default async function PickListPage({ params }: PageProps<"/production/[i
         <Link href={back} className="btn btn-outline">{t.common.back}</Link>
       </div>
 
-      <article className="card flex flex-col gap-6 p-6 text-sm sm:p-10 print:border-0 print:p-0">
-        <header className="flex flex-wrap justify-between gap-6">
-          <div className="min-w-0">
-            <Wordmark height={22} className="mb-2" />
-            <h1 className="m-0 text-[26px] font-extrabold tracking-[0.6px]">{L.title}</h1>
-            <div className="text-ink-2">{fmt(L.subtitle, { code: mo.code, qty: formatNumber(locale, mo.quantity) })}</div>
-          </div>
-          <div className="min-w-0 sm:text-right">
-            <div className="font-semibold">{locale === "bg" && mo.product_bg ? mo.product_bg : mo.product}</div>
-            <div>{t.production.project}: {mo.project_code}</div>
-            <div>{t.production.planned}: {formatDate(locale, mo.planned_date)}</div>
-            <div>{t.production.status}: {t.enums.moStatus[mo.status as "released"]}</div>
-          </div>
-        </header>
+      <article className="doc">
+        <DocHeader title={L.title} meta={[`${t.production.code}: ${mo.code}`, `${t.production.project}: ${mo.project_code}`, `${t.production.planned}: ${formatDate(locale, mo.planned_date)}`, `${t.production.status}: ${t.enums.moStatus[mo.status as "released"]}`]} sellerName="Nutrikal" logoDataUrl={null} />
+        <div className="doc-body">
+        <div>
+          <div className="text-lg font-bold break-words">{locale === "bg" && mo.product_bg ? mo.product_bg : mo.product}</div>
+          <div className="text-ink-2">{fmt(L.subtitle, { code: mo.code, qty: formatNumber(locale, mo.quantity) })}</div>
+        </div>
         <p className="m-0 text-[13px] text-ink-2">{L.note}</p>
 
         <section className="flex flex-col">
@@ -119,6 +112,7 @@ export default async function PickListPage({ params }: PageProps<"/production/[i
             </div>
           ))}
         </footer>
+        </div>
       </article>
     </div>
   );

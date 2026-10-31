@@ -201,10 +201,17 @@ export async function seedDemo(db: PGlite) {
 
   const ofCol = await one(SALES, `insert into offers (client_id, project_id, formula_version_id) values ($1, $2, $3) returning id`, [nordic, pCol, fCol.v]);
   await as(SALES, `insert into offer_packaging (offer_id, item_id) values ($1, $2)`, [ofCol, label]);
-  await as(SALES, `insert into offer_tiers (offer_id, quantity) values ($1, 1500), ($1, 3000)`, [ofCol]);
+  await as(SALES, `insert into offer_tiers (offer_id, quantity) values ($1, 1000), ($1, 1500), ($1, 3000)`, [ofCol]);
   await as(SALES, `insert into offer_tiers (offer_id, quantity, unit_price, price_is_manual) values ($1, 5000, 6.90, true)`, [ofCol]);
 
+  await as(SALES, `update offers set status = 'sent' where id = $1`, [ofCol]);
+  await receiveRelease(ADMIN, label, 3000, PF_PACK, "LB-1001", 10);
+
   // ------------------------------------------------------- sales orders
+  const soCol = await one(SALES, `select create_order_from_offer($1, 1000, 'NL-7741', current_date + 14) as id`, [ofCol]);
+  await as(SALES, `update sales_orders set status = 'confirmed' where id = $1`, [soCol]);
+  await as(ADMIN, `update sales_orders set deposit_received_on = current_date - 1 where id = $1`, [soCol]);
+  const soColLine = (await as<{ id: string }>(SALES, "select id from sales_order_lines where order_id = $1", [soCol]))[0].id;
   const soMag = await one(SALES, `select create_order_from_offer($1, 10000, 'ACME-PO-2291', current_date + 21) as id`, [ofMag]);
   await as(SALES, `update sales_orders set status = 'confirmed' where id = $1`, [soMag]);
   await as(ADMIN, `update sales_orders set deposit_received_on = current_date - 2 where id = $1`, [soMag]);
@@ -218,8 +225,8 @@ export async function seedDemo(db: PGlite) {
   for (const r of await as<{ id: string }>(ADMIN, `select id from stock_reservations where project_id = $1 and status = 'active'`, [pCol])) {
     await as(ADMIN, `select close_reservation($1, 'released')`, [r.id]);
   }
-  const moCol = await one(ADMIN, `insert into manufacturing_orders (formula_version_id, project_id, quantity, notes)
-                                      values ($1, $2, 1000, 'Second batch') returning id`, [fCol.v, pCol]);
+  const moCol = await one(ADMIN, `insert into manufacturing_orders (sales_order_line_id, quantity, notes)
+                                      values ($1, 1000, 'Second batch') returning id`, [soColLine]);
   await as(ADMIN, `select schedule_mo($1, current_date + 3)`, [moCol]);
   await as(ADMIN, `select release_mo($1)`, [moCol]);
 
