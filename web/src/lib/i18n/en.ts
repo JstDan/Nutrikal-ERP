@@ -2196,7 +2196,6 @@ export const en = {
     markSpam: "Spam",
   },
   publicCatalog: {
-    shortCategories: {"Targeted Health Formulas":"Targeted","Lifestyle & Functional Concepts":"Lifestyle","Essential Nutrients & Core Actives":"Essentials","Mushroom & Adaptogen Extract":"Mushrooms","Collagen Products":"Collagen","Metabolic & Weight Management":"Metabolic","Sport & Performance Nutrition":"Sport","Premium Blends":"Premium","Protein Bars, Brownies and Cookies":"Bars & cookies"},
     facts: [{"label":"Minimum order","value":"500 units per product and flavour (bars and cookies 3,000)"},{"label":"Lead time","value":"6-10 weeks"},{"label":"Price includes","value":"Manufacturing, container with lid, label printing and application"},{"label":"Not included","value":"Label design, batch testing and COA, shipping (EXW), VAT"}],
     all: "All",
     contactThanks: "We received your question and will answer soon.",

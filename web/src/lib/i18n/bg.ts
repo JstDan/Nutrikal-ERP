@@ -2198,7 +2198,6 @@ export const bg: Dict = {
     markSpam: "Спам",
   },
   publicCatalog: {
-    shortCategories: {"Targeted Health Formulas":"Целеви","Lifestyle & Functional Concepts":"Лайфстайл","Essential Nutrients & Core Actives":"Нутриенти","Mushroom & Adaptogen Extract":"Гъби","Collagen Products":"Колаген","Metabolic & Weight Management":"Метаболизъм","Sport & Performance Nutrition":"Спорт","Premium Blends":"Премиум","Protein Bars, Brownies and Cookies":"Барове и бисквити"},
     facts: [{"label":"Минимална поръчка","value":"500 броя за продукт и вкус (барове и бисквити 3000)"},{"label":"Срок","value":"6-10 седмици"},{"label":"Цената включва","value":"Производство, опаковка с капачка, печат и поставяне на етикет"},{"label":"Не включва","value":"Дизайн на етикет, изпитване на партидата и COA, транспорт (EXW), ДДС"}],
     all: "Всички",
     contactThanks: "Получихме въпроса ви и скоро ще отговорим.",

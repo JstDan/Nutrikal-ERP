@@ -276,7 +276,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
           </div>
           <div role="group" aria-label={T.categories} className="hide-sm flex flex-wrap gap-2">
             <button type="button" aria-pressed={!category} onClick={() => setCategory("")} className={chip(!category)}>{T.all}</button>
-            {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} title={local(c.name, c.name_bg)} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{(T.shortCategories as Record<string, string>)[c.name] ?? local(c.name, c.name_bg)}</button>)}
+            {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{local(c.name, c.name_bg)}</button>)}
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-8">
@@ -292,6 +292,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
               );
             }) : (
               <section aria-label={T.navProducts} className="flex min-w-0 flex-col gap-3">
+                {category && <h3 className="m-0 text-lg font-bold">{local(data.categories.find((c) => c.id === category)?.name ?? "", data.categories.find((c) => c.id === category)?.name_bg ?? null)}</h3>}
                 <p role="status" className="m-0 text-sm text-ink-2">{shown.length ? fmt(T.results, { n: shown.length }) : T.noResults}</p>
                 <div className={grid}>{shown.map(card)}</div>
               </section>
