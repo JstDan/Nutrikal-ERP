@@ -2779,7 +2779,8 @@ await ok('the catalogue is public with prices and composition; bars from 3000; n
 await fails('Sales does not publish everything', () => as('sales', 'select catalog_publish_ready()'), 'not allowed');
 await ok('publish all ready takes what is ready and leaves out what has no price', async () => {
   await as('admin', "update catalog_products set is_published = false where code = 'NTL-TH101'");
-  eq((await one('admin', 'select catalog_publish_ready() as n')).n, 1, 'one');
+  await as('admin', 'select catalog_publish_ready()');
+  eq((await one('admin', "select is_published from catalog_products where code = 'NTL-TH101'")).is_published, true, 'back up');
   eq((await one('admin', "select is_published from catalog_products where code = 'NTL-SP101'")).is_published, false, 'no price');
 });
 await fails('no enquiry for a bar below its minimum', async () => {
