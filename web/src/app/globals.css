@@ -231,3 +231,10 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
 
 /* Read-only accounts: nothing to press. The database refuses it anyway. */
 [data-readonly] main form:not([method="get"]):not([data-chat]) button[type="submit"] { display: none; }
+
+/* Chat: new messages and the panel come in softly */
+@keyframes chat-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes drawer-in { from { transform: translateX(100%); } to { transform: none; } }
+.chat-in { animation: chat-in 0.2s ease-out; }
+.chat-drawer { animation: drawer-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) { .chat-in, .chat-drawer { animation: none; } }

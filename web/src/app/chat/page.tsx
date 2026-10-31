@@ -36,7 +36,7 @@ export default async function ChatPage({ searchParams }: PageProps<"/chat">) {
     <Link key={c.id} href={`/chat?c=${c.id}`} aria-current={c.id === current?.id ? "page" : undefined}
       className={`flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-sm px-3 text-sm text-ink no-underline ${c.id === current?.id ? "bg-neutral-tint font-semibold" : "hover:bg-mist"}`}>
       <span className="truncate">{c.kind === "direct" ? c.name : `# ${c.name}`}</span>
-      {Number(c.unread) > 0 && <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-semibold text-white">{c.unread}</span>}
+      {c.id !== current?.id && Number(c.unread) > 0 && <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-semibold text-white">{c.unread}</span>}
     </Link>
   ));
 
@@ -90,13 +90,15 @@ export default async function ChatPage({ searchParams }: PageProps<"/chat">) {
             ))}
           </section>
         ) : current && (
-          <section aria-label={current.name} className="flex min-w-0 flex-col gap-3">
-            <div>
+          <section aria-label={current.name} className="card flex h-[calc(100dvh-190px)] min-h-[420px] min-w-0 flex-col overflow-hidden pt-3">
+            <div className="border-b border-line px-4 pb-2">
               <h2 className="m-0 text-lg font-bold">{current.kind === "direct" ? current.name : `# ${current.name}`}</h2>
               {current.description && current.kind !== "external" && <p className="m-0 text-sm text-ink-2">{current.description}</p>}
             </div>
+            <div className="min-h-0 flex-1 pt-2">
             <ChatRoom key={current.id} channel={current.id} initial={messages} people={people} me={user.name} userId={user.id} isAdmin={user.role === "admin"}
               locale={locale} text={C} warning={current.kind === "external" && !partner ? C.partnerWarning : null} />
+            </div>
           </section>
         )}
       </div>

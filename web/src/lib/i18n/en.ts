@@ -2170,6 +2170,11 @@ export const en = {
     noAnswer: "No answer was reached. Try a narrower question.",
   },
   chat: {
+    fullView: "Full view",
+    close: "Close",
+    back: "Back",
+    find: "Find a channel or a person",
+    newMessages: "New messages",
     direct: "Direct messages",
     newDirect: "Write to…",
     open: "Open",

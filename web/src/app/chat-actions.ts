@@ -7,7 +7,7 @@ import { q, qChat } from "@/lib/db/engine";
 import { CHAT_BUCKET, MAX_DESIGN_BYTES, newTaskFilePath, putFile } from "@/lib/files";
 import { getSession } from "@/lib/session";
 import type { ActionState } from "@/app/actions";
-import type { ChatMessage } from "@/components/chat-room";
+import type { ChatMessage, ChatPerson } from "@/components/chat-room";
 
 // The chat is the one thing a read-only account writes: qChat, and the rules of the chat tables decide.
 const FEED = "select id, author_id, author, body, created_at::text, edited_at::text, attachments, reactions from chat_feed($1)";
@@ -22,6 +22,32 @@ export async function pollChat(channel: string, seen: string | null): Promise<Ch
   const rows = await q<ChatMessage>(user.id, FEED, [channel]);
   if (rows.at(-1)?.id !== seen) await markRead(user.id, channel);
   return rows;
+}
+
+/** For the side panel: the channels and the people to write to. */
+export async function chatList() {
+  const { user } = await getSession();
+  return {
+    channels: await q<{ id: string; name: string; description: string | null; kind: string; unread: string }>(user.id, "select id, name, description, kind, unread::text from chat_channel_list()"),
+    everyone: user.role === "production" ? [] : await q<ChatPerson>(user.id, "select id, full_name from chat_people()"),
+  };
+}
+
+export async function chatRoomData(channel: string) {
+  const { user } = await getSession();
+  const messages = await q<ChatMessage>(user.id, FEED, [channel]);
+  await markRead(user.id, channel);
+  return { messages, people: await q<ChatPerson>(user.id, "select id, full_name from chat_people($1)", [channel]) };
+}
+
+export async function chatUnread(): Promise<number> {
+  const { user } = await getSession();
+  return Number((await q<{ n: string | null }>(user.id, "select sum(unread) as n from chat_unread()"))[0]?.n ?? 0);
+}
+
+export async function openDirectChat(person: string): Promise<string> {
+  const { user } = await getSession();
+  return (await qChat<{ id: string }>(user.id, "select chat_open_direct($1) as id", [person]))[0].id;
 }
 
 /** A message with its files: fd has channel, body, mentions and files. */
