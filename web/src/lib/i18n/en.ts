@@ -2080,7 +2080,7 @@ export const en = {
     proposalNoFit: "Does not fit: {mg} mg per capsule, maximum {max} mg",
     proposalShort: "Not enough in stock even for one pack: {names}",
     proposalNovel: "Novel Food status to check: {names}",
-    proposalNotChecked: "Doses and claims are not checked against EU rules. Packaging and production costs are not included.",
+    proposalNotChecked: "This is no regulatory assessment: a person checks doses, claims and Novel Food status. Packaging and production costs are not included.",
     proposalSave: "Save as draft recipe",
     proposalOpen: "Open the recipe",
     newChat: "New conversation",

@@ -2343,5 +2343,19 @@ await ok('production sees no proposals', async () => {
   eq((await as('production', 'select id from ai_recipe_proposals')).length, 0, 'none');
 });
 
+console.log('\nEU lists');
+await ok('the Register and the Catalogue are loaded', async () => {
+  eq((await one('sales', `select count(*)::int as n from eu_health_claims where status = 'authorised'`)).n > 200, true, 'authorised claims');
+  eq((await one('sales', 'select count(*)::int as n from eu_novel_food_status')).n > 900, true, 'catalogue');
+  const m = await as('sales', `select claim from eu_health_claims where status = 'authorised' and substance ilike '%magnesium%'`);
+  eq(m.some((x) => x.claim.includes('tiredness and fatigue')), true, 'magnesium claim');
+});
+await ok('production does not see the lists', async () => {
+  eq((await as('production', 'select code from eu_health_claims limit 1')).length, 0, 'claims');
+  eq((await as('production', 'select code from eu_novel_food_status limit 1')).length, 0, 'catalogue');
+});
+await fails('nobody changes the lists from the app', () =>
+  as('admin', `update eu_health_claims set claim = 'x' where code = (select code from eu_health_claims limit 1) returning code`).then((r) => { if (!r.length) throw new Error('refused'); }));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

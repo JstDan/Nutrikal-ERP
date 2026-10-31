@@ -28,6 +28,9 @@ export const AI_TOOLS: ToolDefinition[] = [
   tool("recipe_details", "Ingredients and amounts per serving of the latest version of one recipe, by its code (NK-F-0001).",
     { code: { type: "string", description: "Recipe code" } }),
   tool("find_materials", "Raw materials and excipients in the system by name or SKU, with stock, price per base unit when the person may see it, and Novel Food status. Recipes can use only these.", TERM),
+  tool("eu_health_claims", "The EU Register of health claims: exact wording, conditions of use and status, by substance or words of the claim. Status: authorised (default), non_authorised, revoked.",
+    { ...TERM, status: { type: "string", enum: ["authorised", "non_authorised", "revoked"] } }),
+  tool("eu_novel_food_status", "The EU Novel Food status Catalogue, by name, synonym or common name: the status per part of the source. Search by the source (Camellia sinensis, magnesium) as well as by the ingredient.", TERM),
   tool("propose_recipe", "Propose a new recipe from items found with find_materials. The system calculates cost, capsule fill and stock and returns them; use those figures. A person decides whether to save it as a draft.", {
     name: { type: "string", description: "Recipe name in English" },
     name_bg: { type: "string", description: "Recipe name in Bulgarian" },
@@ -78,6 +81,14 @@ const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
             (select v.status from formula_versions v where v.formula_id = f.id order by v.version desc limit 1) as latest_status
        from formulas f left join clients c on c.id = f.client_id
       where $1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%' order by f.code desc limit ${LIMIT}`, [term(a)]],
+  eu_health_claims: (a) => [
+    `select code, substance, claim, conditions, restrictions, status, claim_type, (select downloaded_on::text from eu_lists_info limit 1) as list_date
+       from eu_health_claims where status = $2 and (substance ilike '%' || $1 || '%' or claim ilike '%' || $1 || '%')
+      order by substance limit 30`, [term(a), a.status || "authorised"]],
+  eu_novel_food_status: (a) => [
+    `select code, name, synonyms, common_names, parts, description, (select downloaded_on::text from eu_lists_info limit 1) as list_date
+       from eu_novel_food_status where name ilike '%' || $1 || '%' or synonyms ilike '%' || $1 || '%' or common_names ilike '%' || $1 || '%'
+      order by name limit 15`, [term(a)]],
   find_materials: (a) => ["select * from recipe_materials($1)", [term(a)]],
   recipe_details: (a) => [
     `select f.code, f.name, v.version, v.status, f.product_format, f.serving_size, f.serving_unit, f.servings_per_pack,
