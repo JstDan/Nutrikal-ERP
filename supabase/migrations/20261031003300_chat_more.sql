@@ -200,7 +200,7 @@ as $$
          c.description, c.kind, coalesce(u.unread, 0)
     from public.chat_channels c left join public.chat_unread() u on u.channel_id = c.id
    where public.chat_can(c.id)
-   order by c.kind = 'direct', c.created_at
+   order by c.kind = 'direct', c.name <> 'общи', c.created_at, c.name
 $$;
 
 create or replace function public.chat_search(p_term text)
