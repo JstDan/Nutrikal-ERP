@@ -13,48 +13,27 @@ export function CatalogHero({ text }: { text: Dict["publicCatalog"] }) {
   const T = text;
   return (
     <section className="bg-side text-side-strong">
-      <div className="mx-auto grid max-w-[1200px] grid-cols-1 items-center gap-8 px-4 py-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:py-14">
-        <div className="flex min-w-0 flex-col gap-4">
-          <p className={`${eyebrow} text-side-muted`}>{T.eyebrow}</p>
-          <h1 className="m-0 text-3xl leading-tight font-bold sm:text-[40px]">{T.title}</h1>
-          <p className="m-0 max-w-[560px] text-side-text">{T.intro}</p>
-          <div className="flex flex-wrap gap-3 pt-1">
-            <a href="#products" className={light}>{T.heroProducts}</a>
-            <a href={PRESENTATION} target="_blank" rel="noopener" className={outline}>{T.heroPresentation}</a>
-          </div>
-        </div>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`${SITE}/hero.webp`} alt="" className="hide-sm h-[340px] w-full rounded-lg object-cover object-[center_60%]" />
+      <div className="mx-auto flex max-w-[860px] flex-col items-center gap-5 px-4 py-10 text-center lg:py-14">
+        <h1 className="m-0 text-3xl leading-tight font-bold sm:text-[40px]">{T.title}</h1>
+        <p className="m-0 max-w-[560px] text-side-text">{T.intro}</p>
+        <div className="w-full"><CatalogVideo title={T.videoTitle} /></div>
+        <a href="#products" className={light}>{T.heroProducts}</a>
       </div>
-      <dl className="m-0 border-t border-ink-3">
-        <div className="mx-auto grid max-w-[1200px] grid-cols-2 gap-4 px-4 py-5 md:grid-cols-4">
-          {T.stats.map((s) => (
-            <div key={s.label} className="flex min-w-0 flex-col">
-              <dd className="m-0 text-xl font-bold">{s.value}</dd>
-              <dt className="text-xs text-side-muted">{s.label}</dt>
-            </div>
-          ))}
-        </div>
-      </dl>
     </section>
   );
 }
 
-/** Who makes it: video, capabilities, brands, certificates and contact. */
+/** Who makes it: capabilities, brands, certificates and contact. */
 export function CatalogCompany({ text }: { text: Dict["publicCatalog"] }) {
   const T = text;
   return (
     <>
       <section id="about" className="scroll-mt-16 border-t border-line bg-paper">
-        <div className="mx-auto grid max-w-[1200px] grid-cols-1 items-center gap-8 px-4 py-10 lg:grid-cols-2">
-          <div className="flex min-w-0 flex-col gap-3">
-            <p className={`${eyebrow} text-ink-2`}>{T.aboutEyebrow}</p>
-            <h2 className="m-0 text-2xl font-bold">{T.aboutTitle}</h2>
-            <p className="m-0 text-ink-2">{T.aboutText}</p>
-            <p className="m-0 text-ink-2">{T.aboutText2}</p>
-            <a href={PRESENTATION} target="_blank" rel="noopener" className="btn btn-outline self-start">{T.heroPresentation}</a>
-          </div>
-          <CatalogVideo title={T.videoTitle} />
+        <div className="mx-auto flex max-w-[760px] flex-col items-center gap-3 px-4 py-10 text-center">
+          <h2 className="m-0 text-2xl font-bold">{T.aboutTitle}</h2>
+          <p className="m-0 text-ink-2">{T.aboutText}</p>
+          <p className="m-0 text-ink-2">{T.aboutText2}</p>
+          <a href={PRESENTATION} target="_blank" rel="noopener" className="btn btn-outline">{T.heroPresentation}</a>
         </div>
       </section>
 
