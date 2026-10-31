@@ -21,6 +21,7 @@ Talk to the owner in the language they write in (usually Bulgarian).
 - Materials are released on receipt; finished batches need Admin release before dispatch; the COA is optional and can be attached later. Any lot can be blocked (owner, Oct 2026).
 - Documents are e-mailed through the Resend HTTP API (the host, Cloudflare Workers, has no SMTP); every send is logged in `document_sends` (owner, Oct 2026).
 - New offers are made only in the calculator; older ERP offers stay readable and usable but cannot be created. Production of an order is planned with Prepare production (owner, Oct 2026).
+- AI: one gateway, Kie.ai (AI_BASE_URL, AI_API_KEY, AI_MODELS; `web/src/lib/ai/gateway.ts`). The assistant only reads, through fixed queries run as the signed-in user (`web/src/lib/ai/tools.ts`); AI proposes and a person approves. Production has no AI access (owner, Oct 2026).
 - All settings live under Settings and are Admin only (owner, Oct 2026). New settings go there.
 - Languages: Bulgarian and English only (UI and documents).
 - Roles: admin, sales, production (+ developer, who acts as another user). Inventory was merged into Admin and Partner renamed Production (Oct 2026). Formulation and QC rights sit with admin for now.

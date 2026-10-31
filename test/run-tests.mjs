@@ -2272,5 +2272,23 @@ await ok('production sees no sent documents and nobody writes them directly', as
   eq(refused, true, 'insert');
 });
 
+console.log('\nAI assistant');
+let aiConv;
+await ok('a conversation belongs to its author', async () => {
+  aiConv = (await one('sales', `insert into ai_conversations (title) values ('Test') returning id`)).id;
+  await as('sales', `insert into ai_messages (conversation_id, role, content) values ($1, 'user', 'Hello')`, [aiConv]);
+  eq((await as('sales', 'select id from ai_messages where conversation_id = $1', [aiConv])).length, 1, 'own');
+  eq((await as('admin', 'select id from ai_conversations where id = $1', [aiConv])).length, 0, 'admin');
+  eq((await as('admin', 'select id from ai_messages where conversation_id = $1', [aiConv])).length, 0, 'admin messages');
+});
+await fails("nobody writes into another person's conversation", () =>
+  as('admin', `insert into ai_messages (conversation_id, role, content) values ($1, 'user', 'x')`, [aiConv]));
+await fails('production has no conversations', () =>
+  as('production', `insert into ai_conversations (title) values ('x')`));
+await ok('production sees no AI data', async () => {
+  eq((await as('production', 'select id from ai_conversations')).length, 0, 'conversations');
+  eq((await as('production', 'select id from ai_messages')).length, 0, 'messages');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
