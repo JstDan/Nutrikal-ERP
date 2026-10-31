@@ -2767,26 +2767,22 @@ await fails('nobody signed in reads no enquiry', () => asAnon('select * from cat
 await ok('nobody signed in sees no clients, recipes or prices of materials', async () => {
   for (const t of ['clients', 'formulas', 'formula_lines', 'supplier_prices', 'calc_offers']) eq((await asAnon(`select 1 from ${t}`)).length, 0, t);
 });
-await ok('the catalogue came in as drafts with prices and composition; bars from 3000', async () => {
-  eq((await asAnon('select catalog_public() as d'))[0].d.products.filter((p) => p.code.startsWith('NTL-')).length, 0, 'nothing public');
-  const p = await one('admin', `select id, min_qty, jsonb_array_length(ingredients) as n from catalog_products where code = 'NTL-TH101'`);
-  eq(p.min_qty, 500, 'minimum'); eq(p.n, 6, 'composition');
-  eq((await as('admin', 'select id from catalog_price_tiers where product_id = $1', [p.id])).length, 4, 'tiers');
-  eq((await one('admin', `select min_qty from catalog_products where code = 'GP-101'`)).min_qty, 3000, 'bar');
-});
-await fails('Sales does not publish everything', () => as('sales', 'select catalog_publish_ready()'), 'not allowed');
-await ok('publish all ready leaves out what has no price', async () => {
-  const n = (await one('admin', 'select catalog_publish_ready() as n')).n;
-  if (n < 90) throw new Error('published ' + n);
+await ok('the catalogue is public with prices and composition; bars from 3000; no price stays a draft', async () => {
   const d = (await asAnon('select catalog_public() as d'))[0].d;
+  eq(d.products.filter((p) => /^(NTL-|GP-)/.test(p.code)).length, 98, 'public');
   eq(d.products.filter((p) => p.code === 'NTL-SP101').length, 0, 'no price');
   const th = d.products.find((p) => p.code === 'NTL-TH101');
   eq(th.ingredients[0].name, 'Glucosamine Sulfate', 'name'); eq(th.ingredients[0].amount, '350 mg', 'amount'); eq(th.format, 'capsule', 'format');
-  eq(th.tiers[0].unit_price, 6.2, 'price');
-  await as('admin', "update catalog_products set is_published = false where code like 'NTL-%' or code like 'GP-%'");
+  eq(th.tiers.length, 4, 'tiers'); eq(th.tiers[0].unit_price, 6.2, 'price');
+  eq(d.products.find((p) => p.code === 'GP-101').min_qty, 3000, 'bar');
+});
+await fails('Sales does not publish everything', () => as('sales', 'select catalog_publish_ready()'), 'not allowed');
+await ok('publish all ready takes what is ready and leaves out what has no price', async () => {
+  await as('admin', "update catalog_products set is_published = false where code = 'NTL-TH101'");
+  eq((await one('admin', 'select catalog_publish_ready() as n')).n, 1, 'one');
+  eq((await one('admin', "select is_published from catalog_products where code = 'NTL-SP101'")).is_published, false, 'no price');
 });
 await fails('no enquiry for a bar below its minimum', async () => {
-  await as('admin', "update catalog_products set is_published = true where code = 'GP-101'");
   await asAnon('select catalog_submit_enquiry($1::jsonb)', [JSON.stringify({ company: 'Б', contact_name: 'Б', email: 'b@b.test', lines: [{ code: 'GP-101', quantity: 2999 }] })]);
 }, 'catalog_invalid');
 const enquiry = (o = {}) => JSON.stringify({ company: 'Нова фирма', contact_name: 'Иван Иванов', email: 'ivan@nova.test', lines: [{ code: catCode, quantity: 1200, unit_price: 0.01 }], ...o });

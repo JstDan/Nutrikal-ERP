@@ -1,7 +1,7 @@
 -- =====================================================================
 -- The Nutrikal catalogue (PDF) and Price List 02.2026 (owner, Oct 2026).
--- Everything arrives as a draft: a person publishes it. Codes follow the
--- price list. Products of the list that are not in the PDF have no text yet.
+-- Published by the owner's decision, except what has no price. Codes follow
+-- the price list. Products of the list that are not in the PDF have no text yet.
 -- =====================================================================
 
 insert into public.catalog_categories (name, name_bg, sort_order) values
@@ -484,3 +484,5 @@ select p.id, v.min_qty, v.unit_price
   ('GP-111', 3000, 0.78)
   ) as v (code, min_qty, unit_price)
   join public.catalog_products p on p.code = v.code;
+
+update public.catalog_products set is_published = true where public.catalog_publish_problem(id) is null;
