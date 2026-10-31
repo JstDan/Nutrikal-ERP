@@ -58,7 +58,9 @@ Open http://localhost:3000.
 | AI recipe proposals | In the assistant: a recipe from the items in the system; cost, capsule fill and stock come from the database. A person saves it as a draft and approves it as usual. Health claims and Novel Food status are looked up in the EU lists; doses stay for a person to check |
 | Mail | Shared Gmail mailbox, read only, connected once under Settings > Mail: mail with known clients shows on the client, unanswered threads under Waiting for you, hourly sync. Needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GMAIL_TOKEN_KEY; AI_READ_MAIL=on lets the assistant read it |
 | Direct invoices | Admin, Sales: New invoice for a client, without an order: free lines, VAT, due date, way of payment; same number series, credit and debit notes as usual. Admin records payments, also partial; filters for drafts, unpaid, overdue, paid; overdue invoices under Waiting for you. Services from the list in Settings; proforma from the draft (PF-, no invoice number used); basis printed at 0 % VAT; payments also on invoices of orders; by hand: new invoice like an earlier one and payment reminder by e-mail |
-| Users | Admin, under Settings > Users: accounts with a first password, role, purchase prices, stopping access. Roles: Administrator, Sales, Bookkeeper, Accountant (reads only), Design (reads only, no prices), Production |
+| Users | Admin, under Settings > Users: accounts with a first password, role, purchase prices, stopping access. Roles: Administrator, Sales, Bookkeeper (also payments, dispatch, reports), Accountant (reads only, AI panel without saved conversations), Design (no prices, uploads files), Production |
+| Chat | Channels like Slack for everyone except Production; Admin creates channels; unread count in the menu; new messages every few seconds |
+| Files | Designs and other files on a client and on an order, up to 24 MB: Admin, Sales, Bookkeeper, Design; never Production |
 | Settings | Admin only, under Settings: general (allowed batch difference, waybill photo rule, expiry warning, next invoice number), calculator settings and price-list links, production costs per format, task templates |
 | Dispatch | Admin: when an order is ready, choose how much of each released batch leaves; stock goes down and a delivery note (DN-00001) is made, in the client's language, without prices; PDF and print |
 | Production costs | Admin keeps per-format fees (per pack, per 1000 units, per kg), set-up per batch, material loss and default margin |
@@ -99,6 +101,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 | `20261023000400_delivery_docs_storage.sql` | Private bucket `delivery-docs` and its rules (Supabase only) |
 | `20261024000100_calc_scheduled_sync.sql` | Daily 17:00 price-list sync run by the server (`calc_record_scheduled_sync`, not callable by users) |
 | `20261024000200_views_read_only.sql` | Users can only read views (no writes through a view past row-level security) |
+| `20261031003200_chat_files_rights.sql` | Chat, client files, more rights for Bookkeeper, Design no longer read only |
 | `20261031003100_roles_access.sql` | Rights of Bookkeeper, Accountant and Design, read-only transactions (the enum values are in `20261031003000_new_roles.sql`) |
 | `20261031002900_followups_mail_filter.sql` | Offers waiting for an answer, clients due to reorder, Gmail searched by client address |
 | `20261031002800_invoice_tools.sql` | Proforma from a draft, basis of 0 % VAT, payments on all invoices, copy of an invoice |
@@ -141,7 +144,7 @@ With `DATABASE_URL` set, `withUser` opens a transaction on the Supabase database
 
 ```
 cd test && npm install
-node run-tests.mjs          # 471 database rule checks across the roles
+node run-tests.mjs          # 483 database rule checks across the roles
 python3 ui_test.py http://localhost:3000   # 18 browser checks (needs Python Playwright + Chromium)
 ```
 

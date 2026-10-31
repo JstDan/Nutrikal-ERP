@@ -333,10 +333,10 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
                   <span>{I.numberLabel} *</span>
                   <input
                     name="number" required defaultValue={next} inputMode="numeric" pattern="[0-9]{10}" maxLength={10}
-                    readOnly={user.role !== "admin"} aria-describedby="invoice-number-hint" className="input tabular-nums"
+                    readOnly={!user.canPay} aria-describedby="invoice-number-hint" className="input tabular-nums"
                   />
                   <small id="invoice-number-hint" className="text-xs text-ink-2">
-                    {fmt(I.nextHint, { n: next })}{user.role !== "admin" && ` ${I.adminChangesNumber}`}
+                    {fmt(I.nextHint, { n: next })}{!user.canPay && ` ${I.adminChangesNumber}`}
                   </small>
                 </label>
                 <label className="field">
@@ -344,7 +344,7 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
                   <input name="issue_date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className="input" />
                 </label>
               </div>
-              {user.role === "admin" && (
+              {user.canPay && (
                 <label className="flex min-h-11 w-fit cursor-pointer items-center gap-3 text-sm">
                   <input type="checkbox" name="confirm_number" className="h-5 w-5 shrink-0 accent-ink" />
                   <span>{I.confirmNumber}</span>

@@ -2584,7 +2584,11 @@ await ok('designer sees no prices: not the orders themselves, invoices, offers, 
   const cols = (await db.query(`select column_name from information_schema.columns where table_name in ('sales_order_overview', 'sales_order_line_overview')`)).rows.map((r) => r.column_name);
   eq(cols.some((c) => /price|total$|amount/.test(c)), false, 'no price column in the overviews');
 });
-await fails('designer cannot change anything', () => session('designer', `update clients set legal_name = 'x' where id = $1`, [client.id]), 'read-only');
+await ok('designer changes nothing except client files', async () => {
+  eq((await session('designer', `update clients set legal_name = 'x' where id = $1 returning id`, [client.id])).length, 0, 'client');
+  eq((await session('designer', `update projects set name = 'x' returning id`)).length, 0, 'projects');
+});
+await fails('designer issues no documents', () => session('designer', 'select create_client_invoice($1, 20, null, null, null, null)', [client.id]), 'not allowed');
 await ok('production still sees neither clients nor order overviews', async () => {
   eq((await as('production', 'select id from clients')).length, 0, 'clients');
   eq((await as('production', 'select id from sales_order_overview')).length, 0, 'orders');
@@ -2597,9 +2601,49 @@ await ok('bookkeeper works like Sales and records payments', async () => {
   eq(Number((await one('bookkeeper', 'select invoice_open_amount($1) as n', [id])).n), 0, 'paid');
 });
 await fails('bookkeeper does not approve recipes', () => as('bookkeeper', 'select approve_formula_version($1)', [v1.id]), 'not allowed');
-await fails('bookkeeper does not dispatch', () => as('bookkeeper', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, '[]']), 'not allowed');
+await ok('bookkeeper reaches dispatch and the dashboard', async () => {
+  eq((await one('bookkeeper', `select admin_dashboard(current_date - 30, current_date) as d`)).d !== null, true, 'dashboard');
+  await as('bookkeeper', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, '[]']).catch((e) => { if (/not allowed/i.test(e.message)) throw e; });
+});
 await fails('bookkeeper does not change other people', () =>
   as('bookkeeper', `update profiles set role = 'admin' where id = $1 returning id`, [U.bookkeeper]).then((r) => { if (!r.length) throw new Error('refused'); }));
+
+console.log('\nClient files');
+let cf;
+await ok('design uploads a file on a client; sales and admin see it', async () => {
+  cf = (await one('designer', `insert into client_files (client_id, file_name, storage_path) values ($1, 'label.ai', 'a/b/c') returning id`, [client.id])).id;
+  eq((await as('sales', 'select id from client_files where id = $1', [cf])).length, 1, 'sales');
+  eq((await session('accountant', 'select id from client_files where id = $1', [cf])).length, 1, 'accountant');
+});
+await fails('accountant cannot upload', () => session('accountant', `insert into client_files (client_id, file_name, storage_path) values ($1, 'x', 'a/b/d')`, [client.id]));
+await fails('production cannot upload', () => as('production', `insert into client_files (client_id, file_name, storage_path) values ($1, 'x', 'a/b/e')`, [client.id]));
+await ok('production sees no client files', async () => { eq((await as('production', 'select id from client_files')).length, 0, 'files'); });
+await ok('only the author or admin removes a file', async () => {
+  eq((await as('sales', 'delete from client_files where id = $1 returning id', [cf])).length, 0, 'sales');
+  eq((await as('designer', 'delete from client_files where id = $1 returning id', [cf])).length, 1, 'author');
+});
+
+console.log('\nChat');
+const gen = (await one('admin', `select id from chat_channels where name = 'общи'`)).id;
+await ok('people write in a channel; the others see it with the name and as unread', async () => {
+  await as('designer', `insert into chat_messages (channel_id, body) values ($1, 'Етикетът е готов')`, [gen]);
+  const m = await as('sales', 'select author, body from chat_feed($1)', [gen]);
+  eq(m[0].author, 'Test designer', 'author');
+  eq(Number((await one('sales', 'select sum(unread) as n from chat_unread()')).n), 1, 'unread');
+  await as('sales', 'insert into chat_reads (channel_id, user_id) values ($1, auth.uid())', [gen]);
+  eq((await one('sales', 'select sum(unread) as n from chat_unread()')).n, null, 'read');
+  eq((await session('accountant', 'select body from chat_feed($1)', [gen])).length, 1, 'accountant reads');
+});
+await fails('nobody writes as someone else', () => as('sales', `insert into chat_messages (channel_id, author_id, body) values ($1, $2, 'x')`, [gen, U.admin]));
+await fails('the accountant does not post', () => session('accountant', `insert into chat_messages (channel_id, body) values ($1, 'x')`, [gen]));
+await fails('only admin creates channels', () => as('sales', `insert into chat_channels (name) values ('x')`));
+await fails('production does not post', () => as('production', `insert into chat_messages (channel_id, body) values ($1, 'x')`, [gen]));
+await ok('production sees no channels and no messages', async () => {
+  eq((await as('production', 'select id from chat_channels')).length, 0, 'channels');
+  eq((await as('production', 'select id from chat_messages')).length, 0, 'messages');
+  eq((await as('production', 'select id from chat_feed($1)', [gen])).length, 0, 'feed');
+  eq((await as('production', 'select channel_id from chat_unread()')).length, 0, 'unread');
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

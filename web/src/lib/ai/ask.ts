@@ -40,7 +40,7 @@ async function pageContext(userId: string, page: string): Promise<string> {
 }
 
 /** One question: saved, answered and saved again. The answer stays in the conversation even when the service fails. */
-export async function ask(fd: FormData, onText?: (delta: string | null) => void): Promise<{ error: string } | { id: string }> {
+export async function ask(fd: FormData, onText?: (delta: string | null) => void): Promise<{ error: string } | { id: string } | { answer: string }> {
   const { user, locale, t } = await getSession();
   const A = t.assistant;
   const text = String(fd.get("text") ?? "").trim();
@@ -48,6 +48,20 @@ export async function ask(fd: FormData, onText?: (delta: string | null) => void)
   let id = String(fd.get("conversation_id") ?? "");
   if (!text) return { error: A.empty };
   if (!aiConfigured() || !model) return { error: A.notConfigured };
+  // A read-only account keeps nothing: the panel sends the conversation along
+  if (user.readOnly) {
+    try {
+      const earlier = (JSON.parse(String(fd.get("history") ?? "[]")) as Turn[]).filter((x) => x.role === "user" || x.role === "assistant").slice(-HISTORY);
+      const instructions = system(user.name, locale === "bg" ? "Bulgarian" : "English", new Date().toISOString().slice(0, 10))
+        + await pageContext(user.id, String(fd.get("page") ?? ""));
+      const r = await converse(model.id, instructions, [...earlier, { role: "user", content: text }], aiTools().filter((x) => x.name !== "propose_recipe"),
+        (name, args) => runTool(user.id, "", name, args), MAX_ROUNDS, onText);
+      return { answer: r.text || A.noAnswer };
+    } catch (e) {
+      console.error("AI assistant", e);
+      return { error: A.failed };
+    }
+  }
   const [{ n }] = await q<{ n: number }>(user.id,
     `select count(*)::int as n from ai_messages m join ai_conversations c on c.id = m.conversation_id
       where m.role = 'user' and m.created_at >= current_date`);

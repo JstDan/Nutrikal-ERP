@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClientFiles } from "@/components/client-files";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
@@ -95,8 +96,12 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
             <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
               <Fact label={d.registry}>{c.company_id ?? "—"}</Fact>
               <Fact label={d.currency}>{c.currency}</Fact>
-              <Fact label={d.paymentTerms}>{termsText}{usingDefaults && <span className="text-ink-2"> ({d.defaultTerms})</span>}</Fact>
-              <Fact label={d.creditLimit}>{c.credit_limit ? formatMoney(locale, c.credit_limit, c.currency) : "—"}</Fact>
+              {user.access !== "designer" && (
+                <>
+                  <Fact label={d.paymentTerms}>{termsText}{usingDefaults && <span className="text-ink-2"> ({d.defaultTerms})</span>}</Fact>
+                  <Fact label={d.creditLimit}>{c.credit_limit ? formatMoney(locale, c.credit_limit, c.currency) : "—"}</Fact>
+                </>
+              )}
               <Fact label={d.documentsIn}>{t.enums.locale[c.preferred_locale]}</Fact>
               <Fact label={t.clients.form.billingEmail}>{c.billing_email ?? "—"}</Fact>
             </div>
@@ -176,6 +181,8 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
               ))}
             </Card>
           )}
+
+          <ClientFiles clientId={c.id} userId={user.id} isAdmin={user.role === "admin"} locale={locale} t={t} />
 
           {mails.length > 0 && (
             <Card title={d.mail} id="mail-h">

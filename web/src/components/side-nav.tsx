@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /** also: other sections that belong to this item (the calculator to Offers). */
-export type NavItem = { href?: string; label: string; soon?: string; also?: string[] };
+export type NavItem = { href?: string; label: string; soon?: string; also?: string[]; badge?: number };
 export type NavGroup = { title?: string; items: NavItem[] };
 
 export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }) {
@@ -32,6 +32,7 @@ export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }
               >
                 <span aria-hidden="true" className={`h-2 w-2 rounded-full ${isActive(it.href, it.also) ? "bg-green" : "bg-transparent"}`} />
                 {it.label}
+                {!!it.badge && <span className="ml-auto rounded-full bg-green px-2 py-0.5 text-xs font-semibold text-ink">{it.badge}</span>}
               </Link>
             ) : (
               <span key={it.label} className="flex min-h-11 items-center gap-2.5 px-2 text-sm text-side-muted">

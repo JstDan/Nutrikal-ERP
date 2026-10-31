@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { THEME_COOKIE } from "@/lib/theme";
+import { q } from "@/lib/db/engine";
 import { setLocale, signOut } from "@/app/actions";
 import { getSession } from "@/lib/session";
 import { LOCALES } from "@/lib/i18n";
@@ -18,6 +19,8 @@ export async function AppShell({ children }: { children: ReactNode }) {
   const isProduction = user.role === "production";
   const savedTheme = (await cookies()).get(THEME_COOKIE)?.value;
   const soon = (n: number) => `${t.common.phase} ${n}`;
+
+  const unread = isProduction ? 0 : Number((await q<{ n: string | null }>(user.id, "select sum(unread) as n from chat_unread()"))[0]?.n ?? 0);
 
   const groups: NavGroup[] = isProduction
     ? [
@@ -37,6 +40,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
           items: [
             { href: "/", label: t.nav.dashboard },
             ...((user.role === "admin" || user.role === "sales") && !user.readOnly ? [{ href: "/assistant", label: t.nav.assistant }] : []),
+            { href: "/chat", label: t.nav.chat, badge: unread },
             { href: "/clients", label: t.nav.clients },
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/offers", label: t.nav.offers, also: ["/calculator"] }] : []),
             { href: "/orders", label: t.nav.orders },
@@ -54,6 +58,9 @@ export async function AppShell({ children }: { children: ReactNode }) {
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/traceability", label: t.nav.traceability }] : []),
           ],
         },
+        ...(user.access === "bookkeeper"
+          ? [{ title: t.nav.reports, items: [{ href: "/admin", label: t.nav.adminDashboard }, { href: "/accounting", label: t.nav.accounting }] }]
+          : []),
         ...(user.role === "admin"
           ? [{
               title: t.nav.reports,
@@ -70,7 +77,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   // Designer: the client work only
   const shown = user.access === "designer"
-    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/clients", "/orders"].includes(i.href ?? "")) })).filter((g) => g.items.length)
+    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/chat", "/clients", "/orders"].includes(i.href ?? "")) })).filter((g) => g.items.length)
     : groups;
 
   return (
@@ -133,8 +140,8 @@ export async function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
-      {(user.role === "admin" || user.role === "sales") && !user.readOnly && (
-        <AssistantPanel models={aiModels()} configured={aiConfigured()} locale={locale} text={t.assistant} />
+      {(user.role === "admin" || user.role === "sales") && (
+        <AssistantPanel models={aiModels()} configured={aiConfigured()} locale={locale} text={t.assistant} keepsNothing={user.readOnly} />
       )}
     </div>
   );

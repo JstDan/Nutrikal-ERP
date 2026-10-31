@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { DispatchCard } from "@/components/dispatch-card";
 import { OrderStages } from "@/components/order-stages";
+import { ClientFiles } from "@/components/client-files";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
@@ -220,8 +221,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     } else if (o.status === "ready") {
       step = (
         <>
-          {note(isAdmin ? d.stepDispatch : t.dispatch.onlyAdmin)}
-          {isAdmin && <a href="#dispatch-h" className="btn btn-primary self-start">{t.dispatch.submit}</a>}
+          {note(user.canPay ? d.stepDispatch : t.dispatch.onlyAdmin)}
+          {user.canPay && <a href="#dispatch-h" className="btn btn-primary self-start">{t.dispatch.submit}</a>}
         </>
       );
     } else if (shipped && dueInvoice) {
@@ -381,8 +382,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         )}
       </Card>
 
-      <DispatchCard orderId={o.id} status={o.status} isAdmin={isAdmin} userId={user.id} locale={locale} t={t}
+      <DispatchCard orderId={o.id} status={o.status} isAdmin={user.canPay} userId={user.id} locale={locale} t={t}
         balanceDue={!!c && c.balance_terms === "before_dispatch" && !c.balance_received_on} />
+
+      <ClientFiles clientId={o.client_id} orderId={o.id} userId={user.id} isAdmin={isAdmin} locale={locale} t={t} />
 
       {canEdit && board && (
         <Fold title={T.title} note={fmt(T.progress, { done: doneTasks, total: board.tasks.length })} open={!!initialTask}>

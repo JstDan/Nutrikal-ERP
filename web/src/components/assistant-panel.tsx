@@ -16,8 +16,10 @@ const storage = {
 };
 
 /** The assistant on every page: a round button, and a panel at the side that keeps its conversation while the person moves around. */
-export function AssistantPanel({ models, configured, locale, text }: {
+export function AssistantPanel({ models, configured, locale, text, keepsNothing = false }: {
   models: { label: string; id: string }[]; configured: boolean; locale: Locale; text: Dict["assistant"];
+  /** Read-only accounts: the conversation lives only here, until the page is closed. */
+  keepsNothing?: boolean;
 }) {
   const A = text;
   const pathname = usePathname();
@@ -79,10 +81,18 @@ export function AssistantPanel({ models, configured, locale, text }: {
     fd.set("text", question);
     fd.set("model", model);
     fd.set("page", pathname + window.location.search);
+    if (keepsNothing) fd.set("history", JSON.stringify(messages.map((m) => ({ role: m.role, content: m.content }))));
     if (conversation) fd.set("conversation_id", conversation);
     start(async () => {
       try {
         const r = await streamAnswer(fd, setLive);
+        if (r.answer) {
+          const at = new Date().toISOString();
+          setMessages((m) => [...m,
+            { id: `u${at}`, role: "user", content: question, model: null, created_at: at },
+            { id: `a${at}`, role: "assistant", content: r.answer!, model: null, created_at: at }]);
+          return;
+        }
         const c = r.id ? await openPanelConversation(r.id) : null;
         if (r.id && c) {
           setConversation(r.id);
@@ -97,9 +107,10 @@ export function AssistantPanel({ models, configured, locale, text }: {
         console.error(e);
         setError(A.failed);
         setDraft(question);
+      } finally {
+        setWaiting(null);
+        setLive("");
       }
-      setWaiting(null);
-      setLive("");
     });
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -137,7 +148,7 @@ export function AssistantPanel({ models, configured, locale, text }: {
       <header className="flex items-center gap-1 border-b border-line px-3 py-2">
         <h2 className="m-0 min-w-0 flex-1 truncate text-base font-bold">{A.title}</h2>
         <button type="button" onClick={fresh} className="min-h-11 rounded-sm px-2 text-xs font-semibold text-ink-2 hover:text-ink">{A.newShort}</button>
-        <Link href={conversation ? `/assistant?c=${conversation}` : "/assistant"} onClick={() => setOpen(false)} className="flex min-h-11 items-center rounded-sm px-2 text-xs font-semibold text-ink-2 no-underline hover:text-ink">{A.openFull}</Link>
+        {!keepsNothing && <Link href={conversation ? `/assistant?c=${conversation}` : "/assistant"} onClick={() => setOpen(false)} className="flex min-h-11 items-center rounded-sm px-2 text-xs font-semibold text-ink-2 no-underline hover:text-ink">{A.openFull}</Link>}
         <button type="button" onClick={close} aria-label={A.close} className="flex h-11 w-11 items-center justify-center rounded-sm text-xl text-ink-2 hover:text-ink">×</button>
       </header>
 

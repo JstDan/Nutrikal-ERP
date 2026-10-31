@@ -19,7 +19,7 @@ const GRID = "md:grid-cols-[minmax(0,1.6fr)_80px_110px_110px] lg:grid-cols-[minm
 
 /** Admin only: money, sales, stock, purchases and production costs per batch (margin against the order's sales price). */
 export default async function AdminDashboard({ searchParams }: PageProps<"/admin">) {
-  const { user, locale, t } = await requireRole("admin");
+  const { user, locale, t } = await requireRole("admin", "bookkeeper");
   const A = t.admin;
   const sp = await searchParams;
   const { from, to } = period(sp);

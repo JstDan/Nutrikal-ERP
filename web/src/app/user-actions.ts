@@ -45,8 +45,8 @@ export async function createUser(_: ActionState, fd: FormData): Promise<ActionSt
   const { data, error } = await supabaseAdmin().auth.admin.createUser({ email, password: first, email_confirm: true });
   if (error || !data.user) return { error: error?.message ?? U.failed };
   try {
-    await q(s.user.id, "insert into profiles (id, full_name, email, role) values ($1, $2, $3, $4::app_role)",
-      [data.user.id, text(fd, "full_name"), email, text(fd, "role")]);
+    await q(s.user.id, "insert into profiles (id, full_name, email, role, can_see_purchase_prices) values ($1, $2, $3, $4::app_role, $5)",
+      [data.user.id, text(fd, "full_name"), email, text(fd, "role"), ["sales", "bookkeeper"].includes(text(fd, "role"))]);
   } catch (e) {
     // No sign-in account without its profile
     await supabaseAdmin().auth.admin.deleteUser(data.user.id);

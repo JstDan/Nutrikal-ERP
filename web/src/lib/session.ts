@@ -33,7 +33,7 @@ export const getAuthUser = cache(async (): Promise<{ id: string; email: string |
 const rights = (access: Role) => ({
   access,
   role: (access === "accountant" ? "admin" : access === "bookkeeper" ? "sales" : access) as Role,
-  readOnly: access === "accountant" || access === "designer",
+  readOnly: access === "accountant",
   canPay: access === "admin" || access === "bookkeeper",
 });
 
@@ -98,6 +98,6 @@ export async function requireStaff() {
 
 export async function requireRole(...roles: Role[]) {
   const s = await getSession();
-  if (!roles.includes(s.user.role)) redirect(homeFor(s.user.role));
+  if (!roles.includes(s.user.role) && !roles.includes(s.user.access)) redirect(homeFor(s.user.role));
   return s;
 }
