@@ -195,6 +195,8 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 .doc-band { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 22px 20px; background: #222831; color: #ffffff; }
+.doc-band-plain { background: #ffffff; color: #222831; border-bottom: 1px solid #dde1e8; }
+.doc-band-plain .doc-title { color: #222831; }
 .doc-title { margin: 0; color: #ffffff; font-size: 22px; font-weight: 300; letter-spacing: 4px; line-height: 1.2; text-transform: uppercase; overflow-wrap: anywhere; }
 .doc-logo { height: 30px; width: auto; padding: 4px 8px; background: #ffffff; border-radius: 2px; }
 .doc-meta { display: flex; flex-wrap: wrap; gap: 8px 36px; margin: 0; padding: 12px 20px; background: #f4f5f7; border-bottom: 1px solid #dde1e8; }

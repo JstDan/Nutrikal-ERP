@@ -24,19 +24,20 @@ const toNum = (s: string) => {
 const defaultVat = (c: OrderableClient | undefined) => (!c || c.country === "BG" ? "20" : "0");
 
 /** Sales: client (with offers to order) → one or more of its offers → extra services → create the unpaid order. */
-export function NewOrderForm({ action, clients, offers, presets, initialClient, locale, text }: {
+export function NewOrderForm({ action, clients, offers, presets, initialClient, initialOffer, locale, text }: {
   action: (s: ActionState, fd: FormData) => Promise<ActionState>;
   clients: OrderableClient[];
   offers: OrderableOffer[];
   presets: ServiceOption[];
   initialClient: string | null;
+  initialOffer: string | null;
   locale: Locale;
   text: Dict["orders"]["new"];
 }) {
   const n = text;
   const [state, formAction, pending] = useActionState(action, {});
   const [clientId, setClientId] = useState<string | null>(clients.some((c) => c.id === initialClient) ? initialClient : null);
-  const [picked, setPicked] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string[]>(offers.some((o) => o.id === initialOffer && o.client_id === initialClient) ? [initialOffer!] : []);
   /** Chosen quantity per offer (the offer quantity unless another level is picked). */
   const [levels, setLevels] = useState<Record<string, number>>({});
   const [services, setServices] = useState<Service[]>(() =>

@@ -2198,5 +2198,79 @@ await fails('an invoice itself is not changed through note lines', () =>
 await fails('production cannot create notes', () =>
   as('production', `select create_invoice_note($1, 'credit_note', 'x')`, [orig.id]), 'not allowed');
 
+console.log('\nRepeat orders, preparing production, e-mailed documents');
+const shOffer = async (no, name) => (await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, product_type, data, results)
+  values ($1, 'Client', 'buyer@client.test', $2, $3, 'capsules_glass', $4::jsonb, '{"unitPrice": 2}') returning id`, [no, client.id, name,
+  JSON.stringify({ productType: 'capsules_glass', capsulesPerDose: '1', quantityPerUnit: '60', numberOfUnits: '100', rows: [] })])).id;
+const shReady = await shOffer('NK-T-SH1', 'Shortcut Ready');
+const shNoRecipe = await shOffer('NK-T-SH2', 'Shortcut No Recipe');
+const shVersion = await one('sales', 'select v.id from formula_versions v join formulas f on f.id = v.formula_id where f.calc_offer_id = $1', [shReady]);
+let shOrder, shCopy;
+await ok('setup: an approved recipe for one offer and an unpaid order with a service', async () => {
+  await as('sales', 'insert into formula_lines (version_id, item_id, amount) values ($1, $2, 100)', [shVersion.id, mcc.id]);
+  await as('admin', 'select approve_formula_version($1)', [shVersion.id]);
+  shOrder = (await one('sales', `select create_order_from_calc_offers($1, $2, $3::jsonb, 20, 'REF-1') as id`, [client.id, [shReady, shNoRecipe],
+    JSON.stringify([{ description: 'Label design', quantity: 1, unit_price: 200 }])])).id;
+});
+await fails('prepare production waits for the payment', () =>
+  as('admin', 'select prepare_order_production($1)', [shOrder]), 'Confirm the payment');
+await fails('sales cannot prepare production', () =>
+  as('sales', 'select prepare_order_production($1)', [shOrder]), 'not allowed');
+await ok('prepare production: recipe linked, batch planned and dated, materials reserved or requested; a product without a recipe is named', async () => {
+  await as('admin', `select confirm_order_payment($1, 'full')`, [shOrder]);
+  const r = (await one('admin', `select prepare_order_production($1, current_date + 5) as r`, [shOrder])).r;
+  eq(r.created, 1, 'created'); eq(r.no_recipe.join(), 'Shortcut No Recipe', 'no recipe');
+  eq(r.reserved + r.requested > 0, true, 'materials');
+  const m = await one('admin', `select m.status, m.planned_date is not null as dated, l.formula_version_id from manufacturing_orders m
+    join sales_order_lines l on l.id = m.sales_order_line_id where l.order_id = $1`, [shOrder]);
+  eq(m.status, 'scheduled', 'scheduled'); eq(m.dated, true, 'date'); eq(m.formula_version_id, shVersion.id, 'recipe');
+});
+await ok('prepare production twice changes nothing', async () => {
+  const r = (await one('admin', 'select prepare_order_production($1, current_date + 5) as r', [shOrder])).r;
+  eq(r.created, 0, 'created'); eq(r.requested, 0, 'requested');
+  eq((await one('admin', `select count(*)::int as n from manufacturing_orders m join sales_order_lines l on l.id = m.sales_order_line_id where l.order_id = $1`, [shOrder])).n, 1, 'one batch');
+});
+await fails('production cannot repeat an order', () => as('production', 'select copy_order($1)', [shOrder]), 'not allowed');
+await ok('a repeat order: unpaid, same products and prices, no dates, reference, payment or recipe', async () => {
+  shCopy = (await one('sales', 'select copy_order($1) as id', [shOrder])).id;
+  const c = await one('sales', 'select status, customer_ref, deposit_received_on, vat_pct from sales_orders where id = $1', [shCopy]);
+  eq(c.status, 'unpaid', 'status'); eq(c.customer_ref, null, 'ref'); eq(c.deposit_received_on, null, 'payment'); eq(Number(c.vat_pct), 20, 'vat');
+  const same = 'select kind, calc_offer_id, description, quantity, unit_price from sales_order_lines where order_id = $1 order by sort_order';
+  eq(JSON.stringify(await as('sales', same, [shCopy])), JSON.stringify(await as('sales', same, [shOrder])), 'lines');
+  eq((await one('sales', 'select count(*)::int as n from sales_order_lines where order_id = $1 and formula_version_id is not null', [shCopy])).n, 0, 'recipe later');
+});
+await ok('the repeat order gets its recipe and its own project when production is prepared', async () => {
+  await as('admin', `select confirm_order_payment($1, 'full')`, [shCopy]);
+  eq((await one('admin', 'select prepare_order_production($1) as r', [shCopy])).r.created, 1, 'created');
+  const a = await one('admin', 'select project_id from sales_order_lines where order_id = $1 and calc_offer_id = $2', [shOrder, shReady]);
+  const b = await one('admin', 'select project_id from sales_order_lines where order_id = $1 and calc_offer_id = $2', [shCopy, shReady]);
+  eq(b.project_id !== null && a.project_id !== b.project_id, true, 'own project');
+});
+await fails('production cannot send documents', () =>
+  as('production', `select begin_document_send('proforma', $1, 'a@b.co', null, 'x')`, [shOrder]), 'not allowed');
+await fails('a wrong e-mail address is refused', () =>
+  as('sales', `select begin_document_send('proforma', $1, 'no-address', null, 'x')`, [shOrder]), 'e-mail address');
+await fails('a draft invoice cannot be sent', async () => {
+  const d = (await one('sales', 'select create_order_invoice($1) as id', [shOrder])).id;
+  await as('sales', `select begin_document_send('invoice', $1, 'a@b.co', null, 'x')`, [d]);
+}, 'cannot be sent');
+await ok('a send is logged with its result; only its sender closes it', async () => {
+  const id = (await one('sales', `select begin_document_send('proforma', $1, 'a@b.co', null, 'Proforma') as id`, [shOrder])).id;
+  await fails('another user cannot close it', () => as('admin', 'select finish_document_send($1)', [id]), 'not found');
+  await as('sales', 'select finish_document_send($1)', [id]);
+  const r = await one('admin', 'select status, sent_by from document_sends where id = $1', [id]);
+  eq(r.status, 'sent', 'status'); eq(r.sent_by, U.sales, 'sender');
+  const f = (await one('sales', `select begin_document_send('proforma', $1, 'a@b.co', null, 'Proforma') as id`, [shOrder])).id;
+  await as('sales', `select finish_document_send($1, 'Mailbox full')`, [f]);
+  eq((await one('sales', 'select status, error from document_sends where id = $1', [f])).error, 'Mailbox full', 'error');
+});
+await ok('production sees no sent documents and nobody writes them directly', async () => {
+  eq((await as('production', 'select id from document_sends')).length, 0, 'production');
+  let refused = false;
+  try { await as('sales', `insert into document_sends (kind, ref_id, recipient, subject) values ('proforma', $1, 'a@b.co', 'x')`, [shOrder]); }
+  catch { refused = true; }
+  eq(refused, true, 'insert');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -7,6 +7,8 @@ import { PrintButton } from "@/components/print-button";
 import { VatToggle } from "@/components/vat-toggle";
 import { SalesDocument } from "@/components/sales-document";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
+import { SendDocument } from "@/components/send-document";
+import { loadSendInfo } from "@/lib/sends";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
 
@@ -131,6 +133,8 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
     logoDataUrl: s?.logo_data_url ?? null,
   };
 
+  const send = await loadSendInfo(user.id, user.name, "proforma", id, { orderId: id, title: model.title, no: o.code, lang: l });
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2 print:hidden">
@@ -141,6 +145,8 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
       <div className="print:hidden">
         <VatToggle checked={withVat} label={fmt(ui.common.withVat, { pct: formatNumber(locale, rate) })} />
       </div>
+
+      <SendDocument info={send} model={model} text={ui.send} locale={locale} />
 
       <SalesDocument model={model} lang={l} sellerName={s?.company_name ?? ""} />
     </div>

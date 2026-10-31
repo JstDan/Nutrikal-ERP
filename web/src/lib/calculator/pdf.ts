@@ -15,8 +15,8 @@ import { CAPSULE_SIZE, isCapsule, type OfferForm, type ProductType, type Setting
 // The offer document is always in English (clients are mostly abroad), so its text lives here.
 
 const PDF = {
-  offer: 'OFFER',
-  number: 'Number',
+  offer: 'Offer',
+  number: 'No',
   date: 'Date',
   customer: 'CUSTOMER',
   supplier: 'SUPPLIER',
@@ -26,16 +26,16 @@ const PDF = {
   phone: 'Phone',
   email: 'Email',
   address: 'Address',
-  amountPerDose: 'AMOUNT PER SERVING ({portion}):',
+  amountPerDose: 'Amount per serving ({portion})',
   ingredient: 'Ingredient',
-  amountPerDoseColumn: 'Amount per serving',
-  note: 'NOTE:',
-  paymentTerms: 'PAYMENT TERMS:',
-  terms: 'DISCLAIMER:',
+  amountPerDoseColumn: 'Amount',
+  note: 'Note',
+  paymentTerms: 'Payment terms',
+  terms: 'Disclaimer',
   pricesExclVat: 'All prices are excl. VAT.',
-  salesPrices: 'SALES PRICES:',
-  units: 'Units',
-  pricePerUnit: 'Price/Unit (EUR)',
+  salesPrices: 'Sales prices',
+  units: 'Quantity (units)',
+  pricePerUnit: 'Price per unit (EUR)',
   page: 'Page {n} of {m}',
   packaging_capsules_glass: 'Glass bottle',
   packaging_capsules_plastic: 'Plastic bottle',
@@ -101,9 +101,9 @@ export interface PdfFonts {
 
 const NAVY: [number, number, number] = [34, 40, 49];   // brand ink
 const TEXT: [number, number, number] = [34, 40, 49];
+const MUTED: [number, number, number] = [74, 81, 96];
 const LINE: [number, number, number] = [221, 225, 232];
 const HEAD_BG: [number, number, number] = [244, 245, 247];
-const WHITE: [number, number, number] = [255, 255, 255];
 const CYRILLIC = /[Ѐ-ӿ]/;
 
 type Weight = 'regular' | 'semibold' | 'bold';
@@ -283,210 +283,166 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
     doc.text(text, x, y, { align: opts.align ?? 'left' });
     return doc.getTextWidth(text);
   };
-  /** "Label: value" with the value in bold, as in the template. */
-  const labelValue = (label: string, value: string, x: number, y: number, boldValue = true) => {
-    const w = write(`${label} `, x, y);
-    if (value) write(value, x + w, y, { weight: boldValue ? 'bold' : 'regular' });
-  };
 
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const L = 8.5;
-  const R = 193.5;
-  const COL2 = 103;
+  const L = 16;
+  const R = pageW - 16;
+  const COL2 = pageW / 2 + 4;
   const bottomLimit = pageH - 18;
 
-  // 1. Header: ink band with the wordmark (or the uploaded logo on a white plate) and the title
-  doc.setFillColor(...NAVY);
-  doc.rect(0, 0, pageW, 24, 'F');
-  if (m.customLogo) {
-    const ratio = Math.min(46 / m.customLogo.width, 13 / m.customLogo.height);
-    const w = m.customLogo.width * ratio;
-    const h = m.customLogo.height * ratio;
-    doc.setFillColor(...WHITE);
-    doc.rect(L - 2, 12 - h / 2 - 1.5, w + 4, h + 3, 'F');
-    doc.addImage(m.customLogo.dataUrl, imageFormat(m.customLogo), L, 12 - h / 2, w, h);
-  } else if (m.brandLogo) {
-    const w = 52;
-    const h = w * (m.brandLogo.height / m.brandLogo.width);
-    doc.addImage(m.brandLogo.dataUrl, imageFormat(m.brandLogo), L, 12 - h / 2, w, h, 'brand');
+  // 1. Header on white: logo on the left, title, number and date on the right
+  if (m.customLogo || m.brandLogo) {
+    const img = (m.customLogo ?? m.brandLogo)!;
+    const ratio = Math.min(52 / img.width, 15 / img.height);
+    const w = img.width * ratio;
+    const h = img.height * ratio;
+    doc.addImage(img.dataUrl, imageFormat(img), L, 21 - h, w, h, m.customLogo ? undefined : 'brand');
   } else {
-    write(m.supplier.name.toUpperCase(), L, 15, { weight: 'bold', size: 16, color: WHITE });
+    write(m.supplier.name.toUpperCase(), L, 21, { weight: 'bold', size: 15 });
   }
-  write(PDF.offer, R, 15, { size: 18, color: WHITE, align: 'right' });
-  labelValue(`${PDF.number}:`, m.offerNo, COL2, 31, false);
-  labelValue(`${PDF.date}:`, formatDate(m.offerDate), COL2, 36.5, false);
+  write(PDF.offer, R, 20, { weight: 'semibold', size: 24, align: 'right' });
+  write(`${PDF.number} ${m.offerNo}  ·  ${formatDate(m.offerDate)}`, R, 26.5, { size: 9.5, color: MUTED, align: 'right' });
+  doc.setDrawColor(...NAVY);
+  doc.setLineWidth(0.4);
+  doc.line(L, 31, R, 31);
 
-  // Nutrikal contact person, phone and sales email under the logos (top left).
-  let top = 46;
-  const contactLines = [
-    [PDF.contactPerson, m.contact.name],
-    [PDF.phone, m.contact.phone],
-    [PDF.email, m.contact.email],
-  ].filter(([, value]) => value);
-  if (contactLines.length) {
-    let yh = 31;
-    for (const [label, value] of contactLines) {
-      const w = write(`${label}: `, L, yh, { size: 8.5 });
-      write(value, L + w, yh, { weight: 'bold', size: 8.5 });
-      yh += 4.4;
+  // 2. Customer / supplier: only what is filled in
+  const party = (title: string, x: number, width: number, name: string, rows: [string, string][]) => {
+    let py = 40;
+    write(title, x, py, { weight: 'semibold', size: 7.5, color: MUTED });
+    py += 5.5;
+    if (name) {
+      write(name, x, py, { weight: 'bold', size: 11 });
+      py += 5.6;
     }
-    top = Math.max(top, yh + 6);
-  }
-
-  // 2. Customer / supplier
-  const STEP = 6.2;
-  let yc = top;
-  write(PDF.customer, L, yc, { weight: 'semibold', size: 11 });
-  yc += 7;
-  if (m.customer.name) {
-    write(m.customer.name, L, yc);
-    yc += STEP;
-  }
-  labelValue(`${PDF.identificationNo}:`, m.customer.identificationNo, L, yc);
-  yc += STEP;
-  labelValue(`${PDF.vatNo}:`, m.customer.vatNumber, L, yc);
-  yc += STEP;
-  if (m.customer.contactPerson) {
-    labelValue(`${PDF.contactPerson}:`, m.customer.contactPerson, L, yc);
-    yc += STEP;
-  }
-  doc.setFontSize(9);
-  for (const line of m.customer.addressLines) {
-    doc.setFont(...fontFor('regular', line));
-    for (const part of doc.splitTextToSize(line, COL2 - L - 6) as string[]) {
-      write(part, L, yc);
-      yc += STEP;
+    doc.setFontSize(9);
+    for (const [label, value] of rows.filter(([, v]) => v)) {
+      const line = label ? `${label}: ${value}` : value;
+      doc.setFont(...fontFor('regular', line));
+      for (const part of doc.splitTextToSize(line, width) as string[]) {
+        write(part, x, py, { size: 9 });
+        py += 4.7;
+      }
     }
-  }
-
-  let ys = top;
-  write(PDF.supplier, COL2, ys, { weight: 'semibold', size: 11 });
-  ys += 7;
-  write(m.supplier.name, COL2, ys);
-  ys += STEP;
-  labelValue(`${PDF.identificationNo}:`, m.supplier.identificationNo, COL2, ys);
-  ys += STEP;
-  labelValue(`${PDF.vatNo}:`, m.supplier.vatNumber, COL2, ys);
-  ys += STEP;
-  doc.setFont(...fontFor('regular', m.supplier.address));
-  const addrLabel = `${PDF.address}: `;
-  const addrParts = doc.splitTextToSize(addrLabel + m.supplier.address, R - COL2) as string[];
-  for (const part of addrParts) {
-    write(part, COL2, ys);
-    ys += STEP;
-  }
+    return py;
+  };
+  const yc = party(PDF.customer, L, COL2 - L - 8, m.customer.name, [
+    [PDF.identificationNo, m.customer.identificationNo], [PDF.vatNo, m.customer.vatNumber],
+    [PDF.contactPerson, m.customer.contactPerson], ...m.customer.addressLines.map((a): [string, string] => ['', a]),
+  ]);
+  const ys = party(PDF.supplier, COL2, R - COL2, m.supplier.name, [
+    [PDF.identificationNo, m.supplier.identificationNo], [PDF.vatNo, m.supplier.vatNumber], ['', m.supplier.address],
+    [PDF.contactPerson, m.contact.name], [PDF.phone, m.contact.phone], [PDF.email, m.contact.email],
+  ]);
 
   // 3. No price lines, totals or bank details on the offer – prices are in the sales prices table.
   const cellFont = (text: string, weight: Weight) => {
     const [font, fontStyle] = fontFor(weight, text);
     return { font, fontStyle: fontStyle as 'normal' | 'bold' };
   };
-  let y = Math.max(yc, ys) + 6;
+  let y = Math.max(yc, ys) + 8;
 
   const ensureSpace = (needed: number) => {
     if (y + needed > bottomLimit) {
       doc.addPage();
-      y = 15;
+      y = 18;
     }
   };
 
-  // 4. Amount per serving, sales prices, excl. VAT note, payment terms, standard terms
-  const textLines = (lines: string[]) => {
-    doc.setFontSize(9);
+  // 4. Product, amount per serving, sales prices, excl. VAT note, payment terms, standard terms
+  const textLines = (lines: string[], size = 9.5, color = TEXT) => {
+    doc.setFontSize(size);
     for (const line of lines) {
       doc.setFont(...fontFor('regular', line));
       for (const part of doc.splitTextToSize(line, R - L) as string[]) {
         ensureSpace(6);
-        write(part, L, y);
-        y += 5.2;
+        write(part, L, y, { size, color });
+        y += size * 0.53;
       }
     }
   };
-  const block = (title: string, lines: string[]) => {
+  const heading = (title: string) => {
+    write(title, L, y, { weight: 'semibold', size: 10.5 });
+    y += 2.5;
+  };
+  const block = (title: string, lines: string[], size = 9.5, color = TEXT) => {
     if (!lines.length) return;
     ensureSpace(14);
-    write(title, L, y, { weight: 'bold', size: 8 });
-    y += 6.5;
-    textLines(lines);
-    y += 4;
+    heading(title);
+    y += 3;
+    textLines(lines, size, color);
+    y += 5;
+  };
+  const underline = (cell: { x: number; y: number; width: number; height: number }, color = LINE) => {
+    doc.setDrawColor(...color);
+    doc.setLineWidth(0.25);
+    doc.line(cell.x, cell.y + cell.height, cell.x + cell.width, cell.y + cell.height);
   };
   // Product name with the packaging lines under it.
-  ensureSpace(16);
-  write(m.productName, L, y, { weight: 'bold', size: 12, color: NAVY });
+  ensureSpace(18);
+  write(m.productName, L, y, { weight: 'bold', size: 15 });
+  y += 6.5;
+  textLines(m.packaging, 9.5, MUTED);
   y += 6;
-  textLines(m.packaging);
-  y += 4;
 
   if (m.doseRows.length) {
     ensureSpace(24);
-    write(fmt(PDF.amountPerDose, { portion: m.dosePortion.toUpperCase() }), L, y, { weight: 'bold', size: 8 });
-    y += 2.5;
+    heading(fmt(PDF.amountPerDose, { portion: m.dosePortion }));
     autoTable(doc, {
       startY: y,
       margin: { left: L, right: pageW - R, top: 15, bottom: 20 },
       theme: 'plain',
       head: [[PDF.ingredient, PDF.amountPerDoseColumn]],
       body: m.doseRows.map((r) => [r.name, r.amount]),
-      styles: { font: 'Poppins', fontSize: 8.5, textColor: TEXT, cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 }, overflow: 'linebreak' },
-      headStyles: { font: 'Poppins', fontStyle: 'bold', fontSize: 8, fillColor: HEAD_BG, textColor: NAVY },
+      styles: { font: 'Poppins', fontSize: 9.5, textColor: TEXT, cellPadding: { top: 1.8, bottom: 1.8, left: 0, right: 0 }, overflow: 'linebreak' },
+      headStyles: { font: 'Poppins', fontSize: 8.5, textColor: MUTED },
       columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 40, halign: 'right' } },
       didParseCell: (data) => {
         const text = data.cell.text.join(' ');
-        if (data.section === 'head') {
-          data.cell.text = data.cell.text.map((s) => s.toUpperCase());
-          if (data.column.index === 1) data.cell.styles.halign = 'right';
-        } else if (CYRILLIC.test(text)) {
-          Object.assign(data.cell.styles, cellFont(text, 'regular'));
-        }
+        if (data.section === 'head' && data.column.index === 1) data.cell.styles.halign = 'right';
+        if (data.section === 'body' && CYRILLIC.test(text)) Object.assign(data.cell.styles, cellFont(text, 'regular'));
       },
-      didDrawCell: (data) => {
-        if (data.section !== 'body') return;
-        doc.setDrawColor(...LINE);
-        doc.setLineWidth(0.25);
-        doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
-      },
+      didDrawCell: (data) => underline(data.cell, data.section === 'head' ? NAVY : LINE),
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
   }
   // Notes: under the table, or with their own heading when the table is switched off.
   if (m.doseRows.length) {
     if (m.noteLines.length) {
       textLines(m.noteLines);
-      y += 4;
+      y += 5;
     }
   } else {
     block(PDF.note, m.noteLines);
   }
   // Sales prices, then the excl. VAT line, payment terms and standard terms at the end.
   if (m.salesPrices) {
-    ensureSpace(24);
-    write(PDF.salesPrices, L, y, { weight: 'bold', size: 8 });
-    y += 2.5;
+    ensureSpace(30);
+    heading(PDF.salesPrices);
     autoTable(doc, {
       startY: y,
       margin: { left: L, right: pageW - R, top: 15, bottom: 20 },
       theme: 'plain',
-      body: [
-        [PDF.units, ...m.salesPrices.map((p) => formatNumber(p.units, 0))],
-        [PDF.pricePerUnit, ...m.salesPrices.map((p) => `€${money(p.price)}`)],
-      ],
-      styles: { font: 'Poppins', fontSize: 9, textColor: TEXT, cellPadding: { top: 2, bottom: 2, left: 1.5, right: 1.5 }, halign: 'right' },
-      columnStyles: { 0: { halign: 'left', fontStyle: 'bold', fillColor: HEAD_BG, textColor: NAVY, cellWidth: 38 } },
-      didDrawCell: (data) => {
-        doc.setDrawColor(...LINE);
-        doc.setLineWidth(0.25);
-        doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+      head: [[PDF.units, ...m.salesPrices.map((p) => formatNumber(p.units, 0))]],
+      body: [[PDF.pricePerUnit, ...m.salesPrices.map((p) => `€${money(p.price)}`)]],
+      styles: { font: 'Poppins', fontSize: 9.5, textColor: TEXT, cellPadding: { top: 2.2, bottom: 2.2, left: 0, right: 2 }, halign: 'right' },
+      headStyles: { font: 'Poppins', fontSize: 9.5, textColor: MUTED },
+      columnStyles: { 0: { halign: 'left', cellWidth: 46 } },
+      didParseCell: (data) => {
+        if (data.section === 'head' && data.column.index === 0) data.cell.styles.halign = 'left';
+        if (data.section === 'body' && data.column.index > 0) Object.assign(data.cell.styles, { fontStyle: 'bold', fontSize: 11.5 });
       },
+      didDrawCell: (data) => underline(data.cell, data.section === 'head' ? NAVY : LINE),
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
   }
 
   ensureSpace(8);
-  write(PDF.pricesExclVat, L, y, { weight: 'bold', size: 9 });
+  write(PDF.pricesExclVat, L, y, { size: 8.5, color: MUTED });
   y += 9;
   block(PDF.paymentTerms, m.paymentTerms ? [m.paymentTerms] : []);
-  block(PDF.terms, m.terms ? [m.terms] : []);
+  block(PDF.terms, m.terms ? [m.terms] : [], 8, MUTED);
 
   // 5. Footer on every page
   const pages = doc.getNumberOfPages();
@@ -511,7 +467,7 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
 // Browser helpers: lazy font / image loading and download
 // ---------------------------------------------------------------------------
 
-let assetCache: Promise<{ fonts: PdfFonts; brandLogo: PdfImage | null }> | null = null;
+let assetCache: Promise<{ fonts: PdfFonts; brandLogo: PdfImage | null; inkLogo: PdfImage | null }> | null = null;
 
 function arrayBufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -533,8 +489,8 @@ export function loadImage(dataUrl: string | null): Promise<PdfImage | null> {
   });
 }
 
-/** The NUTRIKAL wordmark in white, as a PNG (jsPDF has no WebP). */
-function whiteWordmark(): Promise<PdfImage | null> {
+/** The NUTRIKAL wordmark in one colour, as a PNG (jsPDF has no WebP). */
+function wordmark(color: string): Promise<PdfImage | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -545,7 +501,7 @@ function whiteWordmark(): Promise<PdfImage | null> {
       if (!ctx) return resolve(null);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       ctx.globalCompositeOperation = 'source-in';
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = color;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       resolve({ dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height });
     };
@@ -566,10 +522,13 @@ export function loadAssets() {
       }),
     );
     const [poppinsRegular, poppinsSemiBold, poppinsBold, robotoRegular, robotoBold, nk] = base64;
-    const brandLogo = (await whiteWordmark()) ?? (await loadImage(`data:image/png;base64,${nk}`));
+    const fallback = await loadImage(`data:image/png;base64,${nk}`);
+    const brandLogo = (await wordmark('#ffffff')) ?? fallback;
+    const inkLogo = (await wordmark('#222831')) ?? fallback;
     return {
       fonts: { poppinsRegular, poppinsSemiBold, poppinsBold, robotoRegular, robotoBold },
       brandLogo,
+      inkLogo,
     };
   })().catch((e) => {
     assetCache = null;
@@ -578,8 +537,16 @@ export function loadAssets() {
   return assetCache;
 }
 
+async function buildOfferPdf(form: OfferForm, result: CalcResult, settings: Settings): Promise<jsPDF> {
+  const [{ fonts, inkLogo }, customLogo] = await Promise.all([loadAssets(), loadImage(settings.logo_data_url)]);
+  return createOfferPdf(toPdfModel(form, result, settings, { customLogo, brandLogo: inkLogo }), fonts);
+}
+
 export async function downloadOfferPdf(form: OfferForm, result: CalcResult, settings: Settings): Promise<void> {
-  const [{ fonts, brandLogo }, customLogo] = await Promise.all([loadAssets(), loadImage(settings.logo_data_url)]);
-  const doc = createOfferPdf(toPdfModel(form, result, settings, { customLogo, brandLogo }), fonts);
-  doc.save(offerFileName(form));
+  (await buildOfferPdf(form, result, settings)).save(offerFileName(form));
+}
+
+export async function offerPdfBase64(form: OfferForm, result: CalcResult, settings: Settings): Promise<{ base64: string; fileName: string }> {
+  const doc = await buildOfferPdf(form, result, settings);
+  return { base64: doc.output('datauristring').split(',')[1], fileName: offerFileName(form) };
 }

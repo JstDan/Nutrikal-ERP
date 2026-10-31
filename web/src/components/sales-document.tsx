@@ -1,15 +1,15 @@
 import { Wordmark } from "@/components/logo";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 
-/** The head shared by every Nutrikal document: wordmark on the ink band, title, then number and dates. */
-export function DocHeader({ title, meta, sellerName, logoDataUrl }: { title: string; meta: string[]; sellerName: string; logoDataUrl: string | null }) {
+/** The head shared by every Nutrikal document: wordmark on the ink band (white when plain, as on offers), title, then number and dates. */
+export function DocHeader({ title, meta, sellerName, logoDataUrl, plain = false }: { title: string; meta: string[]; sellerName: string; logoDataUrl: string | null; plain?: boolean }) {
   return (
     <header>
-      <div className="doc-band">
+      <div className={plain ? "doc-band doc-band-plain" : "doc-band"}>
         {logoDataUrl
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={logoDataUrl} alt={sellerName} className="doc-logo" />
-          : <Wordmark height={22} inverted />}
+          : <Wordmark height={22} inverted={!plain} />}
         <h1 className="doc-title">{title}</h1>
       </div>
       {meta.length > 0 && (

@@ -5,6 +5,7 @@ import { fmt, formatDate, formatNumber, formatQty } from "@/lib/i18n";
 import { Card, Chip, Dot, Empty, PageHeader, TextLink } from "@/components/ui";
 import { completeTask } from "./actions";
 import { orderTone } from "@/lib/status";
+import { loadTodo } from "@/lib/todo";
 
 /** Open orders by status, in order. */
 const PIPELINE = ["unpaid", "draft", "confirmed", "in_production", "ready", "dispatched"] as const;
@@ -41,9 +42,11 @@ export default async function Dashboard() {
         where a.type = 'task' and a.done_at is null and a.assigned_to = auth.uid()
         order by a.due_at nulls last limit 8`,
     )).rows;
-    return { clients, pipeline, production, low, expiring, quarantine, adjustments, tasks };
+    const todo = await loadTodo(tx, user.role, locale);
+    return { clients, pipeline, production, low, expiring, quarantine, adjustments, tasks, todo };
   });
 
+  const T = t.dashboard.todo;
   const count = (rows: { status: string; n: number }[], s: string) => rows.find((r) => r.status === s)?.n ?? 0;
   const openOrders = PIPELINE.reduce((a, s) => a + count(data.pipeline, s), 0);
   const maxStage = Math.max(1, ...PIPELINE.map((s) => count(data.pipeline, s)));
@@ -62,6 +65,25 @@ export default async function Dashboard() {
         title={t.dashboard.title}
         subtitle={`${formatDate(locale, new Date(), { weekday: "long", day: "numeric", month: "long" })} · ${t.dashboard.subtitle}`}
       />
+
+      <Card title={T.title} id="todo-h">
+        {data.todo.length === 0 && <Empty>{T.empty}</Empty>}
+        <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-2">
+          {data.todo.map((g) => (
+            <section key={g.key} aria-label={T.groups[g.key]} className="flex min-w-0 flex-col">
+              <h3 className="m-0 flex items-baseline justify-between gap-3 border-b border-mist pb-2 text-sm font-bold">
+                <span className="min-w-0 break-words">{T.groups[g.key]}</span><span>{g.total}</span>
+              </h3>
+              {g.items.map((x) => (
+                <Link key={x.id} href={x.href} className="flex min-h-11 min-w-0 flex-wrap items-center gap-x-2 border-b border-mist py-1 text-sm text-ink no-underline last:border-0 hover:underline">
+                  <span className="font-semibold break-words">{x.title}</span><span className="min-w-0 break-words text-ink-2">{x.sub}</span>
+                </Link>
+              ))}
+              {g.total > g.items.length && <span className="pt-1 text-xs text-ink-2">{fmt(T.more, { n: g.total - g.items.length })}</span>}
+            </section>
+          ))}
+        </div>
+      </Card>
 
       <section aria-label={t.dashboard.title} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (

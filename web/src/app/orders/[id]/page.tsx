@@ -9,6 +9,7 @@ import { ActionForm } from "@/components/action-form";
 import { orderTone } from "@/lib/status";
 import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
 import { addOrderLine, createProductionFromLine, linkOrderLineFormula, openOrderInvoice, removeOrderLine, saveOrder, setOrderStatus, setOrderTransport } from "@/app/actions";
+import { copyOrder, prepareProduction } from "@/app/shortcut-actions";
 import { loadBoard, loadTemplates } from "@/lib/tasks";
 import { TaskBoard } from "@/components/tasks/board";
 import { CancelPayment, ConfirmFinalPayment, ConfirmFirstPayment } from "@/components/tasks/payment-dialog";
@@ -144,6 +145,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   // The advance received (VAT included), else its % of the order as ordered
   const advancePaid = c?.deposit_amount != null ? Number(c.deposit_amount) : Math.round(gross * depPct) / 100;
   const finalIssued = invoices.some((x) => (x.purpose === "final" || x.purpose === "full") && x.status === "issued");
+  // Once the goods have left: the invoice due next (the advance one first when it is still open)
+  const shipped = ["dispatched", "closed"].includes(o.status);
+  const dueInvoice: OrderInvoice["purpose"] | null = !canEdit || !shipped || finalIssued ? null
+    : !twoPayments ? "full" : invoiceOf("advance")?.status !== "issued" ? "advance" : c?.balance_received_on ? "final" : null;
+  const showPrepare = isAdmin && ["confirmed", "in_production"].includes(o.status)
+    && products.some((l) => !mos.some((m) => m.sales_order_line_id === l.id && m.status !== "cancelled"));
   const doneTasks = board ? board.tasks.filter((x) => x.status === "done").length : 0;
   const realtime = supabaseConfigured()
     ? { url: process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(), key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim() }
@@ -174,18 +181,23 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             <span>{t.orders.products}: {products.length}{c ? ` · ${money(total)}` : ""}</span>
           </span>
         }
-        actions={canEdit && o.status !== "cancelled" ? (
-          // Paid: the invoice replaces the proforma
-          !["draft", "unpaid"].includes(o.status) ? (
-            twoPayments ? (
-              <div className="flex flex-wrap items-start gap-3">
-                {invoiceButton("advance", H.advanceInvoice)}
-                {c?.balance_received_on && invoiceButton("final", H.finalInvoice)}
-              </div>
-            ) : invoiceButton("full", d.exportInvoice)
-          ) : (
-            <Link href={`/orders/${o.id}/proforma`} className="btn btn-primary">{d.exportProforma}</Link>
-          )
+        actions={canEdit ? (
+          <div className="flex flex-wrap items-start gap-3">
+            {/* Paid: the invoice replaces the proforma */}
+            {o.status !== "cancelled" && (!["draft", "unpaid"].includes(o.status) ? (
+              twoPayments ? (
+                <>
+                  {invoiceButton("advance", H.advanceInvoice)}
+                  {c?.balance_received_on && invoiceButton("final", H.finalInvoice)}
+                </>
+              ) : invoiceButton("full", d.exportInvoice)
+            ) : (
+              <Link href={`/orders/${o.id}/proforma`} className="btn btn-primary">{d.exportProforma}</Link>
+            ))}
+            <ActionForm action={copyOrder} submitLabel={d.repeatOrder} resetOnSuccess={false}>
+              <input type="hidden" name="order_id" value={o.id} />
+            </ActionForm>
+          </div>
         ) : undefined}
       />
 
@@ -317,7 +329,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         </div>
 
         <div className="flex min-w-0 flex-col gap-4">
-          {canEdit && (next.length > 0 || showFirstPayment || showFinalPayment) && (
+          {canEdit && (next.length > 0 || showFirstPayment || showFinalPayment || showPrepare) && (
             <Card title={d.nextStep} id="next-h">
               {o.status === "unpaid" && <p className="m-0 text-sm text-ink-2">{isAdmin ? d.unpaidNote : d.unpaidSales}</p>}
               {showFirstPayment && (
@@ -332,6 +344,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
               )}
               {twoPayments && paid && !c?.balance_received_on && <p className="m-0 text-xs text-ink-2">{H.finalInvoiceAfter}</p>}
               {o.status === "confirmed" && <p className="m-0 text-sm text-ink-2">{d.productionSteps}</p>}
+              {showPrepare && (
+                <ActionForm action={prepareProduction} submitLabel={d.prepareProduction} resetOnSuccess={false}>
+                  <input type="hidden" name="order_id" value={o.id} />
+                  <p className="m-0 text-sm text-ink-2">{d.prepareNote}</p>
+                  <label className="field"><span>{d.prepareDate}</span><input name="planned_date" type="date" className="input" /></label>
+                </ActionForm>
+              )}
               {o.status === "ready" && <p className="m-0 text-sm text-ink-2">{d.balanceWarning}</p>}
               {showCancelPayment && <CancelPayment orderId={o.id} T={T} />}
               {next.map((s) => (
@@ -340,6 +359,17 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
                   <input type="hidden" name="status" value={s} />
                 </ActionForm>
               ))}
+            </Card>
+          )}
+
+          {shipped && canEdit && !finalIssued && (
+            <Card title={d.invoiceTitle} id="invoice-due-h">
+              {dueInvoice ? (
+                <>
+                  <p className="m-0 text-sm text-ink-2">{d.invoiceNote}</p>
+                  {invoiceButton(dueInvoice, invoiceOf(dueInvoice) ? d.openInvoice : d.makeInvoice)}
+                </>
+              ) : <p className="m-0 text-sm text-ink-2">{H.finalInvoiceAfter}</p>}
             </Card>
           )}
 

@@ -1,0 +1,77 @@
+"use server";
+
+// Repeat order, preparing production, e-mailing documents.
+// Every rule is in the database; these only pass the values on as the user.
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { q } from "@/lib/db/engine";
+import { fmt } from "@/lib/i18n";
+import { mailConfigured, sendMail } from "@/lib/mail";
+import { getSession } from "@/lib/session";
+import type { ActionState } from "@/app/actions";
+
+const errorText = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
+const str = (fd: FormData, k: string) => {
+  const v = fd.get(k);
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+};
+const MAX_PDF_BASE64 = 14_000_000;
+
+export async function copyOrder(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user } = await getSession();
+  let id: string;
+  try {
+    id = (await q<{ id: string }>(user.id, "select copy_order($1) as id", [str(fd, "order_id")]))[0].id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  redirect(`/orders/${id}`);
+}
+
+export async function prepareProduction(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const d = t.orders.detail;
+  try {
+    const [{ r }] = await q<{ r: { created: number; reserved: number; requested: number; no_recipe: string[] } }>(
+      user.id, "select prepare_order_production($1, $2::date) as r", [str(fd, "order_id"), str(fd, "planned_date")]);
+    revalidatePath("/", "layout");
+    const done = fmt(d.prepared, { created: r.created, reserved: r.reserved, requested: r.requested });
+    return { ok: true, message: r.no_recipe.length ? `${done} ${fmt(d.preparedNoRecipe, { names: r.no_recipe.join(", ") })}` : done };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+}
+
+/** The send is logged before the e-mail leaves, with its result after. */
+export async function sendDocument(fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const S = t.send;
+  const pdf = str(fd, "pdf");
+  const text = str(fd, "body");
+  const subject = str(fd, "subject");
+  const to = str(fd, "to");
+  const cc = str(fd, "cc");
+  const fileName = (str(fd, "file_name") ?? "document.pdf").replace(/[\\/:*?"<>|\r\n]+/g, "_");
+  if (!mailConfigured()) return { error: S.notConfigured };
+  // A PDF file starts with %PDF-
+  if (!pdf || !pdf.startsWith("JVBERi0") || pdf.length > MAX_PDF_BASE64 || !text || !subject || !to) return { error: S.failed };
+  let id: string;
+  try {
+    id = (await q<{ id: string }>(user.id, "select begin_document_send($1, $2, $3, $4, $5) as id",
+      [str(fd, "kind"), str(fd, "ref_id"), to, cc, subject]))[0].id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  try {
+    const [me] = await q<{ email: string | null }>(user.id, "select email::text from profiles where id = auth.uid()");
+    await sendMail({ to, cc, replyTo: me?.email ?? null, subject, text, attachment: { filename: fileName, base64: pdf } });
+  } catch (e) {
+    await q(user.id, "select finish_document_send($1, $2)", [id, errorText(e)]);
+    revalidatePath("/", "layout");
+    return { error: S.failed };
+  }
+  await q(user.id, "select finish_document_send($1)", [id]);
+  revalidatePath("/", "layout");
+  return { ok: true, message: fmt(S.sent, { to }) };
+}

@@ -50,6 +50,7 @@ export default async function NewOrderPage({ searchParams }: PageProps<"/orders/
           offers={offers}
           presets={settings.service_presets.map((p) => ({ description: p.description, price: p.price }))}
           initialClient={typeof sp.client === "string" ? sp.client : null}
+          initialOffer={typeof sp.offer === "string" ? sp.offer : null}
           locale={locale}
           text={n}
         />

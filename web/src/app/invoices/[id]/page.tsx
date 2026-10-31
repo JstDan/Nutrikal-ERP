@@ -10,6 +10,8 @@ import { Card, Chip, PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { VatToggle } from "@/components/vat-toggle";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
+import { SendDocument } from "@/components/send-document";
+import { loadSendInfo } from "@/lib/sends";
 import { SalesDocument } from "@/components/sales-document";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 
@@ -126,6 +128,8 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
     logoDataUrl: logo,
   };
 
+  const send = draft ? null : await loadSendInfo(user.id, user.name, "invoice", x.id, { orderId: x.order_id, title: docTitle, no: x.number ?? "", lang: l });
+
   return (
     <div className="flex flex-col gap-4">
       <div className="print:hidden">
@@ -225,6 +229,8 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
           <Link href={`/orders/${x.order_id}`} className="btn btn-outline">{I.toOrder}</Link>
         </div>
       )}
+
+      {send && <SendDocument info={send} model={model} text={t.send} locale={locale} />}
 
       <SalesDocument model={model} lang={l} sellerName={str(s.name)} />
 

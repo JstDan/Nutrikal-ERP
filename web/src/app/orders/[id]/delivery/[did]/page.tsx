@@ -6,6 +6,8 @@ import { fmt, formatDate, formatNumber, getDict } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
 import { SalesDocument } from "@/components/sales-document";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
+import { SendDocument } from "@/components/send-document";
+import { loadSendInfo } from "@/lib/sends";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 
 type Note = {
@@ -19,7 +21,7 @@ type Seller = { company_name: string; company_id: string; company_vat: string; c
 /** The delivery note as the client receives it: in the client's language, without prices. */
 export default async function DeliveryNotePage({ params }: PageProps<"/orders/[id]/delivery/[did]">) {
   const { id, did } = await params;
-  const { user, t: ui } = await requireRole("admin", "sales");
+  const { user, locale, t: ui } = await requireRole("admin", "sales");
 
   const data = await withUser(user.id, async (tx) => {
     if (!/^[0-9a-f-]{36}$/i.test(did)) return null;
@@ -89,6 +91,7 @@ export default async function DeliveryNotePage({ params }: PageProps<"/orders/[i
   };
 
   const U = ui.dispatch.doc;
+  const send = await loadSendInfo(user.id, user.name, "delivery_note", did, { orderId: id, title: D.title, no: n.code, lang: l });
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2 print:hidden">
@@ -96,6 +99,7 @@ export default async function DeliveryNotePage({ params }: PageProps<"/orders/[i
         <PrintButton label={U.print} variant="outline" />
         <Link href={`/orders/${id}`} className="btn btn-outline">{U.back}</Link>
       </div>
+      <SendDocument info={send} model={model} text={ui.send} locale={locale} />
       <SalesDocument model={model} lang={l} sellerName={s?.company_name ?? ""} />
     </div>
   );

@@ -9,6 +9,8 @@ import type { OfferRecord, Settings } from "@/lib/calculator/types";
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import { CalcTextProvider, InfoLine, Toast, useCalcText, useToast, type CalcDict } from "./kit";
 import { ClientSummary } from "./results-section";
+import { SendDocument, type SendInfo } from "@/components/send-document";
+import type { Dict } from "@/lib/i18n/en";
 
 type Props = {
   t: CalcDict;
@@ -16,6 +18,8 @@ type Props = {
   offer: OfferRecord;
   settings: Settings;
   canDelete: boolean;
+  send: SendInfo;
+  sendText: Dict["send"];
 };
 
 /** Short summary of an offer created in the calculator, with the PDF download. */
@@ -27,7 +31,7 @@ export function OfferSummary(props: Props) {
   );
 }
 
-function Summary({ offer: x, settings, canDelete }: Props) {
+function Summary({ offer: x, settings, canDelete, send, sendText }: Props) {
   const { t, locale, eur } = useCalcText();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -107,6 +111,8 @@ function Summary({ offer: x, settings, canDelete }: Props) {
           <button type="button" onClick={remove} className="btn border-red-ink! bg-red-ink! text-white!">{t.delete}</button>
         </div>
       )}
+      <SendDocument info={send} text={sendText} locale={locale}
+        makePdf={async () => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings)} />
       <Toast toast={toast} onClose={clear} closeLabel={t.close} />
     </div>
   );

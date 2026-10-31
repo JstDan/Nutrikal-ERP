@@ -28,7 +28,7 @@ const CANVAS: [number, number, number] = [244, 245, 247];
 const MIST: [number, number, number] = [235, 235, 235];
 const CYRILLIC = /[Ѐ-ӿ]/;
 
-export async function downloadProformaPdf(model: ProformaPdfModel): Promise<void> {
+async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
   // Number formatting uses narrow/no-break spaces; the embedded font has plain spaces only.
   const m: ProformaPdfModel = JSON.parse(JSON.stringify(model).replace(/[   ]/g, ' '));
   const [{ fonts, brandLogo }, customLogo] = await Promise.all([loadAssets(), loadImage(m.logoDataUrl)]);
@@ -212,5 +212,14 @@ export async function downloadProformaPdf(model: ProformaPdfModel): Promise<void
     if (pages > 1) write(`${i} / ${pages}`, R, pageH - 10, { size: 7.5, color: MUTED, align: 'right' });
   }
 
-  doc.save(m.fileName);
+  return doc;
+}
+
+export async function downloadProformaPdf(model: ProformaPdfModel): Promise<void> {
+  (await buildProformaPdf(model)).save(model.fileName);
+}
+
+export async function proformaPdfBase64(model: ProformaPdfModel): Promise<{ base64: string; fileName: string }> {
+  const doc = await buildProformaPdf(model);
+  return { base64: doc.output('datauristring').split(',')[1], fileName: model.fileName };
 }
