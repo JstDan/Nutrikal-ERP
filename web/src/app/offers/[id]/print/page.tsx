@@ -61,7 +61,7 @@ export default async function OfferPrintPage({ params }: PageProps<"/offers/[id]
         <Link href={`/offers/${id}`} className="btn btn-outline">{ui.offers.doc.back}</Link>
       </div>
 
-      <article lang={l} className="doc">
+      <article lang={l} className="doc doc-brand">
         <DocHeader title={D.title} meta={[`${D.number}: ${o.code}`, `${D.date}: ${formatDate(l, o.sent_at ?? o.created_at)}`, `${D.validUntil}: ${formatDate(l, o.valid_until)}`]} sellerName={co?.trade_name ?? "Nutrikal"} logoDataUrl={null} plain />
         <div className="doc-body">
         <section className="doc-section">

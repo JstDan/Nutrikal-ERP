@@ -233,6 +233,25 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
   .doc-row { grid-template-columns: minmax(0, 1fr) 96px 112px 120px; }
   .doc-cell-main { grid-column: auto; }
 }
+/* Offer, proforma, invoice and the like: dark top, capsule photo, a white sheet over both */
+.doc-brand { padding: 0 12px 32px; border: 0; background: #222831 url("/doc-bg.jpg") center bottom / 100% auto no-repeat; }
+.doc-brand .doc-band, .doc-brand .doc-band-plain { padding-left: 8px; padding-right: 8px; background: transparent; border: 0; color: #ffffff; }
+.doc-brand .doc-title { color: #ffffff; font-weight: 800; letter-spacing: 1.5px; }
+.doc-brand .doc-meta { justify-content: space-between; padding: 0 8px 16px; background: transparent; border: 0; }
+.doc-brand .doc-meta > div { display: flex; gap: 6px; }
+.doc-brand .doc-meta dt { color: #ffffff; font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+.doc-brand .doc-meta dt:not([aria-hidden])::after { content: ":"; }
+.doc-brand .doc-meta dt[aria-hidden] { display: none; }
+.doc-brand .doc-meta dd { color: #ffffff; font-weight: 400; font-size: 12px; }
+.doc-brand .doc-body { flex: 1; background: #ffffff; border-radius: 3px 3px 0 0; }
+.doc-brand .doc-foot { background: #f4f5f7; border: 0; border-radius: 0 0 3px 3px; }
+.doc-brand > .doc-body:last-child { border-radius: 3px; }
+.doc-brand .doc-total-due { background: transparent; color: #222831; border-top: 2px solid #222831; }
+@media (min-width: 768px), print {
+  .doc-brand { padding: 0 40px 40px; }
+  .doc-brand .doc-band, .doc-brand .doc-band-plain { padding-left: 0; padding-right: 0; }
+  .doc-brand .doc-meta { padding: 0 0 18px; }
+}
 @media print {
   .doc { border: 0; border-radius: 0; }
   .doc-line, .doc-totals, .doc-section { break-inside: avoid; }

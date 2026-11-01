@@ -26,7 +26,12 @@ const PDF = {
   phone: 'Phone',
   email: 'Email',
   address: 'Address',
-  amountPerDose: 'Amount per serving ({portion})',
+  amountPerDose: 'Composition per serving ({portion})',
+  included: 'Included',
+  includedText: 'Manufacturing in a GMP and HACCP certified facility, container with lid, label printing and application.',
+  notIncluded: 'Not included',
+  notIncludedText: 'Label design, batch testing and COA, shipping and customs, VAT.',
+  moreTerms: 'Lead time usually 6-10 weeks once order, deposit and artwork are confirmed. Compliance in the destination market is the client’s responsibility unless agreed otherwise in writing. Some raw materials have their own minimums, which may affect price and timing.',
   ingredient: 'Ingredient',
   amountPerDoseColumn: 'Amount',
   note: 'Note',
@@ -249,7 +254,7 @@ export function offerFileName(form: Pick<OfferForm, 'offer' | 'invoice' | 'recei
 
 const imageFormat = (img: PdfImage) => (img.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG');
 
-export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
+export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null = null): jsPDF {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
   const register = (file: string, data: string, family: string, style: string) => {
     doc.addFileToVFS(file, data);
@@ -286,30 +291,30 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
 
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const L = 16;
-  const R = pageW - 16;
-  const COL2 = pageW / 2 + 4;
-  const bottomLimit = pageH - 18;
+  const L = 25;
+  const R = pageW - 25;
+  const COL2 = pageW / 2 + 3;
+  const bottomLimit = pageH - 26;
+  const SHEET = 52;
+  drawDocShell(doc, SHEET, docPhoto);
 
-  // 1. Header on white: logo on the left, title, number and date on the right
+  // 1. Header on the dark top: logo, title, number and date
   if (m.customLogo || m.brandLogo) {
     const img = (m.customLogo ?? m.brandLogo)!;
     const ratio = Math.min(52 / img.width, 15 / img.height);
     const w = img.width * ratio;
     const h = img.height * ratio;
-    doc.addImage(img.dataUrl, imageFormat(img), L, 21 - h, w, h, m.customLogo ? undefined : 'brand');
+    doc.addImage(img.dataUrl, imageFormat(img), 15, 26 - h, w, h, m.customLogo ? undefined : 'brand');
   } else {
-    write(m.supplier.name.toUpperCase(), L, 21, { weight: 'bold', size: 15 });
+    write(m.supplier.name.toUpperCase(), 15, 26, { weight: 'bold', size: 15, color: [255, 255, 255] });
   }
-  write(PDF.offer, R, 20, { weight: 'semibold', size: 24, align: 'right' });
-  write(`${PDF.number} ${m.offerNo}  ·  ${formatDate(m.offerDate)}`, R, 26.5, { size: 9.5, color: MUTED, align: 'right' });
-  doc.setDrawColor(...NAVY);
-  doc.setLineWidth(0.4);
-  doc.line(L, 31, R, 31);
+  write(PDF.offer, pageW - 15, 25, { weight: 'bold', size: 22, align: 'right', color: [255, 255, 255] });
+  write(`${PDF.number} ${m.offerNo}`, 15, 44, { weight: 'semibold', size: 9, color: [255, 255, 255] });
+  write(formatDate(m.offerDate), pageW - 15, 44, { size: 9, align: 'right', color: [255, 255, 255] });
 
   // 2. Customer / supplier: only what is filled in
   const party = (title: string, x: number, width: number, name: string, rows: [string, string][]) => {
-    let py = 40;
+    let py = SHEET + 11;
     write(title, x, py, { weight: 'semibold', size: 7.5, color: MUTED });
     py += 5.5;
     if (name) {
@@ -341,7 +346,7 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
     const [font, fontStyle] = fontFor(weight, text);
     return { font, fontStyle: fontStyle as 'normal' | 'bold' };
   };
-  let y = Math.max(yc, ys) + 8;
+  let y = Math.max(yc, ys) + 6;
 
   const ensureSpace = (needed: number) => {
     if (y + needed > bottomLimit) {
@@ -393,17 +398,20 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
       startY: y,
       margin: { left: L, right: pageW - R, top: 15, bottom: 20 },
       theme: 'plain',
-      head: [[PDF.ingredient, PDF.amountPerDoseColumn]],
-      body: m.doseRows.map((r) => [r.name, r.amount]),
-      styles: { font: 'Poppins', fontSize: 9.5, textColor: TEXT, cellPadding: { top: 1.8, bottom: 1.8, left: 0, right: 0 }, overflow: 'linebreak' },
-      headStyles: { font: 'Poppins', fontSize: 8.5, textColor: MUTED },
-      columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 40, halign: 'right' } },
+      // Two columns of ingredients keep the offer on one page
+      body: Array.from({ length: Math.ceil(m.doseRows.length / 2) }, (_, i) => {
+        const half = Math.ceil(m.doseRows.length / 2);
+        const a = m.doseRows[i];
+        const b = m.doseRows[i + half];
+        return [a.name, a.amount, '', b?.name ?? '', b?.amount ?? ''];
+      }),
+      styles: { font: 'Poppins', fontSize: 8.5, textColor: TEXT, cellPadding: { top: 1.1, bottom: 1.1, left: 0, right: 0 }, overflow: 'linebreak' },
+      columnStyles: { 0: { cellWidth: 56 }, 1: { cellWidth: 19, halign: 'right' }, 2: { cellWidth: 10 }, 3: { cellWidth: 56 }, 4: { cellWidth: 19, halign: 'right' } },
       didParseCell: (data) => {
         const text = data.cell.text.join(' ');
-        if (data.section === 'head' && data.column.index === 1) data.cell.styles.halign = 'right';
-        if (data.section === 'body' && CYRILLIC.test(text)) Object.assign(data.cell.styles, cellFont(text, 'regular'));
+        if (CYRILLIC.test(text)) Object.assign(data.cell.styles, cellFont(text, 'regular'));
       },
-      didDrawCell: (data) => underline(data.cell, data.section === 'head' ? NAVY : LINE),
+      didDrawCell: (data) => { if (data.column.index !== 2 && data.cell.text.join('')) underline(data.cell); },
     });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
   }
@@ -440,24 +448,33 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
 
   ensureSpace(8);
   write(PDF.pricesExclVat, L, y, { size: 8.5, color: MUTED });
-  y += 9;
-  block(PDF.paymentTerms, m.paymentTerms ? [m.paymentTerms] : []);
-  block(PDF.terms, m.terms ? [m.terms] : [], 8, MUTED);
+  y += 7;
+  // What the price covers, side by side
+  ensureSpace(20);
+  const half = (title: string, text: string, x: number) => {
+    write(title, x, y, { weight: 'semibold', size: 9 });
+    doc.setFont(...fontFor('regular', text));
+    doc.setFontSize(8.5);
+    (doc.splitTextToSize(text, COL2 - L - 8) as string[]).forEach((part, i) => write(part, x, y + 4.4 + i * 3.9, { size: 8.5, color: MUTED }));
+  };
+  half(PDF.included, PDF.includedText, L);
+  half(PDF.notIncluded, PDF.notIncludedText, COL2);
+  y += 20;
+  block(PDF.paymentTerms, m.paymentTerms ? [m.paymentTerms] : [], 9);
+  block(PDF.terms, [m.terms, PDF.moreTerms].filter(Boolean), 8, MUTED);
 
-  // 5. Footer on every page
+  // 5. Footer strip on every page
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
-    doc.setDrawColor(...LINE);
-    doc.setLineWidth(0.2);
-    doc.line(L, pageH - 10, R, pageH - 10);
-    if (m.footerText.trim()) write(m.footerText, L, pageH - 5.5, { size: 8 });
-    // Websites from the right.
-    let x = R;
+    doc.setFillColor(...HEAD_BG);
+    doc.rect(15, 277, pageW - 30, 7, 'F');
+    if (m.footerText.trim()) write(m.footerText, L, 281.6, { size: 7.5, color: MUTED });
+    let x = R - (pages > 1 ? 16 : 0);
     [...m.websites].reverse().forEach((site) => {
-      x -= write(site, x, pageH - 5.5, { size: 8, align: 'right' }) + 4.5;
+      x -= write(site, x, 281.6, { size: 7.5, color: MUTED, align: 'right' }) + 4;
     });
-    if (pages > 1) write(fmt(PDF.page, { n: i, m: pages }), pageW / 2, pageH - 5.5, { size: 8, align: 'left' });
+    if (pages > 1) write(fmt(PDF.page, { n: i, m: pages }), R, 281.6, { size: 7.5, color: MUTED, align: 'right' });
   }
 
   return doc;
@@ -467,7 +484,18 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts): jsPDF {
 // Browser helpers: lazy font / image loading and download
 // ---------------------------------------------------------------------------
 
-let assetCache: Promise<{ fonts: PdfFonts; brandLogo: PdfImage | null; inkLogo: PdfImage | null }> | null = null;
+let assetCache: Promise<{ fonts: PdfFonts; brandLogo: PdfImage | null; inkLogo: PdfImage | null; docPhoto: string | null }> | null = null;
+
+/** First page of every document: dark top, capsule photo below, a white sheet over both. Returns nothing: the sheet starts at top. */
+export function drawDocShell(doc: jsPDF, top: number, photo: string | null, bottom = 284) {
+  const w = doc.internal.pageSize.getWidth();
+  const h = doc.internal.pageSize.getHeight();
+  doc.setFillColor(34, 40, 49);
+  doc.rect(0, 0, w, h, 'F');
+  if (photo) doc.addImage(photo, 'JPEG', 0, h - 140, w, 140, 'docphoto');
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(15, top, w - 30, bottom - top, 0.8, 0.8, 'F');
+}
 
 function arrayBufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -529,6 +557,7 @@ export function loadAssets() {
       fonts: { poppinsRegular, poppinsSemiBold, poppinsBold, robotoRegular, robotoBold },
       brandLogo,
       inkLogo,
+      docPhoto: await fetch('/doc-bg.jpg').then(async (r) => (r.ok ? `data:image/jpeg;base64,${arrayBufferToBase64(await r.arrayBuffer())}` : null)).catch(() => null),
     };
   })().catch((e) => {
     assetCache = null;
@@ -538,8 +567,8 @@ export function loadAssets() {
 }
 
 async function buildOfferPdf(form: OfferForm, result: CalcResult, settings: Settings): Promise<jsPDF> {
-  const [{ fonts, inkLogo }, customLogo] = await Promise.all([loadAssets(), loadImage(settings.logo_data_url)]);
-  return createOfferPdf(toPdfModel(form, result, settings, { customLogo, brandLogo: inkLogo }), fonts);
+  const [{ fonts, brandLogo, docPhoto }, customLogo] = await Promise.all([loadAssets(), loadImage(settings.logo_data_url)]);
+  return createOfferPdf(toPdfModel(form, result, settings, { customLogo, brandLogo }), fonts, docPhoto);
 }
 
 export async function downloadOfferPdf(form: OfferForm, result: CalcResult, settings: Settings): Promise<void> {

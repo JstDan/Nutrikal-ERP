@@ -40,7 +40,7 @@ export function SalesDocument({ model: m, lang, sellerName }: { model: ProformaP
   );
 
   return (
-    <article lang={lang} className="doc">
+    <article lang={lang} className="doc doc-brand">
       <DocHeader title={m.title} meta={m.meta} sellerName={sellerName} logoDataUrl={m.logoDataUrl} />
       <div className="doc-body">
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">

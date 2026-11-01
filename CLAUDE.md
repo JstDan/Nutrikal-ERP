@@ -41,6 +41,9 @@ Talk to the owner in the language they write in (usually Bulgarian).
 - With the Supabase values in `web/.env.local` the app uses Supabase (database via `DATABASE_URL`, Auth email + password, Storage); new migrations go there with `cd web && npm run db:migrate`. Users are created in Supabase Auth + a `profiles` row (README). Without those values (development) the database is PGlite in `web/.data/` (created from the migrations + `web/src/lib/db/demo-seed.ts`). Delete `web/.data/` after changing migrations or the seed.
 - Next.js 16 with `cacheComponents: false` (every page is per-user and dynamic). Read `web/node_modules/next/dist/docs/` before using unfamiliar Next.js APIs — this version differs from older ones.
 
+## Documents
+Offer, proforma, invoice, credit and debit notes, purchase order and delivery note share one look (owner, Nov 2026): dark top with the wordmark and a bold title, capsule photo `web/public/doc-bg.jpg`, white sheet (`drawDocShell` in `lib/calculator/pdf.ts`, `.doc-brand` on screen). Offers show the composition in two columns, what is included and what is not.
+
 ## UI rules
 - **Every user-visible string goes in BOTH `web/src/lib/i18n/en.ts` and `bg.ts`.** No hard-coded text in components. Use `fmt()`, `formatNumber/Qty/Money/Date` from `web/src/lib/i18n`.
 - **NEVER horizontal scrolling** on any page or width (owner's strong rule). Data lists use CSS grid rows (`.row`) and drop columns on narrow screens with `hide-md` (<1024px) / `hide-sm` (<768px) — no `<table>` with overflow.

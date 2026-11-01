@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { loadAssets, loadImage } from '@/lib/calculator/pdf';
+import { drawDocShell, loadAssets, loadImage } from '@/lib/calculator/pdf';
 
 // Proforma, invoice or purchase order as a PDF file (downloaded in the browser). All text comes in the model,
 // already in the client's language; Roboto is used throughout because it has Cyrillic letters.
@@ -31,7 +31,7 @@ const CYRILLIC = /[Ѐ-ӿ]/;
 async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
   // Number formatting uses narrow/no-break spaces; the embedded font has plain spaces only.
   const m: ProformaPdfModel = JSON.parse(JSON.stringify(model).replace(/[   ]/g, ' '));
-  const [{ fonts, brandLogo }, customLogo] = await Promise.all([loadAssets(), loadImage(m.logoDataUrl)]);
+  const [{ fonts, brandLogo, docPhoto }, customLogo] = await Promise.all([loadAssets(), loadImage(m.logoDataUrl)]);
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
   // Poppins like the site; it has no Cyrillic letters, so documents in Bulgarian use Roboto.
   const cyrillic = CYRILLIC.test(JSON.stringify({ ...m, logoDataUrl: null }));
@@ -43,8 +43,8 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
 
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const L = 16;
-  const R = pageW - 16;
+  const L = 25;
+  const R = pageW - 25;
   const write = (text: string, x: number, y: number, o: { bold?: boolean; size?: number; color?: [number, number, number]; align?: 'left' | 'right'; spacing?: number } = {}) => {
     doc.setFont(FONT, o.bold ? 'bold' : 'normal');
     doc.setFontSize(o.size ?? 9);
@@ -67,60 +67,55 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
     return y;
   };
 
-  // Band: wordmark (or uploaded logo on a white plate) and the title
-  doc.setFillColor(...INK);
-  doc.rect(0, 0, pageW, 28, 'F');
+  // Number and dates in rows on the dark top; the white sheet starts under them
+  doc.setFontSize(8.5);
+  const items = m.meta.map((line) => {
+    const at = line.indexOf(': ');
+    const head = at > 0 ? `${line.slice(0, at)}: ` : '';
+    const value = at > 0 ? line.slice(at + 2) : line;
+    doc.setFont(FONT, 'bold');
+    const headW = doc.getTextWidth(head);
+    doc.setFont(FONT, 'normal');
+    return { head, value, headW, width: headW + doc.getTextWidth(value) };
+  });
+  const rows: (typeof items)[] = [[]];
+  let used = 0;
+  for (const item of items) {
+    if (used > 0 && used + item.width > pageW - 30) {
+      rows.push([]);
+      used = 0;
+    }
+    rows[rows.length - 1].push(item);
+    used += item.width + 10;
+  }
+  const SHEET = 44 + rows.length * 6;
+  drawDocShell(doc, SHEET, docPhoto);
+  rows.forEach((row, r) => {
+    const free = pageW - 30 - row.reduce((sum, x) => sum + x.width, 0);
+    const gap = row.length > 1 ? free / (row.length - 1) : 0;
+    let x = 15;
+    for (const item of row) {
+      if (item.head) write(item.head, x, 42 + r * 6, { bold: true, size: 8.5, color: WHITE });
+      write(item.value, x + item.headW, 42 + r * 6, { size: 8.5, color: WHITE });
+      x += item.width + gap;
+    }
+  });
+
+  // Logo and title on the dark top
   if (customLogo) {
     const ratio = Math.min(46 / customLogo.width, 13 / customLogo.height);
     const w = customLogo.width * ratio;
     const h = customLogo.height * ratio;
     doc.setFillColor(...WHITE);
-    doc.rect(L - 2, 14 - h / 2 - 1.5, w + 4, h + 3, 'F');
-    doc.addImage(customLogo.dataUrl, customLogo.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG', L, 14 - h / 2, w, h);
+    doc.rect(13, 22 - h / 2 - 1.5, w + 4, h + 3, 'F');
+    doc.addImage(customLogo.dataUrl, customLogo.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG', 15, 22 - h / 2, w, h);
   } else if (brandLogo) {
     const w = 52;
-    doc.addImage(brandLogo.dataUrl, 'PNG', L, 14 - (w * brandLogo.height / brandLogo.width) / 2, w, w * brandLogo.height / brandLogo.width);
+    doc.addImage(brandLogo.dataUrl, 'PNG', 15, 22 - (w * brandLogo.height / brandLogo.width) / 2, w, w * brandLogo.height / brandLogo.width);
   }
-  write(m.title.toUpperCase(), R, 16.5, { size: 17, color: WHITE, align: 'right', spacing: 0.9 });
+  write(m.title.toUpperCase(), pageW - 15, 25, { bold: true, size: 20, color: WHITE, align: 'right' });
 
-  // Number and dates on a light strip: each item at its full width, a new row when the page is full
-  let y = 28;
-  if (m.meta.length) {
-    const items = m.meta.map((line) => {
-      const at = line.indexOf(': ');
-      const head = at > 0 ? line.slice(0, at) : '';
-      const value = at > 0 ? line.slice(at + 2) : line;
-      doc.setFont(FONT, 'bold');
-      doc.setFontSize(8.5);
-      const width = doc.getTextWidth(value);
-      doc.setFontSize(7);
-      // The labels are written with letter spacing
-      return { head, value, width: Math.max(width, doc.getTextWidth(head.toUpperCase()) + head.length * 0.4 + 2) };
-    });
-    const rows: (typeof items)[] = [[]];
-    let used = 0;
-    for (const item of items) {
-      if (used > 0 && used + item.width > R - L) {
-        rows.push([]);
-        used = 0;
-      }
-      rows[rows.length - 1].push(item);
-      used += item.width + 9;
-    }
-    const rowH = 10.5;
-    doc.setFillColor(...CANVAS);
-    doc.rect(0, 28, pageW, rows.length * rowH + 4.5, 'F');
-    rows.forEach((row, r) => {
-      let x = L;
-      const top = 33.5 + r * rowH;
-      for (const item of row) {
-        if (item.head) label(item.head, x, top);
-        write(item.value, x, top + 5, { bold: true, size: 8.5 });
-        x += item.width + 9;
-      }
-    });
-    y = 28 + rows.length * rowH + 4.5;
-  }
+  let y = SHEET + 2;
 
   // Supplier / client
   y += 9;
@@ -134,7 +129,7 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
   // Lines: hairlines only
   autoTable(doc, {
     startY: y,
-    margin: { left: L, right: pageW - R, top: 15, bottom: 20 },
+    margin: { left: L, right: pageW - R, top: 18, bottom: 26 },
     theme: 'plain',
     head: [m.head.map((h) => h.toUpperCase())],
     body: m.rows.map((r) => [r.note ? `${r.description}\n${r.note}` : r.description, r.quantity, r.unitPrice, r.amount]),
@@ -154,7 +149,7 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
 
   const ensure = (h: number) => {
-    if (y + h > pageH - 18) {
+    if (y + h > pageH - 26) {
       doc.addPage();
       y = 18;
     }
@@ -165,14 +160,15 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
   m.totals.forEach(([name, value], i) => {
     const last = i === m.totals.length - 1;
     if (last) {
-      doc.setFillColor(...INK);
-      doc.rect(R - 84, y - 1, 84, 9.5, 'F');
-      write(name, R - 81, y + 5, { bold: true, size: 10.5, color: WHITE });
-      write(value, R - 3, y + 5, { bold: true, size: 10.5, color: WHITE, align: 'right' });
-      y += 13;
+      doc.setDrawColor(...INK);
+      doc.setLineWidth(0.3);
+      doc.line(R - 84, y, R, y);
+      write(name, R - 84, y + 6, { bold: true, size: 11 });
+      write(value, R, y + 6, { bold: true, size: 11, align: 'right' });
+      y += 11;
     } else {
-      write(name, R - 81, y + 3, { size: 9, color: MUTED });
-      write(value, R - 3, y + 3, { size: 9, align: 'right' });
+      write(name, R - 84, y + 3, { size: 9, color: MUTED });
+      write(value, R, y + 3, { size: 9, align: 'right' });
       y += 5.5;
     }
   });
@@ -199,18 +195,18 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
     y = block(m.notes.split('\n'), L, y + 2, R - L);
   }
 
-  // Footer on every page
+  // Footer strip on every page
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
-    doc.setDrawColor(...MIST);
-    doc.setLineWidth(0.2);
-    doc.line(L, pageH - 14, R, pageH - 14);
     doc.setFont(FONT, 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7);
     const lines = doc.splitTextToSize(m.footer, R - L - (pages > 1 ? 16 : 0)) as string[];
-    lines.forEach((line, j) => write(line, L, pageH - 10 + j * 3.4, { size: 7.5, color: MUTED }));
-    if (pages > 1) write(`${i} / ${pages}`, R, pageH - 10, { size: 7.5, color: MUTED, align: 'right' });
+    const top = 284 - 5 - lines.length * 3.2;
+    doc.setFillColor(...CANVAS);
+    doc.rect(15, top, pageW - 30, 284 - top, 'F');
+    lines.forEach((line, j) => write(line, L, top + 4.2 + j * 3.2, { size: 7, color: MUTED }));
+    if (pages > 1) write(`${i} / ${pages}`, R, top + 4.2, { size: 7, color: MUTED, align: 'right' });
   }
 
   return doc;

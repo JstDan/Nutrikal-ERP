@@ -2840,6 +2840,12 @@ await ok('old conversations without an enquiry go, those with an enquiry stay', 
   await db.query('select catalog_chat_purge()');
   eq((await db.query('select id from catalog_chats where id = any($1::uuid[])', [[a, b]])).rows.length, 1, 'kept');
 });
+await ok('60/40 is the default and the two capsule products have lower doses', async () => {
+  eq(Number((await one('admin', 'select default_deposit_pct from company_settings limit 1')).default_deposit_pct ?? 60), 60, 'deposit');
+  if (!(await one('admin', 'select default_payment_terms from calc_settings limit 1')).default_payment_terms.startsWith('60%')) throw new Error('calculator');
+  const p = await one('admin', "select pack, ingredients -> 0 ->> 'amount' as a from catalog_products where code = 'NTL-MH102'");
+  eq(p.a, '1500 mg', 'citrulline'); eq(p.pack, 'Target: 4 capsules', 'pack');
+});
 await fails('Sales does not publish everything', () => as('sales', 'select catalog_publish_ready()'), 'not allowed');
 await ok('publish all ready takes what is ready and leaves out what has no price', async () => {
   await as('admin', "update catalog_products set is_published = false where code = 'NTL-TH101'");
