@@ -38,8 +38,8 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
     <div className="app-ui flex min-h-screen flex-col bg-canvas text-ink">
       <header className="p-head print:hidden">
         <div className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2">
-          <Link href="/portal" aria-label={P.nav.home} className="flex min-h-11 items-center"><Wordmark height={18} inverted /></Link>
-          <span className="min-w-0 flex-1 text-sm break-words text-[#c6cdd9]">{me.client}</span>
+          <Link href="/portal" aria-label={P.nav.home} className="flex min-h-11 items-center"><Wordmark height={18} inverted className="!self-center" /></Link>
+          <span className="p-client min-w-0 flex-1 border-l border-white/25 pl-4 text-sm leading-5 font-medium break-words text-[#dfe3ea]">{me.client}</span>
           <PortalLanguage label={P.language} locale={locale} options={PUBLIC_LOCALES} />
           <form action={signOut}><button type="submit" className="min-h-11 text-sm text-[#c6cdd9] underline hover:text-white">{P.signOut}</button></form>
         </div>
