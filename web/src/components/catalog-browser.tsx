@@ -8,7 +8,7 @@ import type { Dict } from "@/lib/i18n/en";
 
 type Tier = { min_qty: number; unit_price: number };
 type Product = {
-  code: string; name: string; name_bg: string | null; description: string | null; description_bg: string | null;
+  code: string; name: string; name_en?: string; name_bg: string | null; description: string | null; description_bg: string | null;
   category_id: string | null; extra_category_ids?: string[]; format: string | null; min_qty: number; image: string | null; pack: string | null; pack_bg: string | null;
   serving_size: number | null; serving_unit: string | null; servings_per_pack: number | null;
   tiers: Tier[]; ingredients: { name: string; name_bg: string | null; amount: number | string; unit: string | null }[]; claims: { en: string; bg: string | null }[];
@@ -149,6 +149,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
   const started = useRef(0);
   const productsTop = useRef<HTMLElement>(null);
   const chatId = useRef<string | null>(null);
@@ -189,7 +190,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
   const find = term.trim().toLowerCase();
   const shown = data.products.filter((p) =>
     (!category || inCategory(p, category)) && (!format || p.format === format)
-    && (!find || [p.code, p.name, p.name_bg, p.description, p.description_bg, ...p.ingredients.flatMap((i) => [i.name, i.name_bg])].some((x) => x?.toLowerCase().includes(find))));
+    && (!find || [p.code, p.name, p.name_en, p.name_bg, p.description, p.description_bg, ...p.ingredients.flatMap((i) => [i.name, i.name_bg])].some((x) => x?.toLowerCase().includes(find))));
   const overview = !category && !format && !find;
   const lines = data.products.filter((p) => basket[p.code]);
   const allValid = lines.every((p) => basket[p.code] >= p.min_qty);
@@ -298,43 +299,46 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
                 {languages.map((l) => <option key={l.code} value={l.code} lang={l.code}>{l.label}</option>)}
               </select>
             </label>
+            <button type="button" aria-label={T.search} title={T.search} aria-expanded={searching} onClick={() => { setSearching((x) => !x); setTerm(""); }} className="grid h-11 w-11 shrink-0 place-items-center text-ink">
+              {searching ? <span aria-hidden="true" className="text-xl leading-none">×</span> : (
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+              )}
+            </button>
             <button type="button" onClick={openBasket} className="btn btn-primary !px-3 sm:!px-5">{fmt(T.basketCount, { n: lines.length })}</button>
           </div>
         </div>
+        {searching && (
+          <div className="mx-auto max-w-[1200px] px-4 pb-2.5">
+            <label htmlFor="catalog-search" className="sr-only">{T.search}</label>
+            <input id="catalog-search" type="search" autoFocus value={term} placeholder={T.search} className="input w-full min-w-0"
+              onChange={(e) => { setTerm(e.target.value); productsTop.current?.scrollIntoView({ block: "start" }); }}
+              onKeyDown={(e) => { if (e.key === "Escape") { setSearching(false); setTerm(""); } }} />
+          </div>
+        )}
       </header>
 
       <main ref={productsTop} id="products" className="mx-auto flex max-w-[1200px] scroll-mt-16 flex-col gap-5 px-4 py-8">
-        <div className="flex max-w-[720px] flex-col gap-2">
-          <h1 className="m-0 text-3xl font-bold">{T.title}</h1>
-          <p className="m-0 text-ink-2">{T.intro}</p>
-        </div>
-        <dl className="m-0 grid min-w-0 grid-cols-1 gap-x-8 gap-y-3 border-y border-line py-4 sm:grid-cols-2 lg:grid-cols-4">
-          {T.facts.map((f) => (
-            <div key={f.label} className="flex min-w-0 flex-col gap-0.5">
-              <dt className="text-xs text-ink-2">{f.label}</dt>
-              <dd className="m-0 text-sm font-semibold">{f.value}</dd>
-            </div>
-          ))}
-        </dl>
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-            <label htmlFor="catalog-search" className="sr-only">{T.search}</label>
-            <input id="catalog-search" type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={T.search} className="input w-full min-w-0 sm:flex-1" />
-            <label className="min-w-0 sm:w-48">
-              <span className="sr-only">{T.formats}</span>
-              <select value={format} onChange={(e) => setFormat(e.target.value)} className="input w-full min-w-0">
-                <option value="">{T.allFormats}</option>
-                {shownFormats.map((f) => <option key={f} value={f}>{formats[f as "capsule"]}</option>)}
-              </select>
-            </label>
-            <label className="min-w-0 md:hidden">
-              <span className="sr-only">{T.categories}</span>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full min-w-0">
-                <option value="">{T.allCategories}</option>
-                {data.categories.map((c) => <option key={c.id} value={c.id}>{catName(c)}</option>)}
-              </select>
-            </label>
+        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div className="flex max-w-[720px] min-w-0 flex-col gap-1">
+            <h1 className="m-0 text-3xl font-bold sm:text-4xl">{T.title}</h1>
+            <p className="m-0 text-ink-2">{T.intro}</p>
           </div>
+          <label className="min-w-0 shrink-0 md:w-48">
+            <span className="sr-only">{T.formats}</span>
+            <select value={format} onChange={(e) => setFormat(e.target.value)} className="input w-full min-w-0">
+              <option value="">{T.allFormats}</option>
+              {shownFormats.map((f) => <option key={f} value={f}>{formats[f as "capsule"]}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="flex min-w-0 flex-col gap-3">
+          <label className="min-w-0 md:hidden">
+            <span className="sr-only">{T.categories}</span>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full min-w-0">
+              <option value="">{T.allCategories}</option>
+              {data.categories.map((c) => <option key={c.id} value={c.id}>{catName(c)}</option>)}
+            </select>
+          </label>
           <div role="group" aria-label={T.categories} className="hide-sm flex flex-wrap gap-2">
             <button type="button" aria-pressed={!category} onClick={() => setCategory("")} className={chip(!category)}>{T.all}</button>
             {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} aria-label={catName(c)} title={catName(c)} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{short[c.name] ?? catName(c)}</button>)}
@@ -360,6 +364,17 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
             )}
             <p className="m-0 text-sm text-ink-2">{T.priceNote}</p>
         </div>
+        <section aria-label={T.factsTitle} className="flex min-w-0 flex-col gap-3 border-t border-line pt-6">
+          <h2 className="m-0 text-lg font-bold">{T.factsTitle}</h2>
+          <dl className="m-0 grid min-w-0 grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+            {T.facts.map((f) => (
+              <div key={f.label} className="flex min-w-0 flex-col gap-0.5">
+                <dt className="text-xs text-ink-2">{f.label}</dt>
+                <dd className="m-0 text-sm font-semibold">{f.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       </main>
 
       {children}

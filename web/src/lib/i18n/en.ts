@@ -2285,7 +2285,7 @@ export const en = {
     contactFormTitle: "Have a question?",
     learnMore: "Learn more",
     title: "Product catalog",
-    intro: "Ready-made formulas for your own brand, made in the EU. Choose your products and request a quote. Any formula can be customized.",
+    intro: "Ready-made formulas for your own brand, made in the EU. Choose your products and request a quote.", factsTitle: "Good to know",
     heroPresentation: "Company presentation",
     navProducts: "Products",
     navAbout: "About us",
