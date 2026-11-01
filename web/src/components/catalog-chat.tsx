@@ -29,9 +29,9 @@ function Avatar({ size = 32 }: { size?: number }) {
 }
 
 /** One button for both ways of reaching us: Nutri AI or WhatsApp. Without AI settings it is WhatsApp alone. */
-export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, onAdd, onChat, onQuote }: {
+export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, onAdd, onChat, onQuote, onSent }: {
   text: Dict["publicCatalog"]; locale: AnyLocale; ai: boolean; raised: boolean; hidden: boolean; quote: Record<string, number>;
-  onAdd: (code: string, quantity: number) => void; onChat: (chat: string) => void; onQuote: () => void;
+  onAdd: (code: string, quantity: number) => void; onChat: (chat: string) => void; onQuote: () => void; onSent: () => void;
 }) {
   const T = text;
   const [open, setOpen] = useState(false);
@@ -107,12 +107,13 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
         const parts = rest.split("\n");
         rest = parts.pop() ?? "";
         for (const part of parts.filter(Boolean)) {
-          const e = JSON.parse(part) as { done?: boolean; chat?: string; delta?: string | null; add?: { code: string; quantity: number }; error?: string; empty?: boolean };
+          const e = JSON.parse(part) as { done?: boolean; chat?: string; delta?: string | null; add?: { code: string; quantity: number }; sent?: boolean; error?: string; empty?: boolean };
           if (e.chat) { chat.current = e.chat; onChat(e.chat); }
           if (e.done) setLines((l) => [...l]);
           if (e.delta === null) reply(() => "");
           else if (e.delta) reply((t) => t + e.delta);
           if (e.add) onAdd(e.add.code, e.add.quantity);
+          if (e.sent) onSent();
           if (e.error || e.empty) reply(() => T.chatFailed);
         }
       }
@@ -146,16 +147,10 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
               <button type="button" onClick={hideTeaser} aria-label={T.close} className="grid h-11 w-9 shrink-0 place-items-center text-lg text-ink-2 hover:text-ink">×</button>
             </div>
           )}
-          <div className="pointer-events-auto flex max-w-full items-center gap-2">
-            <button type="button" onClick={() => { hideTeaser(); setOpen(true); }}
-              className="flex min-h-14 min-w-0 items-center gap-3 rounded-full bg-ink py-2 pr-6 pl-2 text-left text-base font-semibold text-white shadow-xl ring-2 ring-[#7BC74D] transition-transform hover:scale-105">
-              <Avatar size={40} /><span className="min-w-0">{lines.length ? T.chatContinue : T.chatAsk}</span>
-            </button>
-            <a href={WHATSAPP} target="_blank" rel="noopener" aria-label={T.whatsapp} title={T.whatsapp}
-              className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-[#25D366] text-[#fff] shadow-xl transition-transform hover:scale-105">
-              <WhatsAppIcon />
-            </a>
-          </div>
+          <button type="button" onClick={() => { hideTeaser(); setOpen(true); }}
+            className="pointer-events-auto flex min-h-14 max-w-full min-w-0 items-center gap-3 rounded-full bg-ink py-2 pr-6 pl-2 text-left text-base font-semibold text-white shadow-xl ring-2 ring-[#7BC74D] transition-transform hover:scale-105">
+            <Avatar size={40} /><span className="min-w-0">{lines.length ? T.chatContinue : T.chatAsk}</span>
+          </button>
         </div>
       )}
 
@@ -171,7 +166,7 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
             <button type="button" onClick={() => setOpen(false)} aria-label={T.close} className="grid h-11 w-11 shrink-0 place-items-center text-xl text-ink-2 hover:text-ink">×</button>
           </header>
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 sm:gap-3 sm:p-5">
-            <p className="m-0 rounded-md bg-neutral-tint px-3 py-2 text-xs text-ink-2">{T.chatNotice}</p>
+            <p className="m-0 rounded-md bg-neutral-tint px-3 py-2 text-xs text-ink-2">{T.chatNotice} <a href={WHATSAPP} target="_blank" rel="noopener" className="inline-block font-semibold text-ink underline">WhatsApp</a></p>
             {lines.length === 0 && <div className="flex items-end gap-2"><Avatar size={28} /><p className="m-0 max-w-[85%] rounded-2xl rounded-bl-md bg-neutral-tint px-3 py-2 text-sm sm:text-base">{T.chatWelcome}</p></div>}
             {lines.map((l, i) => (
               <div key={i} className={`flex min-w-0 items-end gap-2 ${l.role === "user" ? "justify-end" : ""}`}>

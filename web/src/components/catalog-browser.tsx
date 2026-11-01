@@ -152,6 +152,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
   const productsTop = useRef<HTMLElement>(null);
   const chatId = useRef<string | null>(null);
   const onChat = useCallback((id: string) => { chatId.current = id; }, []);
+  const clearBasket = useCallback(() => setBasket({}), []);
   // Quantity 0 takes the product out
   const addFromChat = useCallback((code: string, quantity: number) => setBasket((b) => {
     const { [code]: _, ...rest } = b;
@@ -324,7 +325,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
 
       {children}
 
-      <CatalogContactButton text={T} locale={locale} ai={ai} raised={lines.length > 0} hidden={showBasket || !!open} quote={basket} onAdd={addFromChat} onChat={onChat} onQuote={openBasket} />
+      <CatalogContactButton text={T} locale={locale} ai={ai} raised={lines.length > 0} hidden={showBasket || !!open} quote={basket} onAdd={addFromChat} onChat={onChat} onQuote={openBasket} onSent={clearBasket} />
 
       {lines.length > 0 && !showBasket && !open && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper p-3 lg:hidden">

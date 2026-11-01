@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       const send = (x: unknown) => out.enqueue(encoder.encode(`${JSON.stringify(x)}\n`));
       send({ chat: turn.chat });
       try {
-        const answer = await salesReply(turn.history, quote, publicLocale(body.locale), (delta) => send({ delta }), (add) => send({ add }));
+        const answer = await salesReply(turn.chat, turn.history, quote, publicLocale(body.locale), (delta) => send({ delta }), (add) => send({ add }), () => send({ sent: true }));
         if (answer.text) await qPublic("select catalog_chat_reply($1, $2)", [turn.chat, answer.text]);
         send({ done: true, empty: !answer.text });
       } catch (e) {
