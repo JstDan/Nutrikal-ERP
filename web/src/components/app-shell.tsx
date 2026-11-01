@@ -40,10 +40,10 @@ export async function AppShell({ children }: { children: ReactNode }) {
         },
       ]
     : [
-        { items: [{ href: "/", label: t.nav.dashboard }] },
         {
           title: t.nav.sales,
           items: [
+            { href: "/", label: t.nav.dashboard },
             { href: "/clients", label: t.nav.clients },
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/offers", label: t.nav.offers, also: ["/calculator"] }] : []),
             { href: "/orders", label: t.nav.orders },
@@ -54,8 +54,8 @@ export async function AppShell({ children }: { children: ReactNode }) {
         {
           title: t.nav.communication,
           items: [
-            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/client-messages", label: t.portal.staff.inbox.title, badge: clientUnread }] : []),
-            { href: "/chat", label: t.nav.chat, badge: unread },
+            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/client-messages", label: t.nav.clientMessages, badge: clientUnread }] : []),
+            { href: "/chat", label: t.nav.internalChat, badge: unread },
             ...((user.role === "admin" || user.role === "sales") && !user.readOnly ? [{ href: "/assistant", label: t.nav.assistant }] : []),
           ],
         },

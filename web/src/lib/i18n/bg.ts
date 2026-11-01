@@ -28,6 +28,8 @@ export const bg: Dict = {
     qualityTrace: "Качество и проследимост",
     tools: "Инструменти",
     communication: "Комуникация",
+    clientMessages: "Съобщения",
+    internalChat: "Вътрешен чат",
     batches: "Партиди",
     warehouse: "Склад",
     catalog: "Каталог",

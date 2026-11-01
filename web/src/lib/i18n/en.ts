@@ -26,6 +26,8 @@ export const en = {
     qualityTrace: "Quality and traceability",
     tools: "Tools",
     communication: "Communication",
+    clientMessages: "Messages",
+    internalChat: "Internal chat",
     batches: "Batches",
     warehouse: "Warehouse",
     catalog: "Catalog",
