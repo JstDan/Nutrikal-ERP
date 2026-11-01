@@ -276,6 +276,25 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
 .doc-strip { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; text-align: left; }
 @media (min-width: 768px), print { .doc-end { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; } }
 
+/* The production calendar: days stack on a phone, where only days with work show */
+.cal-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.cal-day { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-paper); }
+.cal-day[data-empty] { display: none; }
+.cal-day[data-today] { border-color: #7bc74d; box-shadow: inset 0 0 0 1px #7bc74d; }
+.cal-day[data-other] { opacity: 0.55; }
+.cal-day[data-over] { background: var(--color-neutral-tint); }
+.cal-batch { display: flex; flex-direction: column; min-width: 0; padding: 6px 8px; border-left: 3px solid #c6cdd9; border-radius: 4px; background: var(--color-neutral-tint); color: inherit; font-size: 12px; line-height: 1.35; text-decoration: none; }
+.cal-batch[draggable="true"] { cursor: grab; }
+.cal-batch[data-state="confirmed"] { border-left-color: #7bc74d; }
+.cal-batch[data-state="proposed"] { border-left-color: #e0a100; }
+.cal-batch[data-state="done"] { opacity: 0.7; }
+.cal-batch[data-late] { border-left-color: #d72c0d; }
+@media (min-width: 768px) {
+  .cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .cal-day { min-height: 110px; }
+  .cal-day[data-empty] { display: flex; }
+}
+
 /* The customer panel: calm, a little movement, nothing that gets in the way */
 .p-head { background: #222831; color: #ffffff; box-shadow: 0 6px 20px rgb(34 40 49 / 0.18); }
 .p-lang { min-height: 44px; max-width: 130px; border: 0; background: transparent; color: #ffffff; font-size: 13px; }

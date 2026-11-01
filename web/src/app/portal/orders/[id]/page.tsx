@@ -36,6 +36,7 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
   ];
   const current = steps.findIndex((s) => !s.done);
   const next = P.next[o.status as "confirmed"];
+  const [win] = await q<{ w: { from: number; to: number } | null }>(user.id, "select portal_order_window($1) as w", [id]);
   const mine = invoices.filter((i) => i.order_id === id);
   const production = READY.includes(o.status);
 
@@ -58,6 +59,7 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
               </li>
             ))}
           </ol>
+          {win?.w && <p className="m-0 text-sm font-semibold">{fmt(O.window, { from: win.w.from, to: win.w.to })}</p>}
           {next && <p className="p-next"><strong>{P.next.title}:</strong> {next}</p>}
         </Panel>
       )}

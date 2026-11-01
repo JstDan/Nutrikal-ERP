@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice, formatQty } from "@/lib/i18n";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
+import { moveMoDate } from "@/app/calendar-actions";
 import { moTone } from "@/lib/status";
 import { SearchSelect } from "@/components/search-select";
 import {
@@ -291,12 +292,20 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
             {open && (
               <Card title={d.plan} id="plan-h">
                 {!canPlan && <p className="m-0 text-sm text-ink-2">{d.salesOnly}</p>}
-                {canPlan && (mo.status === "simulation" || mo.status === "scheduled") && (
+                {canPlan && mo.status === "simulation" && (
                   <ActionForm action={scheduleMo} submitLabel={d.schedule} resetOnSuccess={false}>
                     {hidden(mo.id)}
                     <p className="m-0 text-[13px] text-ink-2">{d.scheduleNote}</p>
                     <label className="field"><span>{d.planDate} *</span>
                       <input name="planned_date" type="date" required defaultValue={mo.planned_date ?? ""} className="input" />
+                    </label>
+                  </ActionForm>
+                )}
+                {canPlan && ["scheduled", "released", "in_production"].includes(mo.status) && (
+                  <ActionForm action={moveMoDate} submitLabel={t.calendar.moveDate} resetOnSuccess={false}>
+                    <input type="hidden" name="mo_id" value={mo.id} />
+                    <label className="field"><span>{d.planDate} *</span>
+                      <input name="date" type="date" required defaultValue={mo.planned_date ?? ""} className="input" />
                     </label>
                   </ActionForm>
                 )}
