@@ -2769,7 +2769,7 @@ await ok('nobody signed in sees no clients, recipes or prices of materials', asy
 });
 await ok('the catalogue is public with prices and composition; bars from 3000; no price stays a draft', async () => {
   const d = (await asAnon('select catalog_public() as d'))[0].d;
-  eq(d.products.filter((p) => /^(NTL-|GP-)/.test(p.code)).length, 98, 'public');
+  eq(d.products.filter((p) => !p.price_on_request && /^(NTL-|GP-)/.test(p.code)).length, 98, 'public');
   eq(d.products.filter((p) => p.code === 'NTL-SP101').length, 0, 'no price');
   const th = d.products.find((p) => p.code === 'NTL-TH101');
   eq(th.ingredients[0].name, 'Glucosamine Sulfate', 'name'); eq(th.ingredients[0].amount, '350 mg', 'amount'); eq(th.format, 'capsule', 'format');
@@ -2782,26 +2782,26 @@ await ok('Essentials and Mushrooms are capsules, softgels and powders stay what 
   eq(f['NTL-EN103'], 'softgel', 'D3'); eq(f['NTL-EN104'], 'softgel', 'omega'); eq(f['NTL-EN120'], 'powder', 'colostrum');
 });
 await ok('the 46 new formulations are public on request, notes and specifications stay private', async () => {
-  const rows = await as('admin', "select code, review_status, is_published, internal_notes from catalog_products where code like 'NEW-%'");
+  const rows = await as('admin', "select code, review_status, is_published, internal_notes from catalog_products where price_on_request");
   eq(rows.length, 44, 'count'); eq(rows.filter((r) => r.is_published).length, 44, 'published');
-  if (!rows.find((r) => r.code === 'NEW-040').internal_notes.includes('evidence_gap')) throw new Error('status lost');
+  if (!rows.find((r) => r.code === 'NTL-WH103').internal_notes.includes('evidence_gap')) throw new Error('status lost');
   const d = (await asAnon('select catalog_public() as d'))[0].d;
   const raw = JSON.stringify(d);
   for (const x of ['"spec"', '"basis"', 'internal_notes', 'efsa.onlinelibrary', 'Retinyl acetate', 'Review status', 'Предупреждение за лабораторни']) if (raw.includes(x)) throw new Error('private data: ' + x);
-  const p = d.products.find((x) => x.code === 'NEW-012');
+  const p = d.products.find((x) => x.code === 'NTL-C105');
   eq(p.tiers.length, 0, 'no price'); eq(p.price_on_request, true, 'on request'); eq(p.extra_category_ids.length, 3, 'links');
   eq(Object.keys(p.ingredients[0]).sort().join(), 'amount,name,name_bg,unit', 'no specification');
-  const no = (await asAnon('select catalog_submit_enquiry($1::jsonb) as no', [JSON.stringify({ company: 'Ц', contact_name: 'Ц', email: 'c@c.test', lines: [{ code: 'NEW-012', quantity: 500 }] })]))[0].no;
+  const no = (await asAnon('select catalog_submit_enquiry($1::jsonb) as no', [JSON.stringify({ company: 'Ц', contact_name: 'Ц', email: 'c@c.test', lines: [{ code: 'NTL-C105', quantity: 500 }] })]))[0].no;
   const e = await one('sales', 'select l.unit_price from catalog_enquiry_lines l join catalog_enquiries e on e.id = l.enquiry_id where e.number = $1', [no]);
   eq(e.unit_price, null, 'no price on the line');
 });
 await fails('a product put back in review cannot go public again', async () => {
-  await as('admin', "update catalog_products set is_published = false, review_status = 'draft_formulation' where code = 'NEW-002'");
-  await as('admin', "update catalog_products set is_published = true where code = 'NEW-002'");
+  await as('admin', "update catalog_products set is_published = false, review_status = 'draft_formulation' where code = 'NTL-EN123'");
+  await as('admin', "update catalog_products set is_published = true where code = 'NTL-EN123'");
 }, 'catalog_in_review');
 await fails('a concept marked as an evidence gap cannot go public', async () => {
-  await as('admin', "update catalog_products set is_published = false, review_status = 'evidence_gap' where code = 'NEW-045'");
-  await as('admin', "update catalog_products set is_published = true where code = 'NEW-045'");
+  await as('admin', "update catalog_products set is_published = false, review_status = 'evidence_gap' where code = 'NTL-LC104'");
+  await as('admin', "update catalog_products set is_published = true where code = 'NTL-LC104'");
 }, 'catalog_no_formula');
 await ok('Production and Design see no review notes or category links; nobody signed in neither', async () => {
   for (const r of ['production', 'designer']) eq((await as(r, 'select product_id from catalog_product_categories')).length, 0, r);
