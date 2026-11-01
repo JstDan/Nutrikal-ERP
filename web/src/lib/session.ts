@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { q } from "./db/engine";
 import { DEMO_USERS, type Role } from "./db/demo-users";
 import { supabaseConfigured, supabaseServer } from "./supabase/server";
-import { DEFAULT_LOCALE, getDict, isLocale, LOCALE_COOKIE, type Locale } from "./i18n";
+import { DEFAULT_LOCALE, getDict, isLocale, LOCALE_COOKIE, type AnyLocale, type Locale } from "./i18n";
+import { isPortalLocale, PORTAL_LOCALE_COOKIE, portalDict } from "./i18n/portal";
 
 /** Developer only: the user they act as. Checked against the database on every request. */
 export const ACT_AS_COOKIE = "nk_act_as";
@@ -81,7 +82,11 @@ export const getSession = cache(async () => {
 export const getPortalSession = cache(async () => {
   const s = await getOptionalSession();
   if (!s) redirect("/login");
-  return s;
+  // Its own language choice: the panel speaks more languages than the rest of the app
+  const saved = (await cookies()).get(PORTAL_LOCALE_COOKIE)?.value;
+  const locale: AnyLocale = isPortalLocale(saved) ? saved : s.locale;
+  const unread = async () => (await q<{ n: number }>(s.user.id, "select coalesce((portal_me() ->> 'unread')::int, 0) as n"))[0]?.n ?? 0;
+  return { user: s.user, locale, t: portalDict(locale), unread };
 });
 
 /** Language for pages without a session (sign-in): the saved choice or Bulgarian. */

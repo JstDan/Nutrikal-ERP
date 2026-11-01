@@ -2588,6 +2588,19 @@ export const en = {
     noAccess: "This account has no access to the customer panel. Please contact Nutrikal.",
     signOut: "Sign out",
     welcome: "Welcome, {name}",
+    lead: "Everything about your orders in one place.",
+    language: "Language",
+    tiles: { orders: "Active orders", balance: "Open balance", documents: "Documents", messages: "New messages" },
+    trust: { gmp: "GMP and HACCP certified facility", trace: "Every batch traceable", team: "A real team behind your brand" },
+    next: {
+      title: "What happens next",
+      confirmed: "We are preparing the materials and planning your production.",
+      in_production: "Your batch is being made. Quality review follows.",
+      ready: "Your batch is ready and being prepared for dispatch.",
+      dispatched: "Your order is on its way.",
+      closed: "This order is complete. Thank you.",
+    },
+    help: { title: "Need help?", text: "Our team is here for you.", write: "Write to us" },
     nav: { home: "Overview", orders: "Orders", documents: "Documents", invoices: "Invoices", support: "Support", account: "Account" },
     home: { openBalance: "Open balance", viewAll: "View all", activeOrders: "Active orders", noOrders: "No orders yet.", unread: "{n} new", recentDocuments: "Latest documents" },
     order: {
@@ -2602,6 +2615,7 @@ export const en = {
     },
     invoices: {
       title: "Invoices", empty: "No invoices yet.", due: "Due", open: "Open", paid: "Paid",
+      pdf: "Download PDF", print: "Print", pdfFailed: "The PDF could not be made.",
       kinds: { invoice: "Invoice", credit_note: "Credit note", debit_note: "Debit note" },
     },
     support: {

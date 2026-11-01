@@ -1,5 +1,5 @@
-import { Card, PageHeader } from "@/components/ui";
-import { PortalThread } from "@/components/portal-parts";
+import { PageHeader } from "@/components/ui";
+import { Panel, PortalThread } from "@/components/portal-parts";
 import { portalFeed, portalMarkRead } from "@/lib/portal";
 import { getPortalSession } from "@/lib/session";
 
@@ -13,7 +13,7 @@ export default async function PortalSupport() {
   return (
     <>
       <PageHeader title={S.title} subtitle={S.intro} />
-      <Card><PortalThread orderId={null} rows={feed} locale={locale} t={t} /></Card>
+      <Panel><PortalThread orderId={null} rows={feed} locale={locale} t={t} /></Panel>
       <p className="m-0 text-sm text-ink-2">{S.other} <a href={WHATSAPP} target="_blank" rel="noopener">WhatsApp</a> · <a href="mailto:sales@nutrikal.com">sales@nutrikal.com</a></p>
     </>
   );

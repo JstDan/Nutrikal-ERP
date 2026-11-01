@@ -276,6 +276,42 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
 .doc-strip { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; text-align: left; }
 @media (min-width: 768px), print { .doc-end { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; } }
 
+/* The customer panel: calm, a little movement, nothing that gets in the way */
+.p-head { background: #222831; color: #ffffff; box-shadow: 0 6px 20px rgb(34 40 49 / 0.18); }
+.p-lang { min-height: 44px; max-width: 130px; border: 0; background: transparent; color: #ffffff; font-size: 13px; }
+.p-lang option { color: #222831; }
+.p-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px; color: #dfe3ea; font-size: 13px; font-weight: 600; text-decoration: none; transition: background-color 0.18s, color 0.18s; }
+.p-tab:hover { background: rgb(255 255 255 / 0.1); color: #ffffff; }
+.p-tab-here { background: #ffffff; color: #222831; }
+.p-tab-here:hover { background: #ffffff; color: #222831; }
+.p-count { display: inline-block; padding: 0 7px; border-radius: 999px; background: #7bc74d; color: #16300a; font-size: 12px; font-weight: 700; line-height: 18px; }
+.p-hero { padding: 24px; border-radius: 12px; color: #ffffff; background: linear-gradient(100deg, rgb(34 40 49 / 0.96) 30%, rgb(34 40 49 / 0.55)), #222831 url("/doc-bg.jpg") center 75% / cover no-repeat; }
+.p-tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 14px 16px; border: 1px solid var(--color-line, #c6cdd9); border-radius: 10px; background: var(--color-paper, #ffffff); color: inherit; text-decoration: none; transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s; }
+.p-tile:hover { transform: translateY(-2px); border-color: #7bc74d; box-shadow: 0 10px 22px rgb(34 40 49 / 0.1); }
+.p-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 18px 20px; border: 1px solid var(--color-line, #c6cdd9); border-radius: 12px; background: var(--color-paper, #ffffff); }
+.p-row { display: flex; align-items: center; gap: 10px; min-height: 44px; min-width: 0; margin: 0 -8px; padding: 8px; border-radius: 8px; color: inherit; font-size: 14px; text-decoration: none; transition: background-color 0.15s; }
+.p-row:hover { background: var(--color-neutral-tint, #f1f2f4); }
+.p-bar { display: block; overflow: hidden; height: 6px; margin-top: 6px; border-radius: 999px; background: #e7e9ee; }
+.p-bar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #5fa836, #7bc74d); animation: p-grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: left; }
+.p-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 4px 0 0; padding: 0; list-style: none; }
+.p-steps li { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; animation: p-in 0.35s ease-out both; }
+.p-dot { display: grid; flex: none; width: 26px; height: 26px; place-items: center; border: 1px solid #c6cdd9; border-radius: 50%; background: var(--color-paper, #ffffff); color: #16300a; font-size: 13px; font-weight: 700; }
+.p-steps [data-done] .p-dot { border-color: #7bc74d; background: #7bc74d; }
+.p-steps [data-now] .p-dot { border-color: #5fa836; animation: p-pulse 2.2s ease-in-out infinite; }
+.p-next { margin: 4px 0 0; padding: 10px 12px; border-left: 3px solid #7bc74d; border-radius: 4px; background: var(--color-neutral-tint, #f1f2f4); font-size: 14px; }
+.p-in { animation: p-in 0.35s ease-out both; }
+@keyframes p-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes p-grow { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes p-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(123 199 77 / 0.45); } 50% { box-shadow: 0 0 0 7px rgb(123 199 77 / 0); } }
+@media (min-width: 768px) {
+  .p-head { position: sticky; top: 0; z-index: 30; }
+  .p-steps { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; gap: 8px; }
+  .p-steps li { flex-direction: column; align-items: flex-start; }
+  .p-steps li:not(:last-child)::after { content: ""; position: absolute; top: 12px; left: 32px; right: 0; height: 2px; background: #dde1e8; }
+  .p-steps li[data-done]:not(:last-child)::after { background: #7bc74d; }
+}
+@media (prefers-reduced-motion: reduce) { .p-in, .p-steps li, .p-steps [data-now] .p-dot, .p-bar > span { animation: none; } .p-tile, .p-tab, .p-row { transition: none; } }
+
 /* Nutri AI button: a glass supplement capsule, green cap and clear body. Dark enough under the glass for white text on any page. */
 .nutri-capsule {
   position: relative;

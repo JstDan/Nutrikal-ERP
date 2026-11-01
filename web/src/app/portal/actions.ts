@@ -1,13 +1,22 @@
 "use server";
 
 // What a client does in the customer panel. The portal_ functions decide; this only passes the text on.
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { q } from "@/lib/db/engine";
+import { isPortalLocale, PORTAL_LOCALE_COOKIE } from "@/lib/i18n/portal";
 import { getPortalSession } from "@/lib/session";
 import { supabaseConfigured, supabaseServer } from "@/lib/supabase/server";
 import type { ActionState } from "@/app/actions";
 
 const MIN_PASSWORD = 10;
+
+export async function setPortalLocale(fd: FormData) {
+  const locale = fd.get("locale");
+  if (!isPortalLocale(locale)) return;
+  (await cookies()).set(PORTAL_LOCALE_COOKIE, locale, { path: "/", maxAge: 31536000, sameSite: "lax" });
+  revalidatePath("/portal", "layout");
+}
 
 export async function portalPost(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getPortalSession();

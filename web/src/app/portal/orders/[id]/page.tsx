@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Card, Chip, Empty, PageHeader } from "@/components/ui";
-import { DocumentList, InvoiceList, PortalThread } from "@/components/portal-parts";
+import { Chip, Empty, PageHeader } from "@/components/ui";
+import { DocumentList, InvoiceList, Panel, PortalThread } from "@/components/portal-parts";
 import { q } from "@/lib/db/engine";
 import { fmt, formatDate, formatNumber, formatPrice } from "@/lib/i18n";
 import { portalDocuments, portalFeed, portalInvoices, portalMarkRead, validId, type PortalOrder } from "@/lib/portal";
@@ -34,32 +34,36 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
     { label: P.steps.ready, done: READY.includes(o.status), at: "" },
     { label: P.steps.dispatched, done: SENT.includes(o.status), at: date(o.dispatched_at) },
   ];
+  const current = steps.findIndex((s) => !s.done);
+  const next = P.next[o.status as "confirmed"];
+  const mine = invoices.filter((i) => i.order_id === id);
 
   return (
     <>
       <PageHeader title={o.code} crumb={<Link href="/portal/orders">{P.nav.orders}</Link>}
         subtitle={o.customer_ref ? fmt(O.ref, { ref: o.customer_ref }) : undefined}
-        actions={<Chip tone={orderTone(o.status)}>{t.enums.orderStatus[o.status as keyof typeof t.enums.orderStatus]}</Chip>} />
+        actions={<Chip tone={orderTone(o.status)}>{P.status[o.status as keyof typeof P.status]}</Chip>} />
 
       {o.status !== "cancelled" && (
-        <Card title={O.progress}>
-          <ol className="m-0 grid list-none grid-cols-1 gap-2 p-0 md:grid-flow-col md:auto-cols-fr">
-            {steps.map((s) => (
-              <li key={s.label} className="flex min-w-0 items-center gap-2 md:flex-col md:items-start">
-                <span aria-hidden="true" className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs ${s.done ? "bg-[#7BC74D] text-ink" : "border border-line-strong text-ink-2"}`}>{s.done ? "✓" : ""}</span>
+        <Panel title={O.progress}>
+          <ol className="p-steps">
+            {steps.map((s, i) => (
+              <li key={s.label} data-done={s.done || undefined} data-now={i === current || undefined} style={{ animationDelay: `${i * 80}ms` }}>
+                <span aria-hidden="true" className="p-dot">{s.done ? "✓" : ""}</span>
                 <span className="flex min-w-0 flex-col">
-                  <span className={`text-sm ${s.done ? "font-semibold" : "text-ink-2"}`}>{s.label}</span>
+                  <span className={`text-sm ${s.done || i === current ? "font-semibold" : "text-ink-2"}`}>{s.label}</span>
                   {s.at && <span className="text-xs text-ink-2">{s.at}</span>}
                 </span>
               </li>
             ))}
           </ol>
-        </Card>
+          {next && <p className="p-next"><strong>{P.next.title}:</strong> {next}</p>}
+        </Panel>
       )}
 
-      <Card title={O.products}>
+      <Panel title={O.products}>
         {o.lines.map((l, i) => (
-          <div key={i} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-mist py-1.5 text-sm last:border-0">
+          <div key={i} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-mist py-2 text-sm last:border-0">
             <span className="flex min-w-0 flex-col">
               <span className="font-semibold break-words">{l.description}</span>
               <span className="text-xs text-ink-2">{formatNumber(locale, l.quantity)} × {money(l.unit_price)}</span>
@@ -67,12 +71,12 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
             <span className="text-right font-semibold">{money(l.quantity * l.unit_price)}</span>
           </div>
         ))}
-        <p className="m-0 flex justify-between gap-3 pt-2 text-sm font-semibold"><span>{O.value}</span><span className="text-right">{money(o.value)}</span></p>
+        <p className="m-0 flex justify-between gap-3 pt-2 text-base font-bold"><span>{O.value}</span><span className="text-right">{money(o.value)}</span></p>
         {o.requested_date && <p className="m-0 text-xs text-ink-2">{O.requested}: {date(o.requested_date)}</p>}
-      </Card>
+      </Panel>
 
       {o.batches.length > 0 && (
-        <Card title={O.batches}>
+        <Panel title={O.batches}>
           {o.batches.map((b) => (
             <div key={b.lot_id} className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-mist py-1.5 text-sm last:border-0">
               <span className="flex min-w-0 flex-col">
@@ -85,27 +89,28 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
               </span>
             </div>
           ))}
-        </Card>
+        </Panel>
       )}
 
       {o.dispatches.length > 0 && (
-        <Card title={O.shipments}>
+        <Panel title={O.shipments}>
           {o.dispatches.map((d) => (
             <p key={d.code} className="m-0 flex flex-col border-b border-mist py-1.5 text-sm last:border-0">
               <span className="font-semibold">{date(d.dispatched_on)}{d.carrier ? ` · ${d.carrier}` : ""}</span>
               <span className="text-xs break-all text-ink-2">{d.tracking ? `${O.tracking}: ${d.tracking}` : O.noTracking}</span>
             </p>
           ))}
-        </Card>
+        </Panel>
       )}
 
-      <Card title={O.documents}><DocumentList rows={documents} showOrder={false} locale={locale} t={t} /></Card>
+      <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
+        <Panel title={O.documents}><DocumentList rows={documents} showOrder={false} locale={locale} t={t} /></Panel>
+        <Panel title={O.invoices}>
+          {mine.length ? <InvoiceList rows={mine} locale={locale} t={t} /> : <Empty>{P.invoices.empty}</Empty>}
+        </Panel>
+      </div>
 
-      <Card title={O.invoices}>
-        {invoices.some((i) => i.order_id === id) ? <InvoiceList rows={invoices.filter((i) => i.order_id === id)} locale={locale} t={t} /> : <Empty>{P.invoices.empty}</Empty>}
-      </Card>
-
-      <Card title={O.messages}><PortalThread orderId={id} rows={feed} locale={locale} t={t} /></Card>
+      <Panel title={O.messages}><PortalThread orderId={id} rows={feed} locale={locale} t={t} /></Panel>
     </>
   );
 }

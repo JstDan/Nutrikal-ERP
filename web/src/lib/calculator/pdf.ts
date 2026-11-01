@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { docPlace } from '@/lib/doc-chrome';
 import autoTable from 'jspdf-autotable';
 import { fmt } from '@/lib/i18n';
 import { hasAluminiumCap, type CalcResult, type OfferLine } from './calc';
@@ -28,6 +29,8 @@ const PDF = {
   address: 'Address',
   amountPerDose: 'Composition per serving ({portion})',
   included: 'Included',
+  thanks: 'Thank you for considering Nutrikal. We look forward to building your brand together.',
+  validUntil: 'Valid until',
   includedText: 'Manufacturing in a GMP and HACCP certified facility, container with lid, label printing and application.',
   notIncluded: 'Not included',
   notIncludedText: 'Label design, batch testing and COA, shipping and customs, VAT.',
@@ -89,6 +92,9 @@ export interface OfferPdfModel {
   terms: string;
   footerText: string;
   websites: string[];
+  /** Contacts under the logo. */
+  headerContact: string[];
+  validUntil: string;
   /** Uploaded logo (Settings) – replaces the built-in logo in the header. */
   customLogo: PdfImage | null;
   /** Built-in Nutrikal logo (wide wordmark). */
@@ -235,6 +241,8 @@ export function toPdfModel(
     noteLines,
     terms: settings.terms_text.trim(),
     footerText: settings.footer_text,
+    headerContact: [[settings.company_email.trim(), settings.company_phone.trim()].filter(Boolean).join(' · '), settings.company_address].filter(Boolean),
+    validUntil: form.offer.validUntil,
     websites: settings.websites
       .split(',')
       .map((s) => s.trim())
@@ -280,7 +288,7 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
     text: string,
     x: number,
     y: number,
-    opts: { weight?: Weight; size?: number; color?: [number, number, number]; align?: 'left' | 'right' } = {},
+    opts: { weight?: Weight; size?: number; color?: [number, number, number]; align?: 'left' | 'right' | 'center' } = {},
   ) => {
     doc.setFont(...fontFor(opts.weight ?? 'regular', text));
     doc.setFontSize(opts.size ?? 9);
@@ -308,9 +316,21 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   } else {
     write(m.supplier.name.toUpperCase(), 15, 26, { weight: 'bold', size: 15, color: [255, 255, 255] });
   }
-  write(PDF.offer, pageW - 15, 25, { weight: 'bold', size: 22, align: 'right', color: [255, 255, 255] });
-  write(`${PDF.number} ${m.offerNo}`, 15, 44, { weight: 'semibold', size: 9, color: [255, 255, 255] });
-  write(formatDate(m.offerDate), pageW - 15, 44, { size: 9, align: 'right', color: [255, 255, 255] });
+  write(PDF.offer.toUpperCase(), pageW - 15, 25, { weight: 'bold', size: 22, align: 'right', color: [255, 255, 255] });
+  m.headerContact.forEach((line, i) => write(line, 15, 31 + i * 4, { size: 8, color: [255, 255, 255] }));
+  // Number, date and how long it stands, spread over the dark top
+  const facts: [string, string][] = [[PDF.number, m.offerNo], [PDF.date.endsWith(':') ? PDF.date : `${PDF.date}:`, formatDate(m.offerDate)], ...(m.validUntil ? [[`${PDF.validUntil}:`, formatDate(m.validUntil)] as [string, string]] : [])];
+  const fact = (head: string, value: string, x: number, align: 'left' | 'center' | 'right') => {
+    doc.setFontSize(9);
+    doc.setFont(...fontFor('semibold', head));
+    const headW = doc.getTextWidth(`${head} `);
+    doc.setFont(...fontFor('regular', value));
+    const width = headW + doc.getTextWidth(value);
+    const left = align === 'left' ? x : align === 'right' ? x - width : x - width / 2;
+    write(head, left, 44, { weight: 'semibold', size: 9, color: [255, 255, 255] });
+    write(value, left + headW, 44, { size: 9, color: [255, 255, 255] });
+  };
+  facts.forEach(([head, value], i) => fact(head, value, i === 0 ? 15 : i === facts.length - 1 ? pageW - 15 : pageW / 2, i === 0 ? 'left' : i === facts.length - 1 ? 'right' : 'center'));
 
   // 2. Customer / supplier: only what is filled in
   const party = (title: string, x: number, width: number, name: string, rows: [string, string][]) => {
@@ -460,8 +480,25 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   half(PDF.included, PDF.includedText, L);
   half(PDF.notIncluded, PDF.notIncludedText, COL2);
   y += 20;
-  block(PDF.paymentTerms, m.paymentTerms ? [m.paymentTerms] : [], 9);
   block(PDF.terms, [m.terms, PDF.moreTerms].filter(Boolean), 8, MUTED);
+
+  // Payment terms and the thanks stand at the foot of the last page, above the strip
+  doc.setFont(...fontFor('regular', m.paymentTerms));
+  doc.setFontSize(9);
+  const payment = m.paymentTerms ? doc.splitTextToSize(m.paymentTerms, COL2 - L - 8) as string[] : [];
+  doc.setFontSize(8.5);
+  const thanks = doc.splitTextToSize(PDF.thanks, R - COL2) as string[];
+  const closeH = Math.max(payment.length ? 6 + payment.length * 4.4 : 0, thanks.length * 4.2);
+  ensureSpace(closeH + 10);
+  const closeTop = 277 - 5 - closeH;
+  doc.setDrawColor(...LINE);
+  doc.setLineWidth(0.15);
+  doc.line(L, closeTop - 5, R, closeTop - 5);
+  if (payment.length) {
+    write(PDF.paymentTerms, L, closeTop, { weight: 'semibold', size: 9 });
+    payment.forEach((line, i) => write(line, L, closeTop + 5 + i * 4.4, { size: 9 }));
+  }
+  thanks.forEach((line, i) => write(line, COL2, closeTop + i * 4.2, { size: 8.5, color: MUTED }));
 
   // 5. Footer strip on every page
   const pages = doc.getNumberOfPages();
@@ -469,12 +506,10 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
     doc.setPage(i);
     doc.setFillColor(...HEAD_BG);
     doc.rect(15, 277, pageW - 30, 7, 'F');
-    if (m.footerText.trim()) write(m.footerText, L, 281.6, { size: 7.5, color: MUTED });
-    let x = R - (pages > 1 ? 16 : 0);
-    [...m.websites].reverse().forEach((site) => {
-      x -= write(site, x, 281.6, { size: 7.5, color: MUTED, align: 'right' }) + 4;
-    });
-    if (pages > 1) write(fmt(PDF.page, { n: i, m: pages }), R, 281.6, { size: 7.5, color: MUTED, align: 'right' });
+    const company = [m.supplier.name, m.supplier.identificationNo && `${PDF.identificationNo}: ${m.supplier.identificationNo}`, docPlace(m.supplier.address)].filter(Boolean).join(' · ');
+    write(m.footerText.trim() || company, L, 281.6, { size: 7, color: MUTED });
+    write((m.websites.length ? m.websites : ['nutrikal.com']).join(' · '), pageW / 2 + 22, 281.6, { size: 7, color: MUTED, align: 'center' });
+    write(fmt(PDF.page, { n: i, m: pages }), R, 281.6, { size: 7, color: MUTED, align: 'right' });
   }
 
   return doc;

@@ -53,11 +53,11 @@ export function formatMoney(l: AnyLocale, n: number | string | null | undefined,
 }
 
 /** Unit prices and costs: always shows `frac` decimals. */
-export function formatPrice(l: Locale, n: number | string | null | undefined, currency = "EUR", frac = 2): string {
+export function formatPrice(l: AnyLocale, n: number | string | null | undefined, currency = "EUR", frac = 2): string {
   return new Intl.NumberFormat(intlLocale(l), { style: "currency", currency, minimumFractionDigits: frac, maximumFractionDigits: frac }).format(Number(n ?? 0));
 }
 
-export function formatDate(l: Locale, d: string | Date | null | undefined, opts: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short", year: "numeric" }): string {
+export function formatDate(l: AnyLocale, d: string | Date | null | undefined, opts: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short", year: "numeric" }): string {
   if (!d) return "—";
   // Postgres text timestamps look like "2026-10-16 11:00:00.12+00"
   const date =

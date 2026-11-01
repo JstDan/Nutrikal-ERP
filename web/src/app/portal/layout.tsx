@@ -1,9 +1,13 @@
 import Link from "next/link";
-import { setLocale, signOut } from "@/app/actions";
+import { signOut } from "@/app/actions";
 import { Wordmark } from "@/components/logo";
+import { PortalLanguage } from "@/components/portal-language";
+import { PortalNav } from "@/components/portal-nav";
 import { q } from "@/lib/db/engine";
-import { LOCALES } from "@/lib/i18n";
+import { PUBLIC_LOCALES } from "@/lib/i18n/public";
 import { getPortalSession } from "@/lib/session";
+
+const WHATSAPP = "https://wa.me/359882919140";
 
 /** The customer panel: its own menu, for a client account only. */
 export default async function PortalLayout({ children }: LayoutProps<"/portal">) {
@@ -12,45 +16,44 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
   const me = user.role === "client"
     ? (await q<{ d: { client: string; unread: number } | null }>(user.id, "select portal_me() as d"))[0]?.d : null;
 
-  const notice = (
-    <main className="grid min-h-screen place-items-center bg-canvas px-4 py-10">
-      <div className="card flex w-full max-w-[420px] flex-col gap-4 p-6">
-        <Wordmark height={22} />
-        <p className="m-0">{P.noAccess}</p>
-        <form action={signOut}><button type="submit" className="btn btn-outline">{P.signOut}</button></form>
+  if (!me) {
+    return (
+      <div className="app-ui">
+        <main className="grid min-h-screen place-items-center bg-canvas px-4 py-10">
+          <div className="card flex w-full max-w-[420px] flex-col gap-4 p-6">
+            <Wordmark height={22} />
+            <p className="m-0">{P.noAccess}</p>
+            <form action={signOut}><button type="submit" className="btn btn-outline">{P.signOut}</button></form>
+          </div>
+        </main>
       </div>
-    </main>
-  );
-  if (!me) return <div className="app-ui">{notice}</div>;
+    );
+  }
 
-  const links: [string, string][] = [
-    ["/portal", P.nav.home], ["/portal/orders", P.nav.orders], ["/portal/documents", P.nav.documents],
-    ["/portal/invoices", P.nav.invoices], ["/portal/support", P.nav.support], ["/portal/account", P.nav.account],
+  const links = [
+    { href: "/portal", text: P.nav.home }, { href: "/portal/orders", text: P.nav.orders }, { href: "/portal/documents", text: P.nav.documents },
+    { href: "/portal/invoices", text: P.nav.invoices }, { href: "/portal/support", text: P.nav.support }, { href: "/portal/account", text: P.nav.account },
   ];
   return (
     <div className="app-ui flex min-h-screen flex-col bg-canvas text-ink">
-      <header className="border-b border-line bg-paper print:hidden">
-        <div className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2">
-          <Link href="/portal" aria-label={P.nav.home} className="flex min-h-11 items-center"><Wordmark height={18} /></Link>
-          <span className="min-w-0 flex-1 text-sm text-ink-2 break-words">{me.client}</span>
-          <form action={setLocale} className="flex">
-            {LOCALES.map((l) => (
-              <button key={l} type="submit" name="locale" value={l} aria-pressed={l === locale}
-                className={`min-h-11 min-w-11 px-2 text-xs font-semibold uppercase ${l === locale ? "text-ink" : "text-ink-2"}`}>{l}</button>
-            ))}
-          </form>
-          <form action={signOut}><button type="submit" className="min-h-11 text-sm text-ink-2 underline">{P.signOut}</button></form>
+      <header className="p-head print:hidden">
+        <div className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2">
+          <Link href="/portal" aria-label={P.nav.home} className="flex min-h-11 items-center"><Wordmark height={18} inverted /></Link>
+          <span className="min-w-0 flex-1 text-sm break-words text-[#c6cdd9]">{me.client}</span>
+          <PortalLanguage label={P.language} locale={locale} options={PUBLIC_LOCALES} />
+          <form action={signOut}><button type="submit" className="min-h-11 text-sm text-[#c6cdd9] underline hover:text-white">{P.signOut}</button></form>
         </div>
-        <nav aria-label={P.title} className="mx-auto flex w-full max-w-[1100px] flex-wrap gap-x-5 px-4">
-          {links.map(([href, label]) => (
-            <Link key={href} href={href} className="flex min-h-11 items-center gap-1.5 text-sm font-semibold text-ink no-underline hover:underline">
-              {label}
-              {href === "/portal/support" && me.unread > 0 && <span className="rounded-full bg-ink px-1.5 text-xs text-white">{me.unread}</span>}
-            </Link>
-          ))}
-        </nav>
+        <PortalNav label={P.title} links={links} unread={me.unread} />
       </header>
       <main className="mx-auto flex w-full max-w-[1100px] min-w-0 flex-1 flex-col gap-4 px-4 py-6">{children}</main>
+      <footer className="border-t border-line bg-paper print:hidden">
+        <div className="mx-auto grid w-full max-w-[1100px] grid-cols-1 gap-2 px-4 py-4 text-sm text-ink-2 md:grid-cols-3">
+          {[P.trust.gmp, P.trust.trace, P.trust.team].map((x) => <span key={x} className="flex items-center gap-2"><span aria-hidden="true" className="text-[#3f8a1f]">✓</span>{x}</span>)}
+        </div>
+        <p className="mx-auto m-0 w-full max-w-[1100px] px-4 pb-4 text-xs text-ink-2">
+          <a href="mailto:sales@nutrikal.com">sales@nutrikal.com</a> · <a href={WHATSAPP} target="_blank" rel="noopener">WhatsApp</a> · <a href="tel:+359882919140">+359 882 919 140</a>
+        </p>
+      </footer>
     </div>
   );
 }

@@ -26,8 +26,8 @@ export default async function PortalInvoicePage({ params }: PageProps<"/portal/i
       <div className="flex flex-col gap-3 print:hidden">
         <PageHeader title={model.title} crumb={<Link href="/portal/invoices">{t.portal.invoices.title}</Link>} />
         <div className="flex flex-wrap gap-2">
-          <ProformaPdfButton model={model} label={t.orders.proforma.download} errorText={t.orders.proforma.downloadFailed} />
-          <PrintButton label={t.orders.proforma.printNow} variant="outline" />
+          <ProformaPdfButton model={model} label={t.portal.invoices.pdf} errorText={t.portal.invoices.pdfFailed} />
+          <PrintButton label={t.portal.invoices.print} variant="outline" />
         </div>
       </div>
       <SalesDocument model={model} lang={x.locale} sellerName={seller} />

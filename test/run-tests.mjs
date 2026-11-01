@@ -3029,6 +3029,9 @@ await ok('a certificate reaches the client only once it is shared, and only its 
   eq((await as('clientB', 'select 1 from portal_coa($1)', [lot])).length, 0, 'other client');
   eq((await as('clientA', `select name from portal_documents() where kind = 'coa'`))[0].name, 'PORT-LOT', 'listed');
 });
+await ok('the company address is right', async () => {
+  eq((await one('admin', 'select company_address as a from calc_settings limit 1')).a, '133 Knyaz Boris I Blvd., 9000 Varna, Bulgaria', 'address');
+});
 await fails('Production does not share certificates', () => as('production', 'select lot_coa_share($1, true)', ['00000000-0000-0000-0000-000000000000']), '');
 await ok('a client is no member of the staff chat', async () => {
   eq((await as('clientA', 'select id from chat_people()')).length, 0, 'people');

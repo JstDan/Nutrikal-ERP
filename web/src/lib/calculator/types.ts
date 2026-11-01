@@ -114,7 +114,7 @@ export const DEFAULT_SETTINGS: Settings = {
   company_name: 'Nutrikal Ltd',
   company_id: 'BG202245000',
   company_vat: 'BG202245000',
-  company_address: '133 Knyaz Boriz 1 Blvd., 9000 Varna, Bulgaria',
+  company_address: '133 Knyaz Boris I Blvd., 9000 Varna, Bulgaria',
   company_email: 'sales@nutrikal.com',
   company_phone: '',
   bank_iban: 'BG04FINV91501017654214 (EUR)',
