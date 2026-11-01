@@ -3,7 +3,7 @@
 /* Nutrikal design tokens — taken from nutrikal.com (19 Oct 2026) */
 @theme {
   /* Poppins has no Cyrillic: Bulgarian letters fall through to Montserrat */
-  --font-sans: "Poppins", "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Poppins", "Montserrat", "Noto Sans", ui-sans-serif, system-ui, sans-serif;
 
   --color-ink: #222831;          /* text, primary buttons, sidebar */
   --color-ink-2: #4a5160;        /* secondary text (7:1 on white) */

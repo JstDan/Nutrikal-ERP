@@ -6,6 +6,7 @@ import { createServerClient } from "@supabase/ssr";
 // The real checks are in getSession() and in the database; this is the
 // early, optimistic one. Without Supabase settings (local development) it does nothing.
 const PUBLIC_PAGE = "/public-catalog";
+const PUBLIC_LANGS = ["en", "bg", "de", "fr", "it", "ro", "el"];
 const PUBLIC_APIS = ["/api/catalog-enquiry", "/api/catalog-chat"];
 
 export async function middleware(request: NextRequest) {
@@ -17,7 +18,8 @@ export async function middleware(request: NextRequest) {
     const headers = new Headers(request.headers);
     headers.set("x-nk-public", "1");
     const lang = request.nextUrl.searchParams.get("lang");
-    headers.set("x-nk-locale", lang === "bg" || lang === "en" ? lang : /^bg\b/i.test(request.headers.get("accept-language") ?? "") ? "bg" : "en");
+    const asked = (request.headers.get("accept-language") ?? "").slice(0, 2).toLowerCase();
+    headers.set("x-nk-locale", PUBLIC_LANGS.includes(lang ?? "") ? lang! : PUBLIC_LANGS.includes(asked) ? asked : "en");
     if (PUBLIC_APIS.includes(path)) return NextResponse.next({ request: { headers } });
     const to = request.nextUrl.clone();
     to.pathname = PUBLIC_PAGE;

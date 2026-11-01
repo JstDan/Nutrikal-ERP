@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import type { Locale } from "@/lib/i18n";
+import type { AnyLocale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
 const STORE = "nk_catalog_chat";
@@ -18,7 +18,7 @@ const read = (): { chat: string | null; lines: Line[] } => {
 
 /** One button for both ways of reaching us: Nutri AI or WhatsApp. Without AI settings it is WhatsApp alone. */
 export function CatalogContactButton({ text, locale, ai, raised, onAdd, onChat }: {
-  text: Dict["publicCatalog"]; locale: Locale; ai: boolean; raised: boolean;
+  text: Dict["publicCatalog"]; locale: AnyLocale; ai: boolean; raised: boolean;
   onAdd: (code: string, quantity: number) => void; onChat: (chat: string) => void;
 }) {
   const T = text;

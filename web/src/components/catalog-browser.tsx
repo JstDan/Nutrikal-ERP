@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Wordmark } from "@/components/logo";
 import { CatalogContactButton } from "@/components/catalog-chat";
-import { fmt, formatMoney, formatNumber, type Locale } from "@/lib/i18n";
+import { fmt, formatMoney, formatNumber, type AnyLocale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
 type Tier = { min_qty: number; unit_price: number };
@@ -55,7 +55,7 @@ export function CatalogVideo({ title }: { title: string }) {
 }
 
 /** A question without products: it arrives with the enquiries. */
-export function CatalogContact({ text, locale }: { text: Dict["publicCatalog"]; locale: Locale }) {
+export function CatalogContact({ text, locale }: { text: Dict["publicCatalog"]; locale: AnyLocale }) {
   const T = text;
   const [form, setForm] = useState({ company: "", contact_name: "", email: "", message: "", website: "" });
   const [sending, setSending] = useState(false);
@@ -126,15 +126,17 @@ function Dialog({ title, close, closeLabel, footer, children }: { title: string;
 }
 
 /** The open catalogue: browse, filter, a basket, and one enquiry in two steps. */
-export function CatalogBrowser({ ai, data, locale, text, formats, children }: {
-  ai: boolean; data: PublicCatalog; locale: Locale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; children: ReactNode;
+export function CatalogBrowser({ ai, languages, data, locale, text, formats, categories, children }: {
+  ai: boolean; languages: { code: string; label: string }[]; data: PublicCatalog; locale: AnyLocale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; categories: Record<string, string>; children: ReactNode;
 }) {
   const T = text;
   const money = (n: number) => formatMoney(locale, n, "EUR", 2);
   const local = (name: string, bg: string | null) => (locale === "bg" && bg ? bg : name);
+  const catName = (c: { name: string; name_bg: string | null }) => categories[c.name] ?? local(c.name, c.name_bg);
   const [term, setTerm] = useState("");
   const [category, setCategory] = useState("");
   const [format, setFormat] = useState("");
+  const chosen = data.categories.find((c) => c.id === category);
   const [basket, setBasket] = useState<Basket>({});
   const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState<Product | null>(null);
@@ -244,7 +246,12 @@ export function CatalogBrowser({ ai, data, locale, text, formats, children }: {
             <a href="#contact" className="text-ink no-underline">{T.navContact}</a>
           </nav>
           <div className="flex shrink-0 items-center gap-1">
-            <a href={`?lang=${locale === "bg" ? "en" : "bg"}`} className="grid h-11 w-11 place-items-center text-xs font-semibold tracking-[1px] text-ink no-underline">{locale === "bg" ? "EN" : "БГ"}</a>
+            <label>
+              <span className="sr-only">{T.language}</span>
+              <select value={locale} onChange={(e) => { location.search = `?lang=${e.target.value}`; }} className="h-11 max-w-[64px] border-0 bg-transparent text-xs font-semibold text-ink uppercase">
+                {languages.map((l) => <option key={l.code} value={l.code} lang={l.code}>{l.label}</option>)}
+              </select>
+            </label>
             <button type="button" onClick={openBasket} className="btn btn-primary !px-3 sm:!px-5">{fmt(T.basketCount, { n: lines.length })}</button>
           </div>
         </div>
@@ -278,13 +285,13 @@ export function CatalogBrowser({ ai, data, locale, text, formats, children }: {
               <span className="sr-only">{T.categories}</span>
               <select value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full min-w-0">
                 <option value="">{T.allCategories}</option>
-                {data.categories.map((c) => <option key={c.id} value={c.id}>{local(c.name, c.name_bg)}</option>)}
+                {data.categories.map((c) => <option key={c.id} value={c.id}>{catName(c)}</option>)}
               </select>
             </label>
           </div>
           <div role="group" aria-label={T.categories} className="hide-sm flex flex-wrap gap-2">
             <button type="button" aria-pressed={!category} onClick={() => setCategory("")} className={chip(!category)}>{T.all}</button>
-            {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{local(c.name, c.name_bg)}</button>)}
+            {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{catName(c)}</button>)}
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-8">
@@ -292,15 +299,15 @@ export function CatalogBrowser({ ai, data, locale, text, formats, children }: {
             {overview ? data.categories.map((c) => {
               const items = shown.filter((p) => inCategory(p, c.id));
               return (
-                <section key={c.id} aria-label={local(c.name, c.name_bg)} className="flex min-w-0 flex-col gap-3">
-                  <h3 className="m-0 text-lg font-bold">{local(c.name, c.name_bg)}</h3>
+                <section key={c.id} aria-label={catName(c)} className="flex min-w-0 flex-col gap-3">
+                  <h3 className="m-0 text-lg font-bold">{catName(c)}</h3>
                   <div className={grid}>{items.slice(0, OVERVIEW).map(card)}</div>
                   {items.length > OVERVIEW && <button type="button" onClick={() => pick(c.id)} className="btn btn-outline self-start">{fmt(T.seeAll, { n: items.length })}</button>}
                 </section>
               );
             }) : (
               <section aria-label={T.navProducts} className="flex min-w-0 flex-col gap-3">
-                {category && <h3 className="m-0 text-lg font-bold">{local(data.categories.find((c) => c.id === category)?.name ?? "", data.categories.find((c) => c.id === category)?.name_bg ?? null)}</h3>}
+                {chosen && <h3 className="m-0 text-lg font-bold">{catName(chosen)}</h3>}
                 <p role="status" className="m-0 text-sm text-ink-2">{shown.length ? fmt(T.results, { n: shown.length }) : T.noResults}</p>
                 <div className={grid}>{shown.map(card)}</div>
               </section>

@@ -1,5 +1,5 @@
 import { CatalogContact, CatalogVideo } from "@/components/catalog-browser";
-import type { Locale } from "@/lib/i18n";
+import type { AnyLocale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
 const SITE = "/catalog/site";
@@ -101,7 +101,7 @@ export function CatalogOptions({ text, ingredients }: { text: Dict["publicCatalo
 }
 
 /** Who makes it: video, capabilities, brands, certificates and contact. */
-export function CatalogCompany({ text, locale }: { text: Dict["publicCatalog"]; locale: Locale }) {
+export function CatalogCompany({ text, locale }: { text: Dict["publicCatalog"]; locale: AnyLocale }) {
   const T = text;
   return (
     <>

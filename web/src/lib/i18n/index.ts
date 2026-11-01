@@ -2,6 +2,8 @@ import { bg } from "./bg";
 import { en, type Dict } from "./en";
 
 export type Locale = "bg" | "en";
+/** The open catalog also speaks these; the app does not. */
+export type AnyLocale = Locale | "de" | "fr" | "it" | "ro" | "el";
 export const LOCALES: Locale[] = ["bg", "en"];
 export const DEFAULT_LOCALE: Locale = "bg";
 export const LOCALE_COOKIE = "nk_locale";
@@ -21,9 +23,9 @@ export function fmt(template: string, vars: Record<string, string | number> = {}
   return template.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k]) : `{${k}}`));
 }
 
-const intlLocale = (l: Locale) => (l === "bg" ? "bg-BG" : "en-GB");
+const intlLocale = (l: AnyLocale) => (l === "bg" ? "bg-BG" : l === "en" ? "en-GB" : l);
 
-export function formatNumber(l: Locale, n: number | string | null | undefined, maxFrac = 2, minFrac = 0): string {
+export function formatNumber(l: AnyLocale, n: number | string | null | undefined, maxFrac = 2, minFrac = 0): string {
   const v = Number(n ?? 0);
   return new Intl.NumberFormat(intlLocale(l), { maximumFractionDigits: maxFrac, minimumFractionDigits: minFrac }).format(v);
 }
@@ -41,7 +43,7 @@ export function formatMass(l: Locale, mg: number | string | null | undefined): s
   return `${formatNumber(l, v, 1)} mg`;
 }
 
-export function formatMoney(l: Locale, n: number | string | null | undefined, currency = "EUR", decimals = 0): string {
+export function formatMoney(l: AnyLocale, n: number | string | null | undefined, currency = "EUR", decimals = 0): string {
   return new Intl.NumberFormat(intlLocale(l), {
     style: "currency",
     currency,

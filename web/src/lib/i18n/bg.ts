@@ -2213,6 +2213,7 @@ export const bg: Dict = {
     markSpam: "Спам",
   },
   publicCatalog: {
+    language: "Език",
     chatTitle: "Nutri AI",
     chatOpen: "Свържете се с нас",
     chatAsk: "Попитай Nutri AI",
