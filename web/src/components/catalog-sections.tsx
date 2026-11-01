@@ -86,7 +86,7 @@ export function CatalogOptions({ text, ingredients }: { text: Dict["publicCatalo
               const items = ingredients.filter((i) => i.grp === k);
               return items.length > 0 && (
                 <details key={k} className="min-w-0 border-b border-mist">
-                  <summary className="flex min-h-11 cursor-pointer items-center py-2 text-sm font-semibold">{label} ({items.length})</summary>
+                  <summary className="flex min-h-11 cursor-pointer items-center py-2 text-sm font-semibold">{label}</summary>
                   <ul className="m-0 grid min-w-0 list-none grid-cols-1 gap-x-6 gap-y-1 p-0 pb-3 text-sm text-ink-2 sm:grid-cols-2 lg:grid-cols-3">
                     {items.map((i) => <li key={i.name} className="min-w-0 break-words">{i.name}</li>)}
                   </ul>
