@@ -17,6 +17,7 @@ export type PublicCatalog = { ingredient_list: { grp: string; name: string }[]; 
 type Basket = Record<string, number>;
 
 const OVERVIEW = 8;
+const CHAT_INGREDIENTS = 8;
 const STEP = 100;
 const STORE = "nk_catalog_basket";
 const VIDEO = "WF61pORKbUo";
@@ -106,8 +107,8 @@ export function CatalogContact({ text, locale }: { text: Dict["publicCatalog"]; 
 }
 
 /** The product photo; a new product without one shows a blank pack. */
-function Picture({ product, alt, size = "card" }: { product: Product; alt: string; size?: "card" | "detail" | "line" }) {
-  const box = { card: "aspect-[193/232] w-full rounded-md object-cover", detail: "mx-auto h-64 w-auto rounded-md", line: "h-[72px] w-[60px] shrink-0 rounded-sm object-cover" }[size];
+function Picture({ product, alt, size = "card" }: { product: Product; alt: string; size?: "card" | "detail" | "line" | "chat" }) {
+  const box = { card: "aspect-[193/232] w-full rounded-md object-cover", detail: "mx-auto h-64 w-auto rounded-md", line: "h-[72px] w-[60px] shrink-0 rounded-sm object-cover", chat: "h-[108px] w-[90px] shrink-0 rounded-md object-cover" }[size];
   const src = product.image ?? (product.format === "powder" ? "/catalog/site/blank-pouch.webp" : "/catalog/site/blank-bottle.webp");
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={src} alt={alt} loading="lazy" width={640} height={769} className={box} />;
@@ -237,6 +238,42 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
       <button type="button" onClick={() => setOpen(p)} className="btn btn-outline w-full !px-2">{T.learnMore}</button>
     </article>
   );
+  // A product in a Nutri AI answer, always from the catalog data and never from the model
+  const chatCard = (code: string) => {
+    const p = data.products.find((x) => x.code === code);
+    if (!p) return null;
+    const name = local(p.name, p.name_bg);
+    return (
+      <article className="flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-paper p-3 shadow-sm">
+        <div className="flex min-w-0 gap-3">
+          <Picture product={p} alt={name} size="chat" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-[11px] text-ink-2">{[p.format && formats[p.format as "capsule"], p.code].filter(Boolean).join(" · ")}</span>
+            <h3 className="m-0 text-base leading-5 font-bold break-words">{name}</h3>
+            <p className="m-0 text-sm font-semibold">{p.tiers.length ? fmt(T.fromPrice, { price: money(p.tiers.at(-1)!.unit_price) }) : T.priceOnRequest}</p>
+            <p className="m-0 text-xs text-ink-2">{fmt(T.minimum, { n: formatNumber(locale, p.min_qty) })}</p>
+          </div>
+        </div>
+        {p.ingredients.length > 0 && (
+          <section className="flex min-w-0 flex-col">
+            <h4 className="label m-0 pb-1">{T.composition}</h4>
+            <div className="grid min-w-0 grid-cols-1 gap-x-4 sm:grid-cols-2">
+              {p.ingredients.slice(0, CHAT_INGREDIENTS).map((i, n) => (
+                <div key={n} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 border-b border-mist py-1 text-xs">
+                  <span className="min-w-0 break-words">{local(i.name, i.name_bg)}</span>
+                  <span className="text-right">{typeof i.amount === "number" ? `${formatNumber(locale, i.amount, 3)} ${i.unit}` : i.amount}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => setBasket((b) => ({ ...b, [p.code]: b[p.code] ?? p.min_qty }))} className="btn btn-primary w-full !px-2">{basket[p.code] ? T.inBasket : T.add}</button>
+          <button type="button" onClick={() => setOpen(p)} className="btn btn-outline w-full !px-2">{T.learnMore}</button>
+        </div>
+      </article>
+    );
+  };
   const grid = "grid min-w-0 grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4";
 
   return (
@@ -325,7 +362,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
 
       {children}
 
-      <CatalogContactButton text={T} locale={locale} ai={ai} raised={lines.length > 0} hidden={showBasket || !!open} quote={basket} onAdd={addFromChat} onChat={onChat} onQuote={openBasket} onSent={clearBasket} />
+      <CatalogContactButton text={T} locale={locale} ai={ai} raised={lines.length > 0} hidden={showBasket || !!open} quote={basket} onAdd={addFromChat} onChat={onChat} onQuote={openBasket} onSent={clearBasket} card={chatCard} />
 
       {lines.length > 0 && !showBasket && !open && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper p-3 lg:hidden">

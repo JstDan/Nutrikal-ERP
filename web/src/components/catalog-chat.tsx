@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { fmt, type AnyLocale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
@@ -23,6 +23,9 @@ const read = (): { chat: string | null; lines: Line[] } => {
   }
 };
 
+/** An answer in parts: odd places are product codes, shown as cards. A code still arriving stays hidden. */
+const parts = (text: string) => text.replace(/\[\[[^\]]*$/, "").split(/\s*\[\[([A-Za-z0-9-]+)\]\]\s*/);
+
 /** The answers are plain text; only our WhatsApp address becomes a link. */
 const withLinks = (text: string) => text.split(WHATSAPP).flatMap((part, i) => (i ? [<a key={i} href={WHATSAPP} target="_blank" rel="noopener" className="font-semibold underline">WhatsApp</a>, part] : [part]));
 
@@ -32,9 +35,9 @@ function Avatar({ size = 32 }: { size?: number }) {
 }
 
 /** One button for both ways of reaching us: Nutri AI or WhatsApp. Without AI settings it is WhatsApp alone. */
-export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, onAdd, onChat, onQuote, onSent }: {
+export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, onAdd, onChat, onQuote, onSent, card }: {
   text: Dict["publicCatalog"]; locale: AnyLocale; ai: boolean; raised: boolean; hidden: boolean; quote: Record<string, number>;
-  onAdd: (code: string, quantity: number) => void; onChat: (chat: string) => void; onQuote: () => void; onSent: () => void;
+  onAdd: (code: string, quantity: number) => void; onChat: (chat: string) => void; onQuote: () => void; onSent: () => void; card: (code: string) => ReactNode;
 }) {
   const T = text;
   const [open, setOpen] = useState(false);
@@ -58,7 +61,7 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
     loaded.current = true;
   }, [onChat]);
   useEffect(() => {
-    if (!loaded.current || !chat.current) return;
+    if (!loaded.current || !chat.current || !lines.length) return;
     try { localStorage.setItem(STORE, JSON.stringify({ chat: chat.current, lines: lines.slice(-60), at: Date.now() })); } catch { /* it then lasts until the page closes */ }
   }, [lines]);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [lines, open]);
@@ -174,12 +177,19 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
               <span className="shrink-0 text-[#128C4B]"><WhatsAppIcon size={20} /></span><span className="min-w-0">{T.chatHuman}</span>
             </a>
             {lines.length === 0 && <div className="flex items-end gap-2"><Avatar size={28} /><p className="m-0 max-w-[85%] rounded-2xl rounded-bl-md bg-neutral-tint px-3 py-2 text-sm sm:text-base">{T.chatWelcome}</p></div>}
-            {lines.map((l, i) => (
-              <div key={i} className={`flex min-w-0 items-end gap-2 ${l.role === "user" ? "justify-end" : ""}`}>
-                {l.role === "assistant" && <Avatar size={28} />}
-                <p className={`m-0 max-w-[85%] min-w-0 rounded-2xl px-3 py-2 text-sm break-words sm:text-base whitespace-pre-wrap ${l.role === "user" ? "rounded-br-md bg-ink text-white" : "rounded-bl-md bg-neutral-tint"}`}>
-                  {l.text ? withLinks(l.text) : <span className="animate-pulse text-ink-2">{T.chatThinking}</span>}
-                </p>
+            {lines.map((l, i) => l.role === "user" ? (
+              <div key={i} className="flex min-w-0 items-end justify-end gap-2">
+                <p className="m-0 max-w-[85%] min-w-0 rounded-2xl rounded-br-md bg-ink px-3 py-2 text-sm break-words whitespace-pre-wrap text-white sm:text-base">{l.text}</p>
+              </div>
+            ) : (
+              <div key={i} className="flex min-w-0 items-end gap-2">
+                <Avatar size={28} />
+                <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+                  {!parts(l.text).join("").trim() && <p className="m-0 rounded-2xl rounded-bl-md bg-neutral-tint px-3 py-2 text-sm sm:text-base"><span className="animate-pulse text-ink-2">{T.chatThinking}</span></p>}
+                  {parts(l.text).map((part, n) => n % 2 ? <div key={n} className="w-full min-w-0">{card(part)}</div> : part.trim() && (
+                    <p key={n} className="m-0 max-w-[85%] min-w-0 rounded-2xl rounded-bl-md bg-neutral-tint px-3 py-2 text-sm break-words whitespace-pre-wrap sm:text-base">{withLinks(part)}</p>
+                  ))}
+                </div>
               </div>
             ))}
             <div ref={end} />
