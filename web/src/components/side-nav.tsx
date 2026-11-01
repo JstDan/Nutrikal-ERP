@@ -14,7 +14,7 @@ export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }
   const isActive = (href: string, also: string[] = []) => (href === "/" || href === "/factory" ? path === href : under(href) || also.some(under));
 
   return (
-    <nav aria-label={label} className="flex flex-col gap-6 lg:gap-4">
+    <nav aria-label={label} className="flex flex-col gap-6 lg:gap-2.5">
       {groups.map((g, i) => (
         <div key={i} className="flex flex-col gap-0.5">
           {g.title && <div className="px-2 pb-2 text-[11px] font-semibold tracking-[2px] uppercase text-side-muted">{g.title}</div>}
@@ -26,8 +26,8 @@ export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }
                 aria-current={isActive(it.href, it.also) ? "page" : undefined}
                 className={
                   isActive(it.href, it.also)
-                    ? "flex min-h-11 items-center gap-2.5 rounded lg:min-h-9 bg-ink-3 px-2 text-sm font-semibold text-side-strong no-underline"
-                    : "flex min-h-11 items-center gap-2.5 rounded lg:min-h-9 px-2 text-sm text-side-text no-underline hover:bg-ink-3"
+                    ? "flex min-h-11 items-center gap-2.5 rounded lg:min-h-8 bg-ink-3 px-2 text-sm font-semibold text-side-strong no-underline"
+                    : "flex min-h-11 items-center gap-2.5 rounded lg:min-h-8 px-2 text-sm text-side-text no-underline hover:bg-ink-3"
                 }
               >
                 <span aria-hidden="true" className={`h-2 w-2 rounded-full ${isActive(it.href, it.also) ? "bg-green" : "bg-transparent"}`} />

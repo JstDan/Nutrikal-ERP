@@ -47,7 +47,7 @@ export const bg: Dict = {
     formulas: "Рецепти",
     deliveries: "Доставки",
     reports: "Справки",
-    accounting: "Експорт за счетоводството",
+    accounting: "Счетоводство",
     adminDashboard: "Админ табло",
     history: "История на промените",
     settings: "Настройки",

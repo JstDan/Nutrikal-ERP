@@ -90,7 +90,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div data-readonly={user.readOnly || undefined} className="app-ui flex min-h-screen flex-wrap">
-      <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 py-5 text-side-strong lg:sticky lg:top-0 lg:h-screen lg:w-[232px] lg:shrink-0 lg:gap-4 lg:overflow-y-auto lg:py-5">
+      <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 py-5 text-side-strong lg:sticky lg:top-0 lg:h-screen lg:w-[232px] lg:shrink-0 lg:gap-3 lg:overflow-y-auto lg:py-4 lg:[scrollbar-width:none]">
         <a href={isProduction ? "/factory" : "/"} className="flex flex-col gap-2 px-2 text-side-strong no-underline">
           <Wordmark height={20} inverted />
           <span className="text-[11px] font-semibold tracking-[2px] text-green">{isProduction ? t.nav.productionLabel.toUpperCase() : "ERP"}</span>
