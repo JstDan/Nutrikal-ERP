@@ -2219,6 +2219,7 @@ export const en = {
     chatTitle: "Nutri AI",
     chatAsk: "Ask Nutri AI",
     chatNotice: "You are chatting with an AI assistant. Answers are guidance only; prices and terms are confirmed in an offer. This conversation is saved so our team can help you, and on this device for 30 days so you can continue later.",
+    chatHuman: "Prefer a real person? Chat with us on WhatsApp during working hours.",
     chatWelcome: "Hi, I’m Nutri AI. Tell me what you want to launch and I’ll help you pick the right products.",
     chatPlaceholder: "Write your question",
     chatSend: "Send",

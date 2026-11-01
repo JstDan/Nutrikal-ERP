@@ -23,6 +23,9 @@ const read = (): { chat: string | null; lines: Line[] } => {
   }
 };
 
+/** The answers are plain text; only our WhatsApp address becomes a link. */
+const withLinks = (text: string) => text.split(WHATSAPP).flatMap((part, i) => (i ? [<a key={i} href={WHATSAPP} target="_blank" rel="noopener" className="font-semibold underline">WhatsApp</a>, part] : [part]));
+
 function Avatar({ size = 32 }: { size?: number }) {
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={AVATAR} alt="" width={size} height={size} style={{ width: size, height: size }} className="shrink-0 rounded-full object-cover" />;
@@ -166,13 +169,16 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
             <button type="button" onClick={() => setOpen(false)} aria-label={T.close} className="grid h-11 w-11 shrink-0 place-items-center text-xl text-ink-2 hover:text-ink">×</button>
           </header>
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 sm:gap-3 sm:p-5">
-            <p className="m-0 rounded-md bg-neutral-tint px-3 py-2 text-xs text-ink-2">{T.chatNotice} <a href={WHATSAPP} target="_blank" rel="noopener" className="inline-block font-semibold text-ink underline">WhatsApp</a></p>
+            <p className="m-0 rounded-md bg-neutral-tint px-3 py-2 text-xs text-ink-2">{T.chatNotice}</p>
+            <a href={WHATSAPP} target="_blank" rel="noopener" className="flex min-h-11 items-center gap-2 rounded-md border border-line px-3 py-1 text-sm font-semibold text-ink no-underline hover:bg-neutral-tint">
+              <span className="shrink-0 text-[#128C4B]"><WhatsAppIcon size={20} /></span><span className="min-w-0">{T.chatHuman}</span>
+            </a>
             {lines.length === 0 && <div className="flex items-end gap-2"><Avatar size={28} /><p className="m-0 max-w-[85%] rounded-2xl rounded-bl-md bg-neutral-tint px-3 py-2 text-sm sm:text-base">{T.chatWelcome}</p></div>}
             {lines.map((l, i) => (
               <div key={i} className={`flex min-w-0 items-end gap-2 ${l.role === "user" ? "justify-end" : ""}`}>
                 {l.role === "assistant" && <Avatar size={28} />}
                 <p className={`m-0 max-w-[85%] min-w-0 rounded-2xl px-3 py-2 text-sm break-words sm:text-base whitespace-pre-wrap ${l.role === "user" ? "rounded-br-md bg-ink text-white" : "rounded-bl-md bg-neutral-tint"}`}>
-                  {l.text || <span className="animate-pulse text-ink-2">{T.chatThinking}</span>}
+                  {l.text ? withLinks(l.text) : <span className="animate-pulse text-ink-2">{T.chatThinking}</span>}
                 </p>
               </div>
             ))}
