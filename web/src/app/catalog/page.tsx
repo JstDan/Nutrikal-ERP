@@ -3,7 +3,8 @@ import { q } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { Chip, Empty, Fold, PageHeader } from "@/components/ui";
 import { formatMoney, fmt } from "@/lib/i18n";
-import { createCatalogProduct, publishReadyCatalog } from "@/app/catalog-actions";
+import { ActionForm } from "@/components/action-form";
+import { createCatalogProduct, publishReadyCatalog, saveIngredientList } from "@/app/catalog-actions";
 
 type Row = {
   id: string; code: string; name: string; name_bg: string | null; product_format: string | null; is_published: boolean;
@@ -32,6 +33,7 @@ export default async function CatalogPage() {
           order by f.code desc`)
     : [];
   const [waiting] = await q<{ n: number }>(user.id, "select count(*)::int as n from catalog_enquiries where status = 'new'");
+  const ingredients = canEdit ? await q<{ grp: string; name: string }>(user.id, "select grp, name from catalog_ingredient_list order by grp, name") : [];
   const ready = rows.filter((r) => !r.is_published && !r.problem).length;
   const local = (name: string, bg: string | null) => (locale === "bg" && bg ? bg : name);
   const grid = "md:grid-cols-[110px_minmax(0,1.6fr)_minmax(0,1fr)_120px_120px]";
@@ -60,6 +62,16 @@ export default async function CatalogPage() {
             </select>
             <button type="submit" className="btn btn-primary">{C.create}</button>
           </form>
+        </Fold>
+      )}
+
+      {canEdit && (
+        <Fold title={C.ingredientList} note={C.ingredientListNote}>
+          <ActionForm action={saveIngredientList} submitLabel={t.common.save} resetOnSuccess={false}>
+            <label className="field"><span className="sr-only">{C.ingredientList}</span>
+              <textarea name="list" rows={14} defaultValue={ingredients.map((i) => `${i.grp} | ${i.name}`).join("\n")} className="input" />
+            </label>
+          </ActionForm>
         </Fold>
       )}
 

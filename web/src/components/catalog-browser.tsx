@@ -12,7 +12,7 @@ type Product = {
   serving_size: number | null; serving_unit: string | null; servings_per_pack: number | null;
   tiers: Tier[]; ingredients: { name: string; name_bg: string | null; amount: number | string; unit: string | null }[]; claims: { en: string; bg: string | null }[];
 };
-export type PublicCatalog = { categories: { id: string; name: string; name_bg: string | null }[]; products: Product[] };
+export type PublicCatalog = { ingredient_list: { grp: string; name: string }[]; categories: { id: string; name: string; name_bg: string | null }[]; products: Product[] };
 type Basket = Record<string, number>;
 
 const OVERVIEW = 8;
@@ -233,8 +233,10 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
           <Wordmark height={16} className="min-w-0 shrink !self-center" />
           <nav aria-label={T.title} className="hide-md flex items-center gap-6 text-sm">
             <a href="#products" className="text-ink no-underline">{T.navProducts}</a>
+            <a href="#how" className="text-ink no-underline">{T.navHow}</a>
+            <a href="#packaging" className="text-ink no-underline">{T.navPackaging}</a>
+            <a href="#ingredients" className="text-ink no-underline">{T.navIngredients}</a>
             <a href="#about" className="text-ink no-underline">{T.navAbout}</a>
-            <a href="#certificates" className="text-ink no-underline">{T.navCertificates}</a>
             <a href="#contact" className="text-ink no-underline">{T.navContact}</a>
           </nav>
           <div className="flex shrink-0 items-center gap-1">

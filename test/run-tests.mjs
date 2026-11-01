@@ -2807,6 +2807,14 @@ await ok('Production and Design see no review notes or category links; nobody si
   for (const r of ['production', 'designer']) eq((await as(r, 'select product_id from catalog_product_categories')).length, 0, r);
 });
 await fails('nobody signed in reads no category link', () => asAnon('select * from catalog_product_categories'), 'denied');
+await ok('the public ingredient list has names only, and only Admin changes it', async () => {
+  const d = (await asAnon('select catalog_public() as d'))[0].d;
+  if (d.ingredient_list.length < 120) throw new Error('short ' + d.ingredient_list.length);
+  eq(Object.keys(d.ingredient_list[0]).sort().join(), 'grp,name', 'fields');
+  eq((await as('sales', "update catalog_ingredient_list set name = 'x' returning id")).length, 0, 'sales');
+  eq((await as('production', 'select id from catalog_ingredient_list')).length, 0, 'production');
+});
+await fails('nobody signed in reads no ingredient table', () => asAnon('select * from catalog_ingredient_list'), 'denied');
 await fails('Sales does not publish everything', () => as('sales', 'select catalog_publish_ready()'), 'not allowed');
 await ok('publish all ready takes what is ready and leaves out what has no price', async () => {
   await as('admin', "update catalog_products set is_published = false where code = 'NTL-TH101'");

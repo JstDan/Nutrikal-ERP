@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { q } from "@/lib/db/engine";
+import { q, withUser } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import type { ActionState } from "@/app/actions";
 
@@ -87,6 +87,24 @@ export async function unpublishCatalogProduct(fd: FormData) {
   const { user } = await getSession();
   await q(user.id, "update catalog_products set is_published = false where id = $1", [val(fd, "id")]);
   revalidatePath("/catalog", "layout");
+}
+
+/** The whole public list at once: one ingredient on a line, group | name. */
+export async function saveIngredientList(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const rows = val(fd, "list").split("\n").map((l) => l.split("|").map((p) => p.trim())).filter((r) => r.length === 2 && r[1]);
+  try {
+    await withUser(user.id, async (tx) => {
+      await tx.query("delete from catalog_ingredient_list where true");
+      await tx.query(
+        "insert into catalog_ingredient_list (grp, name, sort_order) select x ->> 0, x ->> 1, 10 from jsonb_array_elements($1::jsonb) x on conflict do nothing",
+        [JSON.stringify(rows)]);
+    });
+  } catch (e) {
+    return { error: text(e) };
+  }
+  revalidatePath("/catalog", "layout");
+  return { ok: true, message: t.catalog.saved };
 }
 
 export async function enquiryToClient(fd: FormData) {

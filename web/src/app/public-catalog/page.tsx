@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { qPublic } from "@/lib/db/engine";
 import { getDict, isLocale, type Locale } from "@/lib/i18n";
 import { CatalogBrowser, type PublicCatalog } from "@/components/catalog-browser";
-import { CatalogCompany } from "@/components/catalog-sections";
+import { CatalogCompany, CatalogOptions, CatalogProcess } from "@/components/catalog-sections";
 
 export const metadata: Metadata = {
   title: "Nutrikal Catalog",
@@ -19,6 +19,8 @@ export default async function PublicCatalogPage() {
   const t = getDict(locale);
   return (
     <CatalogBrowser data={row.data} locale={locale} text={t.publicCatalog} formats={t.enums.productFormat}>
+      <CatalogProcess text={t.publicCatalog} />
+      <CatalogOptions text={t.publicCatalog} ingredients={row.data.ingredient_list} />
       <CatalogCompany text={t.publicCatalog} locale={locale} />
     </CatalogBrowser>
   );

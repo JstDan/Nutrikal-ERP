@@ -9,6 +9,97 @@ const light = "inline-flex min-h-11 items-center justify-center rounded-full bg-
 const outline = "inline-flex min-h-11 items-center justify-center rounded-full border border-side-muted px-6 text-sm font-semibold text-side-strong no-underline";
 const eyebrow = "m-0 font-mono text-xs tracking-[2px] uppercase";
 
+/** How an order works, and the worries a first-time buyer has. */
+export function CatalogProcess({ text }: { text: Dict["publicCatalog"] }) {
+  const T = text;
+  return (
+    <section id="how" className="scroll-mt-16 border-t border-line bg-paper">
+      <div className="mx-auto flex max-w-[1200px] flex-col gap-8 px-4 py-10">
+        <div className="flex max-w-[720px] flex-col gap-2">
+          <h2 className="m-0 text-2xl font-bold">{T.howTitle}</h2>
+          <p className="m-0 text-ink-2">{T.howText}</p>
+        </div>
+        <ol className="m-0 grid min-w-0 list-none grid-cols-1 gap-5 p-0 sm:grid-cols-2 lg:grid-cols-3">
+          {T.steps.map((s, i) => (
+            <li key={s.title} className="flex min-w-0 gap-3">
+              <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink text-sm font-bold text-white">{i + 1}</span>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <strong className="text-sm">{s.title}</strong>
+                <span className="text-sm text-ink-2">{s.text}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+        <div className="flex min-w-0 flex-col gap-3">
+          <h3 className="m-0 text-lg font-bold">{T.faqTitle}</h3>
+          <div className="grid min-w-0 grid-cols-1 gap-x-6 lg:grid-cols-2">
+            {T.faq.map((f) => (
+              <details key={f.q} className="group min-w-0 border-b border-mist">
+                <summary className="flex min-h-11 cursor-pointer items-center py-2 text-sm font-semibold">{f.q}</summary>
+                <p className="m-0 pb-3 text-sm text-ink-2">{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <a href="#products" className="btn btn-primary">{T.ctaQuote}</a>
+          <a href="#contact" className="btn btn-outline">{T.ctaTalk}</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** What the product can come in, and what we can put in it. */
+export function CatalogOptions({ text, ingredients }: { text: Dict["publicCatalog"]; ingredients: { grp: string; name: string }[] }) {
+  const T = text;
+  const groups = Object.entries(T.ingredientGroups) as [string, string][];
+  return (
+    <>
+      <section id="packaging" className="scroll-mt-16 bg-canvas">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-4 py-10">
+          <div className="flex max-w-[720px] flex-col gap-2">
+            <h2 className="m-0 text-2xl font-bold">{T.packagingTitle}</h2>
+            <p className="m-0 text-ink-2">{T.packagingText}</p>
+          </div>
+          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {T.packaging.map((p) => (
+              <article key={p.img} className="flex min-w-0 flex-col gap-2 rounded-lg border border-line bg-paper p-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`${SITE}/${p.img}.webp`} alt={p.title} loading="lazy" width={800} height={600} className="aspect-[4/3] w-full rounded-md object-cover" />
+                <h3 className="m-0 text-sm font-bold">{p.title}</h3>
+                <p className="m-0 text-sm text-ink-2">{p.text}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="ingredients" className="scroll-mt-16 border-t border-line bg-paper">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-4 py-10">
+          <div className="flex max-w-[720px] flex-col gap-2">
+            <h2 className="m-0 text-2xl font-bold">{T.ingredientsTitle}</h2>
+            <p className="m-0 text-ink-2">{T.ingredientsText}</p>
+          </div>
+          <div className="flex min-w-0 flex-col">
+            {groups.map(([k, label]) => {
+              const items = ingredients.filter((i) => i.grp === k);
+              return items.length > 0 && (
+                <details key={k} className="min-w-0 border-b border-mist">
+                  <summary className="flex min-h-11 cursor-pointer items-center py-2 text-sm font-semibold">{label} ({items.length})</summary>
+                  <ul className="m-0 grid min-w-0 list-none grid-cols-1 gap-x-6 gap-y-1 p-0 pb-3 text-sm text-ink-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {items.map((i) => <li key={i.name} className="min-w-0 break-words">{i.name}</li>)}
+                  </ul>
+                </details>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
 /** Who makes it: video, capabilities, brands, certificates and contact. */
 export function CatalogCompany({ text, locale }: { text: Dict["publicCatalog"]; locale: Locale }) {
   const T = text;
