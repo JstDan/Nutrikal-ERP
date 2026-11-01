@@ -39,9 +39,11 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
       <header className="p-head print:hidden">
         <div className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2">
           <Link href="/portal" aria-label={P.nav.home} className="flex min-h-11 items-center"><Wordmark height={18} inverted className="!self-center" /></Link>
-          <span className="p-client min-w-0 flex-1 border-l border-white/25 pl-4 text-sm leading-5 font-medium break-words text-[#dfe3ea]">{me.client}</span>
+          <span className="p-client order-last w-full min-w-0 text-sm leading-5 font-medium break-words text-[#dfe3ea] md:order-none md:w-auto md:flex-1 md:border-l md:border-white/25 md:pl-4">{me.client}</span>
+          <div className="ml-auto flex items-center gap-3">
           <PortalLanguage label={P.language} locale={locale} options={PUBLIC_LOCALES} />
           <form action={signOut}><button type="submit" className="min-h-11 text-sm text-[#c6cdd9] underline hover:text-white">{P.signOut}</button></form>
+          </div>
         </div>
         <PortalNav label={P.title} links={links} unread={me.unread} />
       </header>
