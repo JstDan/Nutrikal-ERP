@@ -50,6 +50,14 @@ export async function middleware(request: NextRequest) {
     for (const c of response.cookies.getAll()) redirect.cookies.set(c);
     return redirect;
   }
+  // The customer panel: on its own address nothing else of the app can be reached
+  if (host === (process.env.PORTAL_HOST?.trim() || "portal.nutrikal.com") && path !== "/login" && !path.startsWith("/portal")) {
+    const to = request.nextUrl.clone();
+    to.pathname = `/portal${path === "/" ? "" : path}`;
+    const rewrite = NextResponse.rewrite(to, { request });
+    for (const c of response.cookies.getAll()) rewrite.cookies.set(c);
+    return rewrite;
+  }
   return response;
 }
 

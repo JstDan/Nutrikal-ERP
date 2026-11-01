@@ -3,6 +3,7 @@ import Link from "next/link";
 import { DispatchCard } from "@/components/dispatch-card";
 import { OrderStages } from "@/components/order-stages";
 import { ClientFiles } from "@/components/client-files";
+import { ClientMessages } from "@/components/client-messages";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
@@ -385,7 +386,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       <DispatchCard orderId={o.id} status={o.status} isAdmin={user.canPay} userId={user.id} locale={locale} t={t}
         balanceDue={!!c && c.balance_terms === "before_dispatch" && !c.balance_received_on} />
 
-      <ClientFiles clientId={o.client_id} orderId={o.id} userId={user.id} isAdmin={isAdmin} locale={locale} t={t} />
+      <ClientFiles clientId={o.client_id} orderId={o.id} userId={user.id} isAdmin={isAdmin} canShare={!user.readOnly && (user.role === "admin" || user.role === "sales")} locale={locale} t={t} />
+
+      {(user.role === "admin" || user.role === "sales") && <ClientMessages clientId={o.client_id} orderId={o.id} userId={user.id} canWrite={!user.readOnly} locale={locale} t={t} />}
 
       {canEdit && board && (
         <Fold title={T.title} note={fmt(T.progress, { done: doneTasks, total: board.tasks.length })} open={!!initialTask}>

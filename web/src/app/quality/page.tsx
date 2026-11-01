@@ -7,14 +7,14 @@ import { ActionForm } from "@/components/action-form";
 import { LiveSearch } from "@/components/live-search";
 import { QualityTabs } from "@/components/quality-tabs";
 import { qcTone } from "@/lib/status";
-import { attachCoa, setLotStatus } from "@/app/batch-actions";
+import { attachCoa, setLotStatus, shareCoa } from "@/app/batch-actions";
 
 type Lot = {
   id: string; lot_number: string; sku: string; name: string; name_bg: string | null; base_unit: string; qc_status: string;
-  qc_notes: string | null; expires_on: string | null; coa_path: string | null; on_hand: string; item_type: string;
+  qc_notes: string | null; expires_on: string | null; coa_path: string | null; coa_shared: boolean; on_hand: string; item_type: string;
 };
 
-const LOT_SQL = `select l.id, l.lot_number, i.sku, i.name, i.name_bg, i.base_unit, l.qc_status, l.qc_notes, l.expires_on::text, l.coa_path,
+const LOT_SQL = `select l.id, l.lot_number, i.sku, i.name, i.name_bg, i.base_unit, l.qc_status, l.qc_notes, l.expires_on::text, l.coa_path, l.coa_shared,
          i.type as item_type, coalesce((select sum(m.quantity) from stock_movements m where m.lot_id = l.id), 0)::text as on_hand
     from lots l join items i on i.id = l.item_id`;
 
@@ -49,6 +49,13 @@ export default async function QualityPage({ searchParams }: PageProps<"/quality"
         <Link href={`/traceability?lot=${x.id}`} className="text-xs font-semibold text-ink">{Q.trace}</Link>
         {x.coa_path && <a href={`/files/coa/${x.id}`} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-ink">{Q.viewCoa}</a>}
         {!x.coa_path && x.item_type === "finished_good" && <span className="text-xs text-ink-2">{Q.noCoa}</span>}
+        {x.coa_path && x.item_type === "finished_good" && !user.readOnly && (
+          <form action={shareCoa}>
+            <input type="hidden" name="lot_id" value={x.id} />
+            <input type="hidden" name="on" value={x.coa_shared ? "" : "on"} />
+            <button type="submit" className="min-h-11 text-xs font-semibold text-ink underline">{x.coa_shared ? t.portal.staff.unshare : t.portal.staff.share}</button>
+          </form>
+        )}
       </div>
     </div>
   );

@@ -774,6 +774,7 @@ export const en = {
       mo_sent: "New production order {code}: {quantity} packs",
       delivery_ordered: "Delivery {code} ordered for you: {qty} {item}",
       catalog_enquiry: "{company} sent a catalog enquiry ({no})",
+      client_message: "{client} wrote in the customer panel (order {code})",
       chat_mention: "{by} mentioned you in #{channel}",
       chat_mentionDirect: "{by} mentioned you in a message",
       task_mention: "{by} mentioned you in {order} · {task}",
@@ -2578,6 +2579,44 @@ export const en = {
     nextInvoice: "Next invoice number",
     nextInvoiceHint: "Shared by invoices, credit and debit notes. Change it only to continue from another tool.",
   },
+  portal: {
+    title: "Customer panel",
+    noAccess: "This account has no access to the customer panel. Please contact Nutrikal.",
+    signOut: "Sign out",
+    welcome: "Welcome, {name}",
+    nav: { home: "Overview", orders: "Orders", documents: "Documents", invoices: "Invoices", support: "Support", account: "Account" },
+    home: { openBalance: "Open balance", viewAll: "View all", activeOrders: "Active orders", noOrders: "No orders yet.", unread: "{n} new", recentDocuments: "Latest documents" },
+    order: {
+      ref: "Your reference: {ref}", value: "Order value (excl. VAT)", requested: "Requested date", progress: "Progress", products: "Products",
+      batches: "Batches", units: "units", produced: "Produced", expires: "Best before", coa: "Certificate of analysis", released: "Released", inReview: "In quality review",
+      shipments: "Shipments", tracking: "Tracking", noTracking: "No tracking number yet", documents: "Documents", invoices: "Invoices", messages: "Messages about this order",
+    },
+    steps: { confirmed: "Order confirmed", deposit: "Deposit received", production: "In production", ready: "Ready to ship", dispatched: "Dispatched" },
+    docs: {
+      title: "Documents", intro: "Product documents our team has shared with you.", empty: "No documents yet.",
+      coa: "Certificate of analysis, batch {lot}", order: "Order {code}", general: "General",
+    },
+    invoices: {
+      title: "Invoices", empty: "No invoices yet.", due: "Due", open: "Open", paid: "Paid",
+      kinds: { invoice: "Invoice", credit_note: "Credit note", debit_note: "Debit note" },
+    },
+    support: {
+      title: "Support", intro: "Write to our team. For a specific order, use the messages on that order.", empty: "No messages yet.",
+      placeholder: "Write your message", send: "Send", you: "You", team: "Nutrikal", busy: "Too many messages for now. Please try again later.",
+      failed: "The message could not be sent.", other: "You can also reach us at",
+    },
+    account: {
+      title: "Account", newPassword: "New password", repeat: "Repeat the password", save: "Change password", saved: "Password changed.",
+      short: "Use at least 10 characters.", mismatch: "The two passwords differ.", failed: "The password could not be changed.", liveOnly: "Available on the live site only.",
+    },
+    staff: {
+      messages: "Messages in the customer panel", empty: "No messages yet.", placeholder: "Write to the client", send: "Send to the client",
+      accessTitle: "Customer panel access", accessEmpty: "Nobody at this client can sign in yet.", name: "Name", email: "E-mail", create: "Create account",
+      created: "Account created. First password, shown once: {password}", stop: "Stop access", restore: "Restore access", reset: "New password", stopped: "access stopped",
+      share: "Share with client", unshare: "Stop sharing", shared: "shared with client",
+      mailSubject: "New message from Nutrikal", mailBody: "You have a new message from Nutrikal in your customer panel.\n\nRead it here: {url}",
+    },
+  },
   enums: {
     moStatus: {
       simulation: "Simulation",
@@ -2659,7 +2698,7 @@ export const en = {
     activityType: { note: "Note", call: "Call", email: "Email", meeting: "Meeting", task: "Task" },
     balanceTerms: { before_dispatch: "balance before dispatch", net_days: "balance net {days} days" },
     balanceTermsOption: { before_dispatch: "Before dispatch", net_days: "Net days after invoice" },
-    role: { admin: "Admin", sales: "Sales", production: "Production", developer: "Developer", bookkeeper: "Bookkeeper", accountant: "Accountant (read only)", designer: "Design" },
+    role: { admin: "Admin", client: "Client", sales: "Sales", production: "Production", developer: "Developer", bookkeeper: "Bookkeeper", accountant: "Accountant (read only)", designer: "Design" },
     locale: { bg: "Bulgarian", en: "English" },
     deliveryStatus: { open: "Open", received: "Received", cancelled: "Cancelled" },
     productionDeliveryStatus: { open: "Ordered", received: "Received", cancelled: "Cancelled" },

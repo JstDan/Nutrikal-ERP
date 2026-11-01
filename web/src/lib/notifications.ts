@@ -33,6 +33,8 @@ export function notificationText(n: NotificationRow, t: Dict, locale: Locale): s
       return fmt(K.task_mention, { by: s("by"), order: s("order"), task: locale === "en" && p.task_en ? s("task_en") : s("task") });
     case "chat_mention":
       return fmt(p.channel ? K.chat_mention : K.chat_mentionDirect, { by: s("by"), channel: s("channel") });
+    case "client_message":
+      return fmt(K.client_message, { client: s("client"), code: s("code") || "—" });
     case "catalog_enquiry":
       return fmt(K.catalog_enquiry, { company: s("company"), no: s("no") });
     case "materials_short":

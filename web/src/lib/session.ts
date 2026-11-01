@@ -72,6 +72,15 @@ export const getOptionalSession = cache(async () => {
 export const getSession = cache(async () => {
   const s = await getOptionalSession();
   if (!s) redirect("/login");
+  // A client account has only the customer panel: every staff page and action starts here
+  if (s.user.role === "client") redirect("/portal");
+  return s;
+});
+
+/** The customer panel. The portal_ functions in the database limit everything to the client of the account. */
+export const getPortalSession = cache(async () => {
+  const s = await getOptionalSession();
+  if (!s) redirect("/login");
   return s;
 });
 
@@ -88,7 +97,7 @@ function initials(name: string) {
 }
 
 /** Start page of a role: Production works in its own portal. */
-export const homeFor = (role: Role) => (role === "production" ? "/factory" : "/");
+export const homeFor = (role: Role) => (role === "production" ? "/factory" : role === "client" ? "/portal" : "/");
 
 export async function requireStaff() {
   const s = await getSession();

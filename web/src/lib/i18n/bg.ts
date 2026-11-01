@@ -776,6 +776,7 @@ export const bg: Dict = {
       mo_sent: "Нова производствена поръчка {code}: {quantity} опаковки",
       delivery_ordered: "Поръчана доставка {code} за вас: {qty} {item}",
       catalog_enquiry: "{company} изпрати запитване от каталога ({no})",
+      client_message: "{client} написа в клиентския панел (поръчка {code})",
       chat_mention: "{by} ви спомена в #{channel}",
       chat_mentionDirect: "{by} ви спомена в съобщение",
       task_mention: "{by} ви спомена в {order} · {task}",
@@ -2580,6 +2581,44 @@ export const bg: Dict = {
     nextInvoice: "Следващ номер на фактура",
     nextInvoiceHint: "Общ за фактури, кредитни и дебитни известия. Сменяйте само при продължаване от друга програма.",
   },
+  portal: {
+    title: "Клиентски панел",
+    noAccess: "Този профил няма достъп до клиентския панел. Моля, свържете се с Nutrikal.",
+    signOut: "Изход",
+    welcome: "Добре дошли, {name}",
+    nav: { home: "Начало", orders: "Поръчки", documents: "Документи", invoices: "Фактури", support: "Поддръжка", account: "Профил" },
+    home: { openBalance: "Неплатена сума", viewAll: "Виж всички", activeOrders: "Активни поръчки", noOrders: "Още няма поръчки.", unread: "{n} нови", recentDocuments: "Последни документи" },
+    order: {
+      ref: "Ваш номер: {ref}", value: "Стойност на поръчката (без ДДС)", requested: "Желана дата", progress: "Напредък", products: "Продукти",
+      batches: "Партиди", units: "бр.", produced: "Произведена", expires: "Годна до", coa: "Сертификат за анализ", released: "Освободена", inReview: "В проверка за качество",
+      shipments: "Пратки", tracking: "Проследяване", noTracking: "Още няма номер за проследяване", documents: "Документи", invoices: "Фактури", messages: "Съобщения за тази поръчка",
+    },
+    steps: { confirmed: "Потвърдена поръчка", deposit: "Получен аванс", production: "В производство", ready: "Готова за изпращане", dispatched: "Изпратена" },
+    docs: {
+      title: "Документи", intro: "Продуктовите документи, които екипът ни е споделил с вас.", empty: "Още няма документи.",
+      coa: "Сертификат за анализ, партида {lot}", order: "Поръчка {code}", general: "Общи",
+    },
+    invoices: {
+      title: "Фактури", empty: "Още няма фактури.", due: "Падеж", open: "Неплатени", paid: "Платена",
+      kinds: { invoice: "Фактура", credit_note: "Кредитно известие", debit_note: "Дебитно известие" },
+    },
+    support: {
+      title: "Поддръжка", intro: "Пишете на екипа ни. За конкретна поръчка използвайте съобщенията в нея.", empty: "Още няма съобщения.",
+      placeholder: "Напишете съобщението си", send: "Изпрати", you: "Вие", team: "Nutrikal", busy: "Твърде много съобщения засега. Опитайте по-късно.",
+      failed: "Съобщението не можа да се изпрати.", other: "Можете да се свържете с нас и на",
+    },
+    account: {
+      title: "Профил", newPassword: "Нова парола", repeat: "Повторете паролата", save: "Смени паролата", saved: "Паролата е сменена.",
+      short: "Използвайте поне 10 знака.", mismatch: "Двете пароли се различават.", failed: "Паролата не можа да се смени.", liveOnly: "Достъпно само на живия сайт.",
+    },
+    staff: {
+      messages: "Съобщения в клиентския панел", empty: "Още няма съобщения.", placeholder: "Напишете на клиента", send: "Изпрати на клиента",
+      accessTitle: "Достъп до клиентския панел", accessEmpty: "Още никой от този клиент не може да влиза.", name: "Име", email: "Имейл", create: "Създай профил",
+      created: "Профилът е създаден. Първа парола, показва се веднъж: {password}", stop: "Спри достъпа", restore: "Върни достъпа", reset: "Нова парола", stopped: "спрян достъп",
+      share: "Сподели с клиента", unshare: "Спри споделянето", shared: "споделен с клиента",
+      mailSubject: "Ново съобщение от Nutrikal", mailBody: "Имате ново съобщение от Nutrikal в клиентския панел.\n\nПрочетете го тук: {url}",
+    },
+  },
   enums: {
     moStatus: {
       simulation: "Симулация",
@@ -2661,7 +2700,7 @@ export const bg: Dict = {
     activityType: { note: "Бележка", call: "Обаждане", email: "Имейл", meeting: "Среща", task: "Задача" },
     balanceTerms: { before_dispatch: "остатък преди експедиция", net_days: "остатък до {days} дни" },
     balanceTermsOption: { before_dispatch: "Преди експедиция", net_days: "Дни след фактура" },
-    role: { admin: "Администратор", sales: "Продажби", production: "Производство", developer: "Developer", bookkeeper: "Оперативен счетоводител", accountant: "Счетоводител (само четене)", designer: "Дизайн" },
+    role: { admin: "Администратор", client: "Клиент", sales: "Продажби", production: "Производство", developer: "Developer", bookkeeper: "Оперативен счетоводител", accountant: "Счетоводител (само четене)", designer: "Дизайн" },
     locale: { bg: "Български", en: "Английски" },
     deliveryStatus: { open: "Отворени", received: "Получени", cancelled: "Отказани" },
     productionDeliveryStatus: { open: "Поръчани", received: "Получени", cancelled: "Отказани" },

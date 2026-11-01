@@ -2994,6 +2994,46 @@ await fails('no reply to the wrong client', () => as('sales', `select client_mes
 await ok('Production reads no client message', async () => {
   eq((await as('production', 'select id from client_messages')).length, 0, 'none');
 });
+await ok('a client sees its issued invoices with the open amount, never a draft or another client', async () => {
+  await as('admin', `update company_settings set legal_name = 'Nutrikal', vat_number = 'BG123456789'`).catch(() => {});
+  const inv = (await one('admin', `select create_client_invoice($1, 20, current_date + 14, 'bank', 'R', null) as id`, [coA])).id;
+  await as('admin', `select save_note_line($1, null, 'Дизайн', 2, 100)`, [inv]);
+  eq((await as('clientA', 'select id from portal_invoices()')).length, 0, 'draft hidden');
+  eq((await one('clientA', 'select portal_invoice($1) as d', [inv])).d, null, 'draft document hidden');
+  await as('admin', 'select issue_invoice($1, next_invoice_number(), current_date, true)', [inv]);
+  const [row] = await as('clientA', 'select total, open_amount from portal_invoices()');
+  eq(Number(row.total), 240, 'total'); eq(Number(row.open_amount), 240, 'open');
+  await as('admin', `select add_invoice_payment($1, current_date, 100, 'bank', null)`, [inv]);
+  eq(Number((await one('clientA', 'select open_amount from portal_invoices()')).open_amount), 140, 'after a payment');
+  const d = (await one('clientA', 'select portal_invoice($1) as d', [inv])).d;
+  eq(d.lines.length, 1, 'lines'); eq(d.lines[0].description, 'Дизайн', 'line');
+  eq((await as('clientB', 'select id from portal_invoices()')).length, 0, 'other client list');
+  eq((await one('clientB', 'select portal_invoice($1) as d', [inv])).d, null, 'other client document');
+});
+await ok('a certificate reaches the client only once it is shared, and only its own', async () => {
+  await db.exec('reset role');
+  const item = (await db.query(`select id from items where is_active limit 1`)).rows[0].id;
+  const lot = (await db.query(`insert into lots (lot_number, item_id, coa_path) values ('PORT-LOT', $1, 'x/coa.pdf') returning id`, [item])).rows[0].id;
+  const line = (await db.query(`select id from sales_order_lines where order_id = $1 limit 1`, [ordA])).rows[0].id;
+  const fv = (await db.query(`select id from formula_versions limit 1`)).rows[0].id;
+  await db.query(`alter table manufacturing_orders disable trigger user`);
+  await db.query(`insert into manufacturing_orders (code, formula_version_id, sales_order_line_id, quantity, status, finished_lot_id, produced_quantity, notes)
+                  values ('MO-PORT', $1, $2, 10, 'completed', $3, 10, 'ВЪТРЕШНО')`, [fv, line, lot]);
+  await db.query(`alter table manufacturing_orders enable trigger user`);
+  eq((await as('clientA', 'select 1 from portal_coa($1)', [lot])).length, 0, 'not shared');
+  const before = (await one('clientA', 'select portal_order($1) as d', [ordA])).d;
+  eq(before.batches[0].coa, false, 'no link yet');
+  if (JSON.stringify(before).includes('ВЪТРЕШНО') || JSON.stringify(before).includes('MO-PORT')) throw new Error('production data leaked');
+  await as('sales', 'select lot_coa_share($1, true)', [lot]);
+  eq((await as('clientA', 'select coa_path from portal_coa($1)', [lot])).length, 1, 'shared');
+  eq((await as('clientB', 'select 1 from portal_coa($1)', [lot])).length, 0, 'other client');
+  eq((await as('clientA', `select name from portal_documents() where kind = 'coa'`))[0].name, 'PORT-LOT', 'listed');
+});
+await fails('Production does not share certificates', () => as('production', 'select lot_coa_share($1, true)', ['00000000-0000-0000-0000-000000000000']), '');
+await ok('a client is no member of the staff chat', async () => {
+  eq((await as('clientA', 'select id from chat_people()')).length, 0, 'people');
+  eq((await as('sales', `select id from chat_people() where full_name like 'Client %'`)).length, 0, 'nor listed to staff');
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

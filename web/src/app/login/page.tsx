@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { setLocale, signIn, signOut } from "@/app/actions";
 import { ActionForm } from "@/components/action-form";
@@ -12,6 +13,7 @@ export default async function LoginPage() {
   const t = getDict(locale);
   // Signed in to Supabase, but no active profile in the app
   const noAccess = !!(await getAuthUser());
+  const onPortal = (await headers()).get("host")?.split(":")[0] === (process.env.PORTAL_HOST?.trim() || "portal.nutrikal.com");
 
   return (
     <main className="grid min-h-screen place-items-center bg-canvas px-4 py-10">
@@ -19,7 +21,7 @@ export default async function LoginPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-2">
             <Wordmark height={22} />
-            <span className="text-xs font-semibold tracking-[2px] text-ink-2">{t.login.subtitle.toUpperCase()}</span>
+            <span className="text-xs font-semibold tracking-[2px] text-ink-2">{(onPortal ? t.portal.title : t.login.subtitle).toUpperCase()}</span>
           </div>
           <form action={setLocale} role="group" aria-label={t.topbar.language} className="flex overflow-hidden rounded-sm border border-line-strong">
             {LOCALES.map((l) => (

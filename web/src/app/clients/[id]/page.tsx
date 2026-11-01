@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { ClientFiles } from "@/components/client-files";
+import { ClientMessages } from "@/components/client-messages";
+import { ClientPortalAccess } from "@/components/client-portal-access";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
@@ -182,7 +184,14 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
             </Card>
           )}
 
-          <ClientFiles clientId={c.id} userId={user.id} isAdmin={user.role === "admin"} locale={locale} t={t} />
+          <ClientFiles clientId={c.id} userId={user.id} isAdmin={user.role === "admin"} canShare={!user.readOnly && (user.role === "admin" || user.role === "sales")} locale={locale} t={t} />
+
+          {(user.role === "admin" || user.role === "sales") && (
+            <>
+              <ClientPortalAccess clientId={c.id} userId={user.id} isAdmin={user.access === "admin"} t={t} />
+              <ClientMessages clientId={c.id} userId={user.id} canWrite={!user.readOnly} locale={locale} t={t} />
+            </>
+          )}
 
           {mails.length > 0 && (
             <Card title={d.mail} id="mail-h">

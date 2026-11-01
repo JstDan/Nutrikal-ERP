@@ -31,7 +31,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body>
-        {session ? <AppShell>{children}</AppShell> : children}
+        {session && session.user.role !== "client" ? <AppShell>{children}</AppShell> : children}
       </body>
     </html>
   );

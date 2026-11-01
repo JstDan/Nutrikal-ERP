@@ -3,17 +3,17 @@ import { formatDate, formatNumber, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import { ActionForm } from "@/components/action-form";
 import { Card, Empty } from "@/components/ui";
-import { deleteClientFile, uploadClientFile } from "@/app/file-actions";
+import { deleteClientFile, shareClientFile, uploadClientFile } from "@/app/file-actions";
 
-type Row = { id: string; file_name: string; size_bytes: string; note: string | null; created_at: string; author: string | null; uploaded_by: string | null };
+type Row = { id: string; file_name: string; size_bytes: string; note: string | null; created_at: string; author: string | null; uploaded_by: string | null; shared_with_client: boolean };
 
 /** Designs and other files of a client; on an order, the files of that order. */
-export async function ClientFiles({ clientId, orderId, userId, isAdmin, locale, t }: {
-  clientId: string; orderId?: string; userId: string; isAdmin: boolean; locale: Locale; t: Dict;
+export async function ClientFiles({ clientId, orderId, userId, isAdmin, canShare, locale, t }: {
+  clientId: string; orderId?: string; userId: string; isAdmin: boolean; canShare: boolean; locale: Locale; t: Dict;
 }) {
   const F = t.clientFiles;
   const rows = await q<Row>(userId,
-    `select f.id, f.file_name, f.size_bytes::text, f.note, f.created_at::text, f.uploaded_by, p.full_name as author
+    `select f.id, f.file_name, f.size_bytes::text, f.note, f.created_at::text, f.uploaded_by, f.shared_with_client, p.full_name as author
        from client_files f left join profiles p on p.id = f.uploaded_by
       where f.client_id = $1 and ($2::uuid is null or f.order_id = $2) order by f.created_at desc limit 50`, [clientId, orderId ?? null]);
   return (
@@ -24,9 +24,16 @@ export async function ClientFiles({ clientId, orderId, userId, isAdmin, locale, 
           <a href={`/files/client/${x.id}`} className="flex min-h-11 min-w-0 flex-col justify-center text-ink">
             <span className="font-semibold break-all">{x.file_name}</span>
             <span className="text-xs text-ink-2">
-              {formatDate(locale, x.created_at.slice(0, 10))} · {formatNumber(locale, Number(x.size_bytes) / 1048576, 1)} MB{x.author ? ` · ${x.author}` : ""}{x.note ? ` · ${x.note}` : ""}
+              {formatDate(locale, x.created_at.slice(0, 10))} · {formatNumber(locale, Number(x.size_bytes) / 1048576, 1)} MB{x.author ? ` · ${x.author}` : ""}{x.note ? ` · ${x.note}` : ""}{x.shared_with_client ? ` · ${t.portal.staff.shared}` : ""}
             </span>
           </a>
+          {canShare && (
+            <form action={shareClientFile}>
+              <input type="hidden" name="id" value={x.id} />
+              <input type="hidden" name="on" value={x.shared_with_client ? "" : "on"} />
+              <button type="submit" className="min-h-11 text-xs text-ink underline">{x.shared_with_client ? t.portal.staff.unshare : t.portal.staff.share}</button>
+            </form>
+          )}
           {(isAdmin || x.uploaded_by === userId) && (
             <form action={deleteClientFile}>
               <input type="hidden" name="id" value={x.id} />

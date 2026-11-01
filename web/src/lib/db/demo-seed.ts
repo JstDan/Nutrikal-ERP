@@ -246,4 +246,17 @@ export async function seedDemo(db: PGlite) {
   await db.query("update company_settings set require_waybill_photo = true");
   const [pr] = await as<{ id: string }>(ADMIN, `select id from purchase_requests where manufacturing_order_id = $1 and status = 'open' order by code limit 1`, [moMag]);
   if (pr) await as(ADMIN, `select create_expected_delivery(null, null, $2, current_date + 12, null, 'EU-55187', $3, $1)`, [pr.id, sup, PF_QUAR]);
+
+  // The customer panel: an account of Nordic Labs, with one shared document and a message
+  await as(ADMIN, "select client_user_connect($1, $2)", [byRole("client"), nordic]);
+  await as(SALES, `insert into client_files (client_id, order_id, file_name, storage_path, category, shared_with_client, shared_at)
+                   select $1, id, 'Collagen-specification.pdf', 'demo/collagen-specification.pdf', 'spec', true, now()
+                     from sales_orders where client_id = $1 limit 1`, [nordic]);
+  const invoice = await one(SALES, "select create_client_invoice($1, 20, current_date + 14, 'bank', 'NL-7741', null) as id", [nordic]);
+  await as(SALES, "select save_note_line($1, null, 'Label design', 2, 150)", [invoice]);
+  await as(byRole("bookkeeper"), "select issue_invoice($1, next_invoice_number(), current_date, true)", [invoice]);
+  await as(byRole("bookkeeper"), "select add_invoice_payment($1, current_date, 100, 'bank', null)", [invoice]);
+  await as(byRole("client"), "select portal_post(null, 'Hello, could you confirm the label artwork for our next batch?')");
+  await as(SALES, "select client_message_send($1, null, 'Hello Erik, we will send it for approval tomorrow.')", [nordic]);
+
 }

@@ -14,7 +14,7 @@ export default async function UsersPage() {
   const { user, t } = await requireRole("admin");
   const S = t.adminSettings;
   const U = S.users;
-  const rows = await q<Row>(user.id, "select id, full_name, email::text, role::text, is_active, can_see_purchase_prices from profiles order by is_active desc, lower(full_name)");
+  const rows = await q<Row>(user.id, "select id, full_name, email::text, role::text, is_active, can_see_purchase_prices from profiles where role <> 'client' order by is_active desc, lower(full_name)");
 
   return (
     <div className="flex flex-col gap-6">

@@ -193,3 +193,10 @@ export async function saveGeneralSettings(_: ActionState, fd: FormData): Promise
   revalidatePath("/settings");
   return { ok: true, message: t.common.saved };
 }
+
+/** Share the certificate of a batch with its client in the customer panel, or take it back. */
+export async function shareCoa(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "select lot_coa_share($1, $2)", [String(fd.get("lot_id") ?? ""), fd.get("on") === "on"]);
+  revalidatePath("/quality");
+}
