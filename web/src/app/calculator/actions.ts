@@ -26,6 +26,10 @@ export async function reserveOfferNo(): Promise<CalcResult<string>> {
   return run(async (uid) => (await q<{ no: string }>(uid, "select calc_next_offer_no() as no"))[0].no);
 }
 
+export async function offerExists(id: string): Promise<CalcResult<boolean>> {
+  return run(async (uid) => (await q<{ id: string }>(uid, "select id from calc_offers where id = $1", [id])).length > 0);
+}
+
 export async function saveOffer(input: OfferInput): Promise<CalcResult<OfferRecord>> {
   const res = await run(async (uid) => {
     const values = [
