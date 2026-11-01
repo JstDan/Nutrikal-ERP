@@ -148,7 +148,7 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
             </div>
           )}
           <button type="button" onClick={() => { hideTeaser(); setOpen(true); }}
-            className="pointer-events-auto flex min-h-14 max-w-full min-w-0 items-center gap-3 rounded-full bg-ink py-2 pr-6 pl-2 text-left text-base font-semibold text-white shadow-xl ring-2 ring-[#7BC74D] transition-transform hover:scale-105">
+            className="nutri-capsule pointer-events-auto flex min-h-14 max-w-full min-w-0 items-center gap-3 rounded-full py-2 pr-8 pl-2 text-left text-base font-semibold transition-transform hover:scale-105">
             <Avatar size={40} /><span className="min-w-0">{lines.length ? T.chatContinue : T.chatAsk}</span>
           </button>
         </div>
