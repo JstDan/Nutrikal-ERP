@@ -63,7 +63,7 @@ export default async function ClientMessagesPage({ searchParams }: PageProps<"/c
           {open ? (
             <>
               <header className="flex min-w-0 flex-wrap items-center gap-3 border-b border-line pb-3">
-                <Link href={link(status)} aria-label={t.common.back} className="btn btn-outline lg:hidden">←</Link>
+                <Link href={link(status)} aria-label={t.common.back} className="btn btn-outline lg:!hidden">←</Link>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <Link href={`/clients/${open.client_id}`} className="font-bold break-words text-ink no-underline hover:underline">{open.client}</Link>
                   {open.order_id ? <Link href={`/orders/${open.order_id}`} className="text-xs">{open.order_code}</Link> : <span className="text-xs text-ink-2">{I.general}</span>}
