@@ -20,6 +20,7 @@ export async function POST(request: Request) {
   if (body.website || Date.now() - Number(body.started_at) < MIN_FILL_MS) return NextResponse.json({ number: null });
   try {
     const [row] = await qPublic<{ no: string }>("select catalog_submit_enquiry($1::jsonb) as no", [JSON.stringify(body)]);
+    if (typeof body.chat_id === "string" && /^[0-9a-f-]{36}$/i.test(body.chat_id)) await qPublic("select catalog_chat_link($1, $2)", [body.chat_id, row.no]);
     return NextResponse.json({ number: row.no });
   } catch (e) {
     const message = e instanceof Error ? e.message : "";

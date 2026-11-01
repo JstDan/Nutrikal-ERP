@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Wordmark } from "@/components/logo";
+import { CatalogContactButton } from "@/components/catalog-chat";
 import { fmt, formatMoney, formatNumber, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
@@ -125,8 +126,8 @@ function Dialog({ title, close, closeLabel, footer, children }: { title: string;
 }
 
 /** The open catalogue: browse, filter, a basket, and one enquiry in two steps. */
-export function CatalogBrowser({ data, locale, text, formats, children }: {
-  data: PublicCatalog; locale: Locale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; children: ReactNode;
+export function CatalogBrowser({ ai, data, locale, text, formats, children }: {
+  ai: boolean; data: PublicCatalog; locale: Locale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; children: ReactNode;
 }) {
   const T = text;
   const money = (n: number) => formatMoney(locale, n, "EUR", 2);
@@ -145,6 +146,9 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
   const [sent, setSent] = useState<string | null>(null);
   const started = useRef(0);
   const productsTop = useRef<HTMLElement>(null);
+  const chatId = useRef<string | null>(null);
+  const onChat = useCallback((id: string) => { chatId.current = id; }, []);
+  const addFromChat = useCallback((code: string, quantity: number) => setBasket((b) => ({ ...b, [code]: quantity })), []);
 
   useEffect(() => {
     started.current = Date.now();
@@ -198,7 +202,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
       const r = await fetch("/api/catalog-enquiry", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...form, locale, started_at: started.current, lines: lines.map((p) => ({ code: p.code, quantity: basket[p.code] })) }),
+        body: JSON.stringify({ ...form, locale, chat_id: chatId.current, started_at: started.current, lines: lines.map((p) => ({ code: p.code, quantity: basket[p.code] })) }),
       });
       const out = await r.json();
       if (!r.ok) { setError(out.error === "busy" ? T.busy : out.error === "invalid" ? T.invalid : T.failed); return; }
@@ -307,12 +311,7 @@ export function CatalogBrowser({ data, locale, text, formats, children }: {
 
       {children}
 
-      {!showBasket && !open && (
-        <a href="https://wa.me/359882919140" target="_blank" rel="noopener" aria-label={T.whatsapp} title={T.whatsapp}
-          className={`fixed right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-[#fff] shadow-lg transition-transform hover:scale-105 lg:bottom-6 lg:right-6 ${lines.length ? "bottom-[88px]" : "bottom-4"}`}>
-          <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path fillRule="evenodd" d="M17.5 14.4c-.3-.1-1.800-.9-2-1-.3-.1-.5-.1-.7.2-.2.3-.8 1-.9 1.200-.2.2-.3.2-.6.1-.3-.2-1.300-.5-2.400-1.500-.9-.8-1.500-1.800-1.700-2.100-.2-.3 0-.5.1-.6l.5-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5-.1-.1-.7-1.600-.9-2.200-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.400s1 2.800 1.200 3c.1.200 2 3.100 4.900 4.300.7.3 1.200.5 1.600.6.7.2 1.300.2 1.800.1.600-.1 1.800-.7 2-1.400.2-.7.2-1.300.2-1.400-.1-.1-.3-.2-.6-.4zM12 2a10 10 0 0 0-8.600 15L2 22l5.100-1.300A10 10 0 1 0 12 2z" /></svg>
-        </a>
-      )}
+      {!showBasket && !open && <CatalogContactButton text={T} locale={locale} ai={ai} raised={lines.length > 0} onAdd={addFromChat} onChat={onChat} />}
 
       {lines.length > 0 && !showBasket && !open && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper p-3 lg:hidden">

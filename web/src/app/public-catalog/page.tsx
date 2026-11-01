@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { qPublic } from "@/lib/db/engine";
+import { aiConfigured } from "@/lib/ai/gateway";
 import { getDict, isLocale, type Locale } from "@/lib/i18n";
 import { CatalogBrowser, type PublicCatalog } from "@/components/catalog-browser";
 import { CatalogCompany, CatalogOptions, CatalogProcess } from "@/components/catalog-sections";
@@ -18,7 +19,7 @@ export default async function PublicCatalogPage() {
   const [row] = await qPublic<{ data: PublicCatalog }>("select catalog_public() as data");
   const t = getDict(locale);
   return (
-    <CatalogBrowser data={row.data} locale={locale} text={t.publicCatalog} formats={t.enums.productFormat}>
+    <CatalogBrowser ai={aiConfigured()} data={row.data} locale={locale} text={t.publicCatalog} formats={t.enums.productFormat}>
       <CatalogProcess text={t.publicCatalog} />
       <CatalogOptions text={t.publicCatalog} ingredients={row.data.ingredient_list} />
       <CatalogCompany text={t.publicCatalog} locale={locale} />

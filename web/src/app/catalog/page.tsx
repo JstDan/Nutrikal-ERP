@@ -43,6 +43,7 @@ export default async function CatalogPage() {
       <PageHeader title={C.title} subtitle={C.subtitle} actions={
         <>
           <Link href="/catalog/enquiries" className="btn btn-primary">{waiting.n > 0 ? fmt(C.enquiriesNew, { n: waiting.n }) : C.enquiries}</Link>
+          <Link href="/catalog/chats" className="btn btn-outline">{C.conversations}</Link>
           <a href="/public-catalog" target="_blank" rel="noopener" className="btn btn-outline">{C.openPublic}</a>
           {canEdit && ready > 0 && (
             <form action={publishReadyCatalog}>

@@ -2815,6 +2815,31 @@ await ok('the public ingredient list has names only, and only Admin changes it',
   eq((await as('production', 'select id from catalog_ingredient_list')).length, 0, 'production');
 });
 await fails('nobody signed in reads no ingredient table', () => asAnon('select * from catalog_ingredient_list'), 'denied');
+await ok('a visitor chats through the functions only; Sales reads it, Production does not', async () => {
+  const t = (await asAnon("select catalog_chat_turn(null, 'v1', 'en', 'Hello') as t"))[0].t;
+  await asAnon("select catalog_chat_reply($1, 'Hi there')", [t.chat]);
+  const n = (await asAnon("select catalog_chat_turn($1, 'v1', 'en', 'More') as t", [t.chat]))[0].t;
+  eq(n.chat, t.chat, 'same chat'); eq(n.history.length, 3, 'history'); eq(n.history[1].role, 'assistant', 'order');
+  eq((await as('sales', 'select id from catalog_chat_messages where chat_id = $1', [t.chat])).length, 3, 'sales');
+  eq((await as('production', 'select id from catalog_chats')).length, 0, 'production');
+  eq((await as('designer', 'select id from catalog_chat_messages')).length, 0, 'designer');
+});
+await fails('nobody signed in reads a conversation', () => asAnon('select * from catalog_chat_messages'), 'denied');
+await fails('Sales does not write in a visitor conversation', () => as('sales', "insert into catalog_chats (visitor_key) values ('x')"), 'denied');
+await fails('an empty question is refused', () => asAnon("select catalog_chat_turn(null, 'v1', 'en', '  ')"), 'catalog_invalid');
+await fails('a visitor is stopped after 40 questions a day', async () => {
+  for (let i = 0; i < 41; i++) await asAnon("select catalog_chat_turn(null, 'v2', 'en', 'Q')");
+}, 'catalog_chat_limit');
+await ok('old conversations without an enquiry go, those with an enquiry stay', async () => {
+  const no = (await asAnon('select catalog_submit_enquiry($1::jsonb) as no', [JSON.stringify({ company: 'Ч', contact_name: 'Ч', email: 'chat@c.test', lines: [], message: 'Въпрос' })]))[0].no;
+  const a = (await asAnon("select catalog_chat_turn(null, 'v3', 'en', 'Old') as t"))[0].t.chat;
+  const b = (await asAnon("select catalog_chat_turn(null, 'v3', 'en', 'Kept') as t"))[0].t.chat;
+  await asAnon('select catalog_chat_link($1, $2)', [b, no]);
+  await db.exec("reset role");
+  await db.query("update catalog_chats set last_at = now() - interval '13 months' where id = any($1::uuid[])", [[a, b]]);
+  await db.query('select catalog_chat_purge()');
+  eq((await db.query('select id from catalog_chats where id = any($1::uuid[])', [[a, b]])).rows.length, 1, 'kept');
+});
 await fails('Sales does not publish everything', () => as('sales', 'select catalog_publish_ready()'), 'not allowed');
 await ok('publish all ready takes what is ready and leaves out what has no price', async () => {
   await as('admin', "update catalog_products set is_published = false where code = 'NTL-TH101'");

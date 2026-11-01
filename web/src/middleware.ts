@@ -6,19 +6,19 @@ import { createServerClient } from "@supabase/ssr";
 // The real checks are in getSession() and in the database; this is the
 // early, optimistic one. Without Supabase settings (local development) it does nothing.
 const PUBLIC_PAGE = "/public-catalog";
-const PUBLIC_API = "/api/catalog-enquiry";
+const PUBLIC_APIS = ["/api/catalog-enquiry", "/api/catalog-chat"];
 
 export async function middleware(request: NextRequest) {
   // The open catalogue: on its own address nothing else of the app can be reached
   const path = request.nextUrl.pathname;
   const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   const onCatalogHost = host === (process.env.CATALOG_HOST?.trim() || "catalog.nutrikal.com");
-  if (onCatalogHost || path === PUBLIC_PAGE || path === PUBLIC_API) {
+  if (onCatalogHost || path === PUBLIC_PAGE || PUBLIC_APIS.includes(path)) {
     const headers = new Headers(request.headers);
     headers.set("x-nk-public", "1");
     const lang = request.nextUrl.searchParams.get("lang");
     headers.set("x-nk-locale", lang === "bg" || lang === "en" ? lang : /^bg\b/i.test(request.headers.get("accept-language") ?? "") ? "bg" : "en");
-    if (path === PUBLIC_API) return NextResponse.next({ request: { headers } });
+    if (PUBLIC_APIS.includes(path)) return NextResponse.next({ request: { headers } });
     const to = request.nextUrl.clone();
     to.pathname = PUBLIC_PAGE;
     return NextResponse.rewrite(to, { request: { headers } });
