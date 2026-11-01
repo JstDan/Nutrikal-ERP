@@ -63,9 +63,9 @@ export async function AppShell({ children }: { children: ReactNode }) {
           title: t.nav.production,
           items: [
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/production/calendar", label: t.calendar.short }] : []),
-            { href: "/production", label: t.nav.production },
+            { href: "/production", label: t.nav.batches },
             { href: "/formulas", label: t.nav.formulas },
-            ...(user.role === "admin" ? [{ href: "/quality", label: t.nav.qualityTrace, also: ["/traceability"] }] : []),
+            ...(user.role === "admin" ? [{ href: "/quality", label: t.nav.quality, also: ["/traceability"] }] : []),
             ...(user.role === "sales" ? [{ href: "/traceability", label: t.nav.traceability }] : []),
           ],
         },

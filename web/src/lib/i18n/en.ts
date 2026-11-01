@@ -26,6 +26,8 @@ export const en = {
     qualityTrace: "Quality and traceability",
     tools: "Tools",
     communication: "Communication",
+    batches: "Batches",
+    quality: "Quality",
     warehouse: "Warehouse",
     catalog: "Catalog",
     quality: "Quality",

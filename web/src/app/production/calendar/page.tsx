@@ -26,7 +26,7 @@ export default async function ProductionCalendarPage({ searchParams }: PageProps
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title={C.title} subtitle={C.subtitle} actions={<Link href="/production" className="btn btn-outline">{t.nav.production}</Link>} />
+      <PageHeader title={C.title} subtitle={C.subtitle} actions={<Link href="/production" className="btn btn-outline">{t.nav.batches}</Link>} />
       {proposals.length > 0 && (
         <Card title={C.proposals}>
           {proposals.map((x) => (

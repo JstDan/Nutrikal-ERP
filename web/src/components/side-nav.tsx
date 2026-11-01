@@ -17,10 +17,10 @@ export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }
   const isActive = (href: string, also: string[] = []) => (href === "/" || href === "/factory" ? path === href : (under(href) && !closer(href)) || also.some(under));
 
   return (
-    <nav aria-label={label} className="flex flex-col gap-6 lg:gap-2.5">
+    <nav aria-label={label} className="flex flex-col gap-5 lg:gap-2">
       {groups.map((g, i) => (
         <div key={i} className="flex flex-col gap-0.5">
-          {g.title && <div className="px-2 pb-2 text-[11px] font-semibold tracking-[2px] uppercase text-side-muted">{g.title}</div>}
+          {g.title && <div className="px-2 pb-1 text-[11px] font-semibold tracking-[2px] uppercase text-side-muted">{g.title}</div>}
           {g.items.map((it) =>
             it.href ? (
               <Link
