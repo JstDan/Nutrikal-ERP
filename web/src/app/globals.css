@@ -304,3 +304,14 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
   pointer-events: none;
 }
 .nutri-capsule > * { position: relative; z-index: 1; }
+/* A small wiggle now and then, so the eye finds it; still while the pointer is on it */
+@keyframes capsule-nudge {
+  0%, 86%, 100% { transform: none; }
+  88% { transform: translateY(-4px) rotate(-2deg); }
+  91% { transform: translateY(-2px) rotate(2deg); }
+  94% { transform: translateY(-3px) rotate(-1deg); }
+  97% { transform: translateY(0) rotate(0.5deg); }
+}
+.nutri-capsule { animation: capsule-nudge 8s ease-in-out 3s infinite; }
+.nutri-capsule:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .nutri-capsule { animation: none; } }
