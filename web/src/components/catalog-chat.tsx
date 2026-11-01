@@ -149,13 +149,13 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
         <div className={`pointer-events-none fixed inset-x-0 z-40 flex flex-col items-end gap-2 px-4 lg:bottom-6 lg:px-6 ${lift}`}>
           {teaser && (
             <div className="chat-in pointer-events-auto flex max-w-full items-center gap-2 rounded-2xl border border-line bg-paper py-1 pr-1 pl-3 text-sm text-ink shadow-lg sm:max-w-[420px]">
-              <button type="button" onClick={() => { hideTeaser(); setOpen(true); }} className="min-h-11 min-w-0 flex-1 text-left">{T.chatTeaser}</button>
+              <button type="button" onClick={() => { hideTeaser(); setOpen(true); }} className="min-h-11 min-w-0 flex-1 text-left">{T.chatTeaser} <strong>{T.chatAsk}</strong></button>
               <button type="button" onClick={hideTeaser} aria-label={T.close} className="grid h-11 w-9 shrink-0 place-items-center text-lg text-ink-2 hover:text-ink">×</button>
             </div>
           )}
-          <button type="button" onClick={() => { hideTeaser(); setOpen(true); }}
+          <button type="button" aria-label={lines.length ? T.chatContinue : T.chatAsk} onClick={() => { hideTeaser(); setOpen(true); }}
             className="nutri-capsule pointer-events-auto flex min-h-11 max-w-full min-w-0 items-center gap-2 rounded-full py-1 pr-5 pl-1.5 text-left text-sm font-semibold transition-transform hover:scale-105">
-            <Avatar size={30} /><span className="min-w-0">{lines.length ? T.chatContinue : T.chatAsk}</span>
+            <Avatar size={30} /><span className="min-w-0">{T.chatTitle}</span>
           </button>
         </div>
       )}
