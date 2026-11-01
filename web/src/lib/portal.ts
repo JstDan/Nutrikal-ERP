@@ -11,7 +11,7 @@ export type PortalOrder = {
   dispatched_at: string | null; production_started_at: string | null;
   lines: { description: string; kind: string; quantity: number; unit_price: number }[];
   batches: { lot_id: string; lot_number: string; quantity: number; produced_on: string | null; expires_on: string | null; released: boolean; coa: boolean }[];
-  dispatches: { code: string; dispatched_on: string; carrier: string | null; tracking: string | null }[];
+  dispatches: { id: string; code: string; dispatched_on: string; carrier: string | null; tracking: string | null }[];
 };
 export type PortalInvoiceRow = {
   id: string; kind: "invoice" | "credit_note" | "debit_note"; number: string; issue_date: string; due_date: string | null;
@@ -31,5 +31,9 @@ export const portalFeed = (user: string, order: string | null = null) =>
 
 /** Reading a conversation clears its unread mark. */
 export const portalMarkRead = (user: string, order: string | null = null) => q(user, "select portal_mark_read($1)", [order]);
+
+export type PortalThreadRow = { order_id: string | null; order_code: string | null; status: "open" | "waiting" | "solved"; last_at: string; last_body: string | null; unread: number };
+export const portalThreads = (user: string) =>
+  q<PortalThreadRow>(user, "select order_id, order_code, status, last_at::text, last_body, unread from portal_threads()");
 
 export const validId = (id: string) => /^[0-9a-f-]{36}$/i.test(id);

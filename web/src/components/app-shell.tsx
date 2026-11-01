@@ -22,6 +22,8 @@ export async function AppShell({ children }: { children: ReactNode }) {
   const soon = (n: number) => `${t.common.phase} ${n}`;
 
   const unread = Number((await q<{ n: string | null }>(user.id, "select sum(unread) as n from chat_unread()"))[0]?.n ?? 0);
+  const clientUnread = user.role === "admin" || user.role === "sales"
+    ? (await q<{ n: number }>(user.id, "select count(*)::int as n from client_messages where from_client and read_at is null"))[0]?.n ?? 0 : 0;
 
   const groups: NavGroup[] = isProduction
     ? [
@@ -52,6 +54,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
           items: [
             ...((user.role === "admin" || user.role === "sales") && !user.readOnly ? [{ href: "/assistant", label: t.nav.assistant }] : []),
             { href: "/chat", label: t.nav.chat, badge: unread },
+            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/client-messages", label: t.portal.staff.inbox.title, badge: clientUnread }] : []),
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/catalog", label: t.nav.catalog }] : []),
           ],
         },

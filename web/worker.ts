@@ -19,6 +19,9 @@ export default {
     const mail = new Request("https://cron.internal/api/cron/gmail-sync", {
       headers: { authorization: `Bearer ${env.CRON_SECRET ?? ""}` },
     });
+    const status = new Request("https://cron.internal/api/cron/portal-mail", {
+      headers: { authorization: `Bearer ${env.CRON_SECRET ?? ""}` },
+    });
     ctx.waitUntil(
       handler.fetch(mail, env, ctx).then(async (res: Response) => console.log(`[nutrikal] gmail-sync cron: ${res.status} ${await res.text()}`)),
     );

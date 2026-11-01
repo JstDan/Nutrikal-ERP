@@ -299,6 +299,10 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
 .p-steps [data-done] .p-dot { border-color: #7bc74d; background: #7bc74d; }
 .p-steps [data-now] .p-dot { border-color: #5fa836; animation: p-pulse 2.2s ease-in-out infinite; }
 .p-next { margin: 4px 0 0; padding: 10px 12px; border-left: 3px solid #7bc74d; border-radius: 4px; background: var(--color-neutral-tint, #f1f2f4); font-size: 14px; }
+.p-chat { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 220px; max-height: 460px; padding: 14px; border-radius: 10px; background: var(--color-neutral-tint, #edeff3); }
+.p-day { align-self: center; padding: 1px 10px; border-radius: 999px; background: var(--color-paper, #ffffff); color: #4a5160; font-size: 11px; }
+.p-face { display: grid; flex: none; width: 30px; height: 30px; place-items: center; border-radius: 50%; background: #7bc74d; color: #16300a; font-size: 11px; font-weight: 700; }
+.p-face-mine { background: #222831; color: #ffffff; }
 .p-in { animation: p-in 0.35s ease-out both; }
 @keyframes p-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes p-grow { from { transform: scaleX(0); } to { transform: none; } }

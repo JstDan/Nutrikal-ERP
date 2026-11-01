@@ -37,6 +37,7 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
   const current = steps.findIndex((s) => !s.done);
   const next = P.next[o.status as "confirmed"];
   const mine = invoices.filter((i) => i.order_id === id);
+  const production = READY.includes(o.status);
 
   return (
     <>
@@ -104,7 +105,12 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
       )}
 
       <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
-        <Panel title={O.documents}><DocumentList rows={documents} showOrder={false} locale={locale} t={t} /></Panel>
+        <Panel title={O.documents}>
+          <Link href={`/portal/orders/${id}/proforma`} className="p-row font-semibold">{O.proforma}</Link>
+          {production && <Link href={`/portal/orders/${id}/proforma?final=1`} className="p-row font-semibold">{O.finalProforma}</Link>}
+          {o.dispatches.map((d) => <Link key={d.id} href={`/portal/delivery/${d.id}`} className="p-row font-semibold">{O.deliveryNote} {d.code}</Link>)}
+          {(documents.length > 0 || o.dispatches.length === 0) && <DocumentList rows={documents} showOrder={false} locale={locale} t={t} />}
+        </Panel>
         <Panel title={O.invoices}>
           {mine.length ? <InvoiceList rows={mine} locale={locale} t={t} /> : <Empty>{P.invoices.empty}</Empty>}
         </Panel>

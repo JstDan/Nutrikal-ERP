@@ -128,7 +128,7 @@ as $$
                            from public.manufacturing_orders m join public.sales_order_lines l on l.id = m.sales_order_line_id
                            join public.lots lo on lo.id = m.finished_lot_id
                           where l.order_id = so.id and m.status = 'completed'), '[]'),
-    'dispatches', coalesce((select jsonb_agg(jsonb_build_object('code', d.code, 'dispatched_on', d.dispatched_on, 'carrier', d.carrier, 'tracking', d.tracking) order by d.dispatched_on)
+    'dispatches', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'code', d.code, 'dispatched_on', d.dispatched_on, 'carrier', d.carrier, 'tracking', d.tracking) order by d.dispatched_on)
                               from public.dispatches d where d.order_id = so.id), '[]'))
     from public.sales_orders so
    where so.id = p_order and public.portal_own_order(so.id)

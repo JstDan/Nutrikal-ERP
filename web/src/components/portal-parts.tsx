@@ -1,13 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ActionForm } from "@/components/action-form";
+import { PortalChat, type ChatLine } from "@/components/portal-chat";
 import { Empty } from "@/components/ui";
-import { portalPost } from "@/app/portal/actions";
 import { fmt, formatDate, formatPrice, type AnyLocale } from "@/lib/i18n";
 import type { PortalDict } from "@/lib/i18n/portal";
 import type { PortalDocument, PortalInvoiceRow, PortalMessage } from "@/lib/portal";
-
-const when = (locale: AnyLocale, at: string) => `${formatDate(locale, at.slice(0, 10))} ${at.slice(11, 16)}`;
 
 /** How far an order has come, out of the steps a client sees. */
 const STAGE: Record<string, number> = { confirmed: 25, in_production: 55, ready: 80, dispatched: 100, closed: 100 };
@@ -32,26 +29,19 @@ export function OrderBar({ status }: { status: string }) {
   return <span aria-hidden="true" className="p-bar"><span style={{ width: `${at}%` }} /></span>;
 }
 
-/** A conversation: from the client's side here, from the team's side in client-messages.tsx. */
+/** A conversation in the panel; the screen part is portal-chat.tsx. */
 export function PortalThread({ orderId, rows, locale, t }: { orderId: string | null; rows: PortalMessage[]; locale: AnyLocale; t: PortalDict }) {
   const S = t.portal.support;
-  return (
-    <div className="flex min-w-0 flex-col gap-3">
-      {rows.length === 0 && <Empty>{S.empty}</Empty>}
-      {rows.map((m) => (
-        <div key={m.id} className={`p-in flex min-w-0 flex-col gap-0.5 ${m.from_client ? "items-end" : "items-start"}`}>
-          <span className="text-xs text-ink-2">{m.from_client ? S.you : `${m.author || S.team} · ${S.team}`} · {when(locale, m.created_at)}</span>
-          <p className={`m-0 max-w-[85%] min-w-0 rounded-2xl px-3 py-2 text-sm break-words whitespace-pre-wrap ${m.from_client ? "rounded-br-md bg-ink text-white" : "rounded-bl-md bg-neutral-tint"}`}>{m.body}</p>
-        </div>
-      ))}
-      <ActionForm action={portalPost} submitLabel={S.send}>
-        {orderId && <input type="hidden" name="order_id" value={orderId} />}
-        <label className="field"><span className="sr-only">{S.placeholder}</span>
-          <textarea name="body" required maxLength={4000} rows={3} placeholder={S.placeholder} className="input w-full resize-y" />
-        </label>
-      </ActionForm>
-    </div>
-  );
+  const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "N";
+  const lines: ChatLine[] = rows.map((m, i) => {
+    const day = formatDate(locale, m.created_at.slice(0, 10));
+    const same = i > 0 && rows[i - 1].created_at.slice(0, 10) === m.created_at.slice(0, 10);
+    return {
+      id: m.id, mine: m.from_client, who: m.from_client ? S.you : m.author || S.team, initials: m.from_client ? S.you.slice(0, 1).toUpperCase() : initials(m.author),
+      time: m.created_at.slice(11, 16), body: m.body, day: same ? null : day,
+    };
+  });
+  return <PortalChat orderId={orderId} lines={lines} empty={S.empty} placeholder={S.placeholder} send={S.send} />;
 }
 
 function FileMark() {

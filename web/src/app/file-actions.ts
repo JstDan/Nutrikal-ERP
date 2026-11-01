@@ -74,3 +74,9 @@ export async function replyToClient(_: ActionState, fd: FormData): Promise<Actio
   revalidatePath("/", "layout");
   return { ok: true, message: t.common.saved };
 }
+
+export async function setClientThread(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "select client_thread_set($1, $2, $3, $4)", [String(fd.get("client_id") ?? ""), String(fd.get("order_id") ?? "") || null, String(fd.get("status") ?? "open"), String(fd.get("assigned_to") ?? "") || null]);
+  revalidatePath("/", "layout");
+}

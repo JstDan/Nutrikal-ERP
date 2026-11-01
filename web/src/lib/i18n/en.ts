@@ -63,6 +63,17 @@ export const en = {
     productionLabel: "Production",
   },
   login: {
+    forgot: "Forgot your password?",
+    forgotNote: "Enter your e-mail and we will send you a link to set a new password.",
+    forgotSend: "Send the link",
+    forgotSent: "If this address has an account, the link is on its way.",
+    back: "Back to sign in",
+    newPassword: "New password",
+    repeatPassword: "Repeat the password",
+    savePassword: "Save the password",
+    passwordShort: "Use at least 10 characters.",
+    passwordMismatch: "The two passwords differ.",
+    liveOnly: "Available on the live site only.",
     title: "Sign in",
     subtitle: "Nutrikal ERP + CRM",
     email: "Email",
@@ -2606,6 +2617,7 @@ export const en = {
     order: {
       ref: "Your reference: {ref}", value: "Order value (excl. VAT)", requested: "Requested date", progress: "Progress", products: "Products",
       batches: "Batches", units: "units", produced: "Produced", expires: "Best before", coa: "Certificate of analysis", released: "Released", inReview: "In quality review",
+      proforma: "Proforma invoice", finalProforma: "Final proforma invoice", deliveryNote: "Delivery note",
       shipments: "Shipments", tracking: "Tracking", noTracking: "No tracking number yet", documents: "Documents", invoices: "Invoices", messages: "Messages about this order",
     },
     steps: { confirmed: "Order confirmed", deposit: "Deposit received", production: "In production", ready: "Ready to ship", dispatched: "Dispatched" },
@@ -2621,6 +2633,7 @@ export const en = {
     support: {
       title: "Support", intro: "Write to our team. For a specific order, use the messages on that order.", empty: "No messages yet.",
       placeholder: "Write your message", send: "Send", you: "You", team: "Nutrikal", busy: "Too many messages for now. Please try again later.",
+      conversations: "Your conversations", states: { open: "We are on it", waiting: "Answered", solved: "Solved" },
       failed: "The message could not be sent.", other: "You can also reach us at",
     },
     account: {
@@ -2632,6 +2645,14 @@ export const en = {
       accessTitle: "Customer panel access", accessEmpty: "Nobody at this client can sign in yet.", name: "Name", email: "E-mail", create: "Create account",
       created: "Account created. First password, shown once: {password}", stop: "Stop access", restore: "Restore access", reset: "New password", stopped: "access stopped",
       share: "Share with client", unshare: "Stop sharing", shared: "shared with client",
+      statusSubject: "Order {code}: {status}",
+      statusBody: "Your order {code} is now: {status}.\n\n{next}\n\nFollow it in your customer panel: {url}",
+      inbox: {
+        title: "Client messages", note: "Conversations from the customer panel. What needs an answer comes first.", empty: "Nothing here.",
+        general: "General", you: "You", nobody: "Nobody yet", status: "Status", assigned: "Responsible", save: "Save",
+        filters: { open: "Open", waiting: "Waiting for the client", solved: "Solved", all: "All" },
+        statuses: { open: "Open", waiting: "Waiting for the client", solved: "Solved" },
+      },
       mailSubject: "New message from Nutrikal", mailBody: "You have a new message from Nutrikal in your customer panel.\n\nRead it here: {url}",
     },
   },

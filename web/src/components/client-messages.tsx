@@ -1,6 +1,6 @@
 import { ActionForm } from "@/components/action-form";
 import { Card, Empty } from "@/components/ui";
-import { replyToClient } from "@/app/file-actions";
+import { replyToClient, setClientThread } from "@/app/file-actions";
 import { q } from "@/lib/db/engine";
 import { formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
@@ -20,8 +20,24 @@ export async function ClientMessages({ clientId, orderId, userId, canWrite, loca
   const [{ n }] = await q<{ n: number }>(userId, "select count(*)::int as n from client_user_list($1)", [clientId]);
   if (n === 0 && rows.length === 0) return null;
   if (canWrite && rows.some((m) => m.from_client)) await q(userId, "select client_messages_read($1, $2)", [clientId, order]);
+  const [thread] = await q<{ status: string; assigned_to: string | null }>(userId, "select status, assigned_to from client_threads where client_id = $1 and order_id is not distinct from $2::uuid", [clientId, order]);
+  const team = thread ? await q<{ id: string; full_name: string }>(userId, "select id, full_name from client_team()") : [];
+  const I = S.inbox;
   return (
     <Card title={S.messages} id="client-messages">
+      {thread && canWrite && (
+        <form action={setClientThread} className="flex flex-wrap items-end gap-3">
+          <input type="hidden" name="client_id" value={clientId} />
+          {orderId && <input type="hidden" name="order_id" value={orderId} />}
+          <label className="field"><span>{I.status}</span>
+            <select name="status" defaultValue={thread.status} className="input">{(["open", "waiting", "solved"] as const).map((x) => <option key={x} value={x}>{I.statuses[x]}</option>)}</select>
+          </label>
+          <label className="field"><span>{I.assigned}</span>
+            <select name="assigned_to" defaultValue={thread.assigned_to ?? ""} className="input"><option value="">{I.nobody}</option>{team.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select>
+          </label>
+          <button type="submit" className="btn btn-outline">{I.save}</button>
+        </form>
+      )}
       {rows.length === 0 && <Empty>{S.empty}</Empty>}
       {rows.map((m) => (
         <div key={m.id} className={`flex min-w-0 flex-col gap-0.5 ${m.from_client ? "items-start" : "items-end"}`}>

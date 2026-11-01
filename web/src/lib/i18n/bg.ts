@@ -65,6 +65,17 @@ export const bg: Dict = {
     productionLabel: "Производство",
   },
   login: {
+    forgot: "Забравена парола?",
+    forgotNote: "Въведете имейла си и ще ви изпратим връзка за нова парола.",
+    forgotSend: "Изпрати връзката",
+    forgotSent: "Ако за този адрес има профил, връзката е на път.",
+    back: "Обратно към вход",
+    newPassword: "Нова парола",
+    repeatPassword: "Повторете паролата",
+    savePassword: "Запази паролата",
+    passwordShort: "Използвайте поне 10 знака.",
+    passwordMismatch: "Двете пароли се различават.",
+    liveOnly: "Достъпно само на живия сайт.",
     title: "Вход",
     subtitle: "Nutrikal ERP + CRM",
     email: "Имейл",
@@ -2608,6 +2619,7 @@ export const bg: Dict = {
     order: {
       ref: "Ваш номер: {ref}", value: "Стойност на поръчката (без ДДС)", requested: "Желана дата", progress: "Напредък", products: "Продукти",
       batches: "Партиди", units: "бр.", produced: "Произведена", expires: "Годна до", coa: "Сертификат за анализ", released: "Освободена", inReview: "В проверка за качество",
+      proforma: "Проформа фактура", finalProforma: "Финална проформа фактура", deliveryNote: "Стокова разписка",
       shipments: "Пратки", tracking: "Проследяване", noTracking: "Още няма номер за проследяване", documents: "Документи", invoices: "Фактури", messages: "Съобщения за тази поръчка",
     },
     steps: { confirmed: "Потвърдена поръчка", deposit: "Получен аванс", production: "В производство", ready: "Готова за изпращане", dispatched: "Изпратена" },
@@ -2623,6 +2635,7 @@ export const bg: Dict = {
     support: {
       title: "Поддръжка", intro: "Пишете на екипа ни. За конкретна поръчка използвайте съобщенията в нея.", empty: "Още няма съобщения.",
       placeholder: "Напишете съобщението си", send: "Изпрати", you: "Вие", team: "Nutrikal", busy: "Твърде много съобщения засега. Опитайте по-късно.",
+      conversations: "Вашите разговори", states: { open: "Работим по него", waiting: "Отговорено", solved: "Решено" },
       failed: "Съобщението не можа да се изпрати.", other: "Можете да се свържете с нас и на",
     },
     account: {
@@ -2634,6 +2647,14 @@ export const bg: Dict = {
       accessTitle: "Достъп до клиентския панел", accessEmpty: "Още никой от този клиент не може да влиза.", name: "Име", email: "Имейл", create: "Създай профил",
       created: "Профилът е създаден. Първа парола, показва се веднъж: {password}", stop: "Спри достъпа", restore: "Върни достъпа", reset: "Нова парола", stopped: "спрян достъп",
       share: "Сподели с клиента", unshare: "Спри споделянето", shared: "споделен с клиента",
+      statusSubject: "Поръчка {code}: {status}",
+      statusBody: "Вашата поръчка {code} вече е: {status}.\n\n{next}\n\nСледете я в клиентския панел: {url}",
+      inbox: {
+        title: "Съобщения от клиенти", note: "Разговорите от клиентския панел. Първо е това, което чака отговор.", empty: "Тук няма нищо.",
+        general: "Общи", you: "Вие", nobody: "Още никой", status: "Статус", assigned: "Отговорник", save: "Запази",
+        filters: { open: "Отворени", waiting: "Чакат клиента", solved: "Решени", all: "Всички" },
+        statuses: { open: "Отворен", waiting: "Чака клиента", solved: "Решен" },
+      },
       mailSubject: "Ново съобщение от Nutrikal", mailBody: "Имате ново съобщение от Nutrikal в клиентския панел.\n\nПрочетете го тук: {url}",
     },
   },

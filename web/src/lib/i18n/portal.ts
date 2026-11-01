@@ -32,6 +32,7 @@ const de: PortalText = {
   nav: { home: "Übersicht", orders: "Bestellungen", documents: "Dokumente", invoices: "Rechnungen", support: "Support", account: "Konto" },
   home: { openBalance: "Offener Betrag", viewAll: "Alle ansehen", activeOrders: "Aktive Bestellungen", noOrders: "Noch keine Bestellungen.", unread: "{n} neu", recentDocuments: "Neueste Dokumente" },
   order: {
+    proforma: "Proforma-Rechnung", finalProforma: "Endgültige Proforma-Rechnung", deliveryNote: "Lieferschein",
     ref: "Ihre Referenz: {ref}", value: "Bestellwert (ohne MwSt.)", requested: "Wunschtermin", progress: "Fortschritt", products: "Produkte",
     batches: "Chargen", units: "Stück", produced: "Hergestellt", expires: "Mindestens haltbar bis", coa: "Analysenzertifikat", released: "Freigegeben", inReview: "In der Qualitätsprüfung",
     shipments: "Sendungen", tracking: "Sendungsverfolgung", noTracking: "Noch keine Sendungsnummer", documents: "Dokumente", invoices: "Rechnungen", messages: "Nachrichten zu dieser Bestellung",
@@ -47,6 +48,7 @@ const de: PortalText = {
     kinds: { invoice: "Rechnung", credit_note: "Gutschrift", debit_note: "Belastungsanzeige" },
   },
   support: {
+    conversations: "Ihre Unterhaltungen", states: { open: "Wir kümmern uns darum", waiting: "Beantwortet", solved: "Gelöst" },
     title: "Support", intro: "Schreiben Sie unserem Team. Zu einer bestimmten Bestellung nutzen Sie bitte die Nachrichten in dieser Bestellung.", empty: "Noch keine Nachrichten.",
     placeholder: "Ihre Nachricht", send: "Senden", you: "Sie", team: "Nutrikal", busy: "Zu viele Nachrichten. Bitte versuchen Sie es später erneut.",
     failed: "Die Nachricht konnte nicht gesendet werden.", other: "Sie erreichen uns auch über",
@@ -79,6 +81,7 @@ const fr: PortalText = {
   nav: { home: "Aperçu", orders: "Commandes", documents: "Documents", invoices: "Factures", support: "Assistance", account: "Compte" },
   home: { openBalance: "Montant dû", viewAll: "Tout voir", activeOrders: "Commandes en cours", noOrders: "Aucune commande pour le moment.", unread: "{n} nouveau(x)", recentDocuments: "Derniers documents" },
   order: {
+    proforma: "Facture proforma", finalProforma: "Facture proforma finale", deliveryNote: "Bon de livraison",
     ref: "Votre référence : {ref}", value: "Valeur de la commande (HT)", requested: "Date souhaitée", progress: "Avancement", products: "Produits",
     batches: "Lots", units: "unités", produced: "Fabriqué le", expires: "À consommer de préférence avant", coa: "Certificat d'analyse", released: "Libéré", inReview: "En contrôle qualité",
     shipments: "Expéditions", tracking: "Suivi", noTracking: "Pas encore de numéro de suivi", documents: "Documents", invoices: "Factures", messages: "Messages sur cette commande",
@@ -94,6 +97,7 @@ const fr: PortalText = {
     kinds: { invoice: "Facture", credit_note: "Avoir", debit_note: "Note de débit" },
   },
   support: {
+    conversations: "Vos conversations", states: { open: "Nous nous en occupons", waiting: "Répondu", solved: "Résolu" },
     title: "Assistance", intro: "Écrivez à notre équipe. Pour une commande précise, utilisez les messages de cette commande.", empty: "Aucun message pour le moment.",
     placeholder: "Votre message", send: "Envoyer", you: "Vous", team: "Nutrikal", busy: "Trop de messages pour le moment. Veuillez réessayer plus tard.",
     failed: "Le message n'a pas pu être envoyé.", other: "Vous pouvez aussi nous joindre via",
@@ -126,6 +130,7 @@ const it: PortalText = {
   nav: { home: "Panoramica", orders: "Ordini", documents: "Documenti", invoices: "Fatture", support: "Assistenza", account: "Account" },
   home: { openBalance: "Importo da pagare", viewAll: "Vedi tutti", activeOrders: "Ordini attivi", noOrders: "Ancora nessun ordine.", unread: "{n} nuovi", recentDocuments: "Ultimi documenti" },
   order: {
+    proforma: "Fattura proforma", finalProforma: "Fattura proforma finale", deliveryNote: "Documento di trasporto",
     ref: "Il tuo riferimento: {ref}", value: "Valore dell'ordine (IVA esclusa)", requested: "Data richiesta", progress: "Avanzamento", products: "Prodotti",
     batches: "Lotti", units: "pezzi", produced: "Prodotto il", expires: "Da consumarsi preferibilmente entro", coa: "Certificato di analisi", released: "Rilasciato", inReview: "In controllo qualità",
     shipments: "Spedizioni", tracking: "Tracciamento", noTracking: "Ancora nessun numero di tracciamento", documents: "Documenti", invoices: "Fatture", messages: "Messaggi su questo ordine",
@@ -141,6 +146,7 @@ const it: PortalText = {
     kinds: { invoice: "Fattura", credit_note: "Nota di credito", debit_note: "Nota di debito" },
   },
   support: {
+    conversations: "Le tue conversazioni", states: { open: "Ce ne stiamo occupando", waiting: "Risposto", solved: "Risolto" },
     title: "Assistenza", intro: "Scrivi al nostro team. Per un ordine specifico usa i messaggi di quell'ordine.", empty: "Ancora nessun messaggio.",
     placeholder: "Scrivi il tuo messaggio", send: "Invia", you: "Tu", team: "Nutrikal", busy: "Troppi messaggi al momento. Riprova più tardi.",
     failed: "Non è stato possibile inviare il messaggio.", other: "Puoi contattarci anche su",
@@ -173,6 +179,7 @@ const ro: PortalText = {
   nav: { home: "Prezentare", orders: "Comenzi", documents: "Documente", invoices: "Facturi", support: "Asistență", account: "Cont" },
   home: { openBalance: "Sumă de plată", viewAll: "Vezi tot", activeOrders: "Comenzi active", noOrders: "Încă nu există comenzi.", unread: "{n} noi", recentDocuments: "Ultimele documente" },
   order: {
+    proforma: "Factură proformă", finalProforma: "Factură proformă finală", deliveryNote: "Aviz de livrare",
     ref: "Referința dvs.: {ref}", value: "Valoarea comenzii (fără TVA)", requested: "Data solicitată", progress: "Progres", products: "Produse",
     batches: "Loturi", units: "buc.", produced: "Produs la", expires: "A se consuma de preferință înainte de", coa: "Certificat de analiză", released: "Eliberat", inReview: "În controlul calității",
     shipments: "Expedieri", tracking: "Urmărire", noTracking: "Încă nu există număr de urmărire", documents: "Documente", invoices: "Facturi", messages: "Mesaje despre această comandă",
@@ -188,6 +195,7 @@ const ro: PortalText = {
     kinds: { invoice: "Factură", credit_note: "Notă de credit", debit_note: "Notă de debit" },
   },
   support: {
+    conversations: "Conversațiile dvs.", states: { open: "Ne ocupăm", waiting: "Răspuns", solved: "Rezolvat" },
     title: "Asistență", intro: "Scrieți echipei noastre. Pentru o anumită comandă, folosiți mesajele din acea comandă.", empty: "Încă nu există mesaje.",
     placeholder: "Scrieți mesajul dvs.", send: "Trimite", you: "Dvs.", team: "Nutrikal", busy: "Prea multe mesaje momentan. Încercați din nou mai târziu.",
     failed: "Mesajul nu a putut fi trimis.", other: "Ne puteți contacta și prin",
@@ -220,6 +228,7 @@ const el: PortalText = {
   nav: { home: "Επισκόπηση", orders: "Παραγγελίες", documents: "Έγγραφα", invoices: "Τιμολόγια", support: "Υποστήριξη", account: "Λογαριασμός" },
   home: { openBalance: "Ποσό προς πληρωμή", viewAll: "Προβολή όλων", activeOrders: "Ενεργές παραγγελίες", noOrders: "Δεν υπάρχουν ακόμη παραγγελίες.", unread: "{n} νέα", recentDocuments: "Τελευταία έγγραφα" },
   order: {
+    proforma: "Προτιμολόγιο", finalProforma: "Τελικό προτιμολόγιο", deliveryNote: "Δελτίο αποστολής",
     ref: "Η αναφορά σας: {ref}", value: "Αξία παραγγελίας (χωρίς ΦΠΑ)", requested: "Επιθυμητή ημερομηνία", progress: "Πρόοδος", products: "Προϊόντα",
     batches: "Παρτίδες", units: "τεμ.", produced: "Παραγωγή", expires: "Ανάλωση κατά προτίμηση πριν από", coa: "Πιστοποιητικό ανάλυσης", released: "Εγκρίθηκε", inReview: "Σε έλεγχο ποιότητας",
     shipments: "Αποστολές", tracking: "Παρακολούθηση", noTracking: "Δεν υπάρχει ακόμη αριθμός παρακολούθησης", documents: "Έγγραφα", invoices: "Τιμολόγια", messages: "Μηνύματα για αυτή την παραγγελία",
@@ -235,6 +244,7 @@ const el: PortalText = {
     kinds: { invoice: "Τιμολόγιο", credit_note: "Πιστωτικό σημείωμα", debit_note: "Χρεωστικό σημείωμα" },
   },
   support: {
+    conversations: "Οι συνομιλίες σας", states: { open: "Το φροντίζουμε", waiting: "Απαντήθηκε", solved: "Επιλύθηκε" },
     title: "Υποστήριξη", intro: "Γράψτε στην ομάδα μας. Για συγκεκριμένη παραγγελία, χρησιμοποιήστε τα μηνύματα της παραγγελίας.", empty: "Δεν υπάρχουν ακόμη μηνύματα.",
     placeholder: "Γράψτε το μήνυμά σας", send: "Αποστολή", you: "Εσείς", team: "Nutrikal", busy: "Πάρα πολλά μηνύματα προς το παρόν. Δοκιμάστε ξανά αργότερα.",
     failed: "Δεν ήταν δυνατή η αποστολή του μηνύματος.", other: "Μπορείτε να επικοινωνήσετε μαζί μας και μέσω",

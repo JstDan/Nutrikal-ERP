@@ -1,29 +1,21 @@
-import { docChrome } from "@/lib/doc-chrome";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
-import { fmt, formatDate, formatNumber, formatPrice, getDict, type Locale } from "@/lib/i18n";
+import { fmt, formatNumber } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
 import { VatToggle } from "@/components/vat-toggle";
 import { SalesDocument } from "@/components/sales-document";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import { SendDocument } from "@/components/send-document";
 import { loadSendInfo } from "@/lib/sends";
-import type { ProformaPdfModel } from "@/lib/proforma-pdf";
+import { proformaModel, type DocSeller, type ProformaDoc, type ProformaLine, type ProformaPay } from "@/lib/order-docs";
 import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
 
-type Doc = {
-  code: string; currency: string; vat_pct: string | null; created_at: string; customer_ref: string | null; notes: string | null;
-  locale: Locale; client: string; client_vat: string | null; client_company_id: string | null; client_address: string | null;
-  client_registration: string | null; client_city: string | null; client_postal: string | null; client_country: string;
-};
-type Line = { kind: string; description: string; quantity: number; unit_price: string; offer_no: string | null; capsules: number | null; ordered?: number };
-type Pay = { transport_amount: string | null; deposit_amount: string | null; deposit_pct: string | null; done: boolean };
-type Seller = {
-  company_name: string; company_id: string; company_vat: string; company_address: string; company_email: string; company_phone: string;
-  bank_name: string; bank_iban: string; bank_bic: string; logo_data_url: string | null;
-};
+type Doc = ProformaDoc;
+type Line = ProformaLine;
+type Pay = ProformaPay & { done: boolean };
+type Seller = DocSeller;
 
 /**
  * The proforma of an order as the client receives it: the client's language; print or save as PDF from the browser.
@@ -75,65 +67,8 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
   const { doc: o, lines, seller: s, rate, pay, ordered } = data;
 
   const l = o.locale === "bg" ? "bg" : "en";
-  const P = getDict(l).orders.proforma;
-  const money = (n: number | string) => formatPrice(l, n, o.currency);
-  const describe = (x: Line) => (x.capsules ? fmt(P.withCapsules, { name: x.description, n: formatNumber(l, x.capsules) }) : x.description);
-  const transport = Number(pay?.transport_amount ?? 0);
-  const subtotal = lines.reduce((a, x) => a + Math.round(Number(x.unit_price) * x.quantity * 100) / 100, 0) + transport;
   const withVat = sp.vat === "1" ? true : sp.vat === "0" ? false : Number(o.vat_pct ?? 0) > 0;
-  const vatPct = withVat ? rate : 0;
-  const vat = Math.round(subtotal * vatPct) / 100;
-  // The advance received (VAT included), else its % of the order as ordered
-  const advance = !pay ? 0 : pay.deposit_amount != null ? Number(pay.deposit_amount)
-    : Math.round(ordered * (1 + vatPct / 100) * Number(pay.deposit_pct ?? 0)) / 100;
-  const buyerAddress = o.client_registration
-    || [o.client_address, [o.client_postal, o.client_city].filter(Boolean).join(" "), o.client_country].filter(Boolean).join(", ");
-
-  const model: ProformaPdfModel = {
-    fileName: final ? `Proforma-final-${o.code}.pdf` : `Proforma-${o.code}.pdf`,
-    title: final ? P.finalTitle : P.title,
-    meta: [`${P.number} ${o.code}`, `${P.date}: ${formatDate(l, o.created_at)}`],
-    seller: {
-      heading: P.seller,
-      lines: [
-        s?.company_name ?? "", s?.company_address ?? "",
-        s?.company_id ? `${P.companyId}: ${s.company_id}` : "", s?.company_vat ? `${P.vatNo}: ${s.company_vat}` : "",
-        [s?.company_email, s?.company_phone].filter(Boolean).join(" · "),
-      ].filter(Boolean),
-    },
-    buyer: {
-      heading: P.buyer,
-      lines: [
-        o.client, buyerAddress,
-        o.client_company_id ? `${P.companyId}: ${o.client_company_id}` : "", o.client_vat ? `${P.vatNo}: ${o.client_vat}` : "",
-        o.customer_ref ? fmt(P.customerRef, { ref: o.customer_ref }) : "",
-      ].filter(Boolean),
-    },
-    head: [P.description, P.quantity, P.unitPrice, P.amount],
-    rows: lines.map((x) => ({
-      description: describe(x),
-      note: [x.offer_no ? fmt(P.accordingTo, { no: x.offer_no }) : "", final && x.kind !== "service" && x.ordered != null ? fmt(P.produced, { n: formatNumber(l, x.ordered) }) : ""]
-        .filter(Boolean).join(" · ") || null,
-      quantity: formatNumber(l, x.quantity),
-      unitPrice: money(Number(x.unit_price)),
-      amount: money(Number(x.unit_price) * x.quantity),
-    })).concat(transport > 0 ? [{ description: P.transport, note: null, quantity: formatNumber(l, 1), unitPrice: money(transport), amount: money(transport) }] : []),
-    totals: [
-      [P.subtotal, money(subtotal)],
-      [fmt(P.vat, { pct: formatNumber(l, vatPct) }), money(vat)],
-      [P.total, money(subtotal + vat)],
-      ...(final ? [[P.lessAdvance, money(-advance)], [P.due, money(Math.max(0, subtotal + vat - advance))]] as [string, string][] : []),
-    ],
-    vatNote: vatPct === 0 ? P.zeroVat : null,
-    bank: {
-      heading: P.bank,
-      lines: [`${P.bankName}: ${s?.bank_name ?? ""}`, `IBAN: ${s?.bank_iban ?? ""}`, `BIC: ${s?.bank_bic ?? ""}`, fmt(P.reference, { code: o.code })],
-    },
-    notes: o.notes,
-    footer: final ? P.finalNote : P.note,
-    ...docChrome(getDict(l), { name: s?.company_name ?? "", companyId: s?.company_id ?? "", address: s?.company_address ?? "", email: s?.company_email ?? "", phone: s?.company_phone ?? "" }),
-    logoDataUrl: s?.logo_data_url ?? null,
-  };
+  const model = proformaModel(o, lines, s, { vatPct: withVat ? rate : 0, pay, ordered });
 
   const send = await loadSendInfo(user.id, user.name, "proforma", id, { orderId: id, title: model.title, no: o.code, lang: l });
 

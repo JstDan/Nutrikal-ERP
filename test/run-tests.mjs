@@ -3037,6 +3037,51 @@ await ok('a client is no member of the staff chat', async () => {
   eq((await as('clientA', 'select id from chat_people()')).length, 0, 'people');
   eq((await as('sales', `select id from chat_people() where full_name like 'Client %'`)).length, 0, 'nor listed to staff');
 });
+await ok('a conversation has a status: the client opens it, the team answers, the team can solve it', async () => {
+  const row = async () => (await one('sales', 'select status, assigned_to, unread, last_body from client_inbox() where order_id = $1', [ordA]));
+  await as('clientA', `select portal_post($1, 'Още един въпрос')`, [ordA]);
+  eq((await row()).status, 'open', 'open'); eq((await row()).unread > 0, true, 'unread');
+  await as('sales', `select client_message_send($1, $2, 'Отговор')`, [coA, ordA]);
+  eq((await row()).status, 'waiting', 'waiting'); eq((await row()).last_body, 'Отговор', 'last');
+  await as('sales', `select client_thread_set($1, $2, 'solved', $3)`, [coA, ordA, U.sales]);
+  eq((await row()).status, 'solved', 'solved'); eq((await row()).assigned_to, U.sales, 'assigned');
+  eq((await as('clientA', 'select status from portal_threads() where order_id = $1', [ordA]))[0].status, 'solved', 'client sees it');
+  eq((await as('clientB', 'select 1 from portal_threads()')).length, 0, 'other client');
+  await as('clientA', `select portal_post($1, 'Пак аз')`, [ordA]);
+  eq((await row()).status, 'open', 'reopened');
+});
+await fails('a conversation goes only to someone of the team', () => as('sales', `select client_thread_set($1, $2, 'open', $3)`, [coA, ordA, U.production]), 'team');
+await fails('a client has no inbox', () => as('clientA', 'select * from client_inbox()'), '');
+await fails('Production has no inbox', () => as('production', 'select * from client_inbox()'), '');
+await ok('a client reads its own proforma and delivery note, without internal notes', async () => {
+  const d = (await one('clientA', 'select portal_proforma($1) as d', [ordA])).d;
+  eq(d.doc.code, 'PORT-A', 'own'); eq(d.lines.length, 1, 'lines');
+  if (JSON.stringify(d).includes('ТАЙНА')) throw new Error('internal note leaked');
+  eq((await one('clientB', 'select portal_proforma($1) as d', [ordA])).d, null, 'other client');
+  eq((await one('clientA', 'select portal_proforma($1) as d', [ordDraft])).d, null, 'draft');
+  await db.exec('reset role');
+  const did = (await db.query(`insert into dispatches (code, order_id, carrier, notes) values ('D-PORT', $1, 'DHL', 'ВЪТРЕШНО') returning id`, [ordA])).rows[0].id;
+  const n = (await one('clientA', 'select portal_delivery($1) as d', [did])).d;
+  eq(n.note.carrier, 'DHL', 'own note');
+  if (JSON.stringify(n).includes('ВЪТРЕШНО')) throw new Error('note leaked');
+  eq((await one('clientB', 'select portal_delivery($1) as d', [did])).d, null, 'other client');
+});
+await ok('a change of status waits for the e-mail, only for an account of that client', async () => {
+  await db.exec('reset role');
+  await db.query(`alter table sales_orders disable trigger user`);
+  await db.query(`alter table sales_orders enable trigger sales_orders_status_mail`);
+  await db.query(`update sales_orders set status = 'ready' where id = $1`, [ordA]);
+  await db.query(`alter table sales_orders enable trigger user`);
+  const jobs = (await db.query('select * from client_status_jobs()')).rows;
+  eq(jobs.filter((j) => j.code === 'PORT-A' && j.status === 'ready').length, 1, 'queued'); eq(jobs.find((j) => j.code === 'PORT-A').email, 'clientA@client.test', 'to the client');
+  await db.query('select client_status_done()');
+  eq((await db.query('select * from client_status_jobs()')).rows.length, 0, 'sent once');
+});
+await fails('nobody signed in runs the mail job', () => as('admin', 'select * from client_status_jobs()'), 'permission');
+await ok('a client sees nothing of the queue or the threads directly', async () => {
+  eq((await as('clientA', 'select 1 from client_threads')).length, 0, 'threads');
+  eq((await as('clientA', 'select 1 from client_status_mail')).length, 0, 'queue');
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

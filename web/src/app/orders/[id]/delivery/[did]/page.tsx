@@ -1,23 +1,18 @@
-import { docChrome } from "@/lib/doc-chrome";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
-import { fmt, formatDate, formatNumber, getDict } from "@/lib/i18n";
+import { getDict } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
 import { SalesDocument } from "@/components/sales-document";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import { SendDocument } from "@/components/send-document";
 import { loadSendInfo } from "@/lib/sends";
-import type { ProformaPdfModel } from "@/lib/proforma-pdf";
+import { deliveryModel, type DeliveryLine, type DeliveryNote, type DocSeller } from "@/lib/order-docs";
 
-type Note = {
-  code: string; dispatched_on: string; carrier: string | null; tracking: string | null; notes: string | null; order_code: string;
-  customer_ref: string | null; locale: string; client: string; client_vat: string | null; client_company_id: string | null;
-  client_address: string | null; client_registration: string | null; client_city: string | null; client_postal: string | null; client_country: string;
-};
-type Line = { name: string; name_bg: string | null; lot_number: string; expires_on: string | null; quantity: string };
-type Seller = { company_name: string; company_id: string; company_vat: string; company_address: string; company_email: string; company_phone: string; logo_data_url: string | null };
+type Note = DeliveryNote;
+type Line = DeliveryLine;
+type Seller = DocSeller;
 
 /** The delivery note as the client receives it: in the client's language, without prices. */
 export default async function DeliveryNotePage({ params }: PageProps<"/orders/[id]/delivery/[did]">) {
@@ -46,51 +41,8 @@ export default async function DeliveryNotePage({ params }: PageProps<"/orders/[i
   const { n, lines, seller: s } = data;
 
   const l = n.locale === "bg" ? "bg" : "en";
-  const dict = getDict(l);
-  const D = dict.dispatch.doc;
-  const P = dict.orders.proforma;
-  const units = lines.reduce((a, x) => a + Number(x.quantity), 0);
-  const address = n.client_registration
-    || [n.client_address, [n.client_postal, n.client_city].filter(Boolean).join(" "), n.client_country].filter(Boolean).join(", ");
-
-  const model: ProformaPdfModel = {
-    fileName: `${D.fileName}-${n.code}.pdf`,
-    title: D.title,
-    meta: [`${D.number}: ${n.code}`, `${D.date}: ${formatDate(l, n.dispatched_on)}`, fmt(D.orderRef, { code: n.order_code })],
-    seller: {
-      heading: D.from,
-      lines: [
-        s?.company_name ?? "", s?.company_address ?? "",
-        s?.company_id ? `${P.companyId}: ${s.company_id}` : "", s?.company_vat ? `${P.vatNo}: ${s.company_vat}` : "",
-        [s?.company_email, s?.company_phone].filter(Boolean).join(" · "),
-      ].filter(Boolean),
-    },
-    buyer: {
-      heading: D.to,
-      lines: [
-        n.client, address,
-        n.client_company_id ? `${P.companyId}: ${n.client_company_id}` : "", n.client_vat ? `${P.vatNo}: ${n.client_vat}` : "",
-        n.customer_ref ? fmt(D.customerRef, { ref: n.customer_ref }) : "",
-      ].filter(Boolean),
-    },
-    head: [D.product, D.batch, D.expires, D.quantity],
-    rows: lines.map((x) => ({
-      description: l === "bg" && x.name_bg ? x.name_bg : x.name,
-      note: null,
-      quantity: x.lot_number,
-      unitPrice: formatDate(l, x.expires_on),
-      amount: formatNumber(l, x.quantity),
-    })),
-    totals: [[D.total, formatNumber(l, units)]],
-    vatNote: null,
-    bank: n.carrier || n.tracking
-      ? { heading: D.shipping, lines: [n.carrier ? fmt(D.carrier, { v: n.carrier }) : "", n.tracking ? fmt(D.tracking, { v: n.tracking }) : ""].filter(Boolean) }
-      : { heading: "", lines: [] },
-    notes: [n.notes, D.received].filter(Boolean).join("\n\n"),
-    footer: "",
-    ...docChrome(getDict(l), { name: s?.company_name ?? "", companyId: s?.company_id ?? "", address: s?.company_address ?? "", email: s?.company_email ?? "", phone: s?.company_phone ?? "" }),
-    logoDataUrl: s?.logo_data_url ?? null,
-  };
+  const D = getDict(l).dispatch.doc;
+  const model = deliveryModel(n, lines, s);
 
   const U = ui.dispatch.doc;
   const send = await loadSendInfo(user.id, user.name, "delivery_note", did, { orderId: id, title: D.title, no: n.code, lang: l });

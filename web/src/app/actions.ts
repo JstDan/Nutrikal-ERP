@@ -1,10 +1,10 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { q, withUser } from "@/lib/db/engine";
-import { ACT_AS_COOKIE, getOptionalSession, getSession, homeFor } from "@/lib/session";
+import { ACT_AS_COOKIE, getLocale, getOptionalSession, getSession, homeFor } from "@/lib/session";
 import { supabaseConfigured, supabaseServer } from "@/lib/supabase/server";
 import { DEFAULT_LOCALE, fmt, formatQty, getDict, isLocale, LOCALE_COOKIE } from "@/lib/i18n";
 import type { Role } from "@/lib/db/demo-users";
@@ -67,6 +67,27 @@ export async function signIn(_: ActionState, fd: FormData): Promise<ActionState>
     await q(data.user.id, "select start_impersonation(id) from impersonation_targets() limit 1");
   }
   redirect(homeFor(profile.role));
+}
+
+/** Always the same answer, so the form does not tell who has an account. */
+export async function requestPasswordReset(_: ActionState, fd: FormData): Promise<ActionState> {
+  const t = getDict(await getLocale());
+  if (!supabaseConfigured()) return { error: t.login.liveOnly };
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  await (await supabaseServer()).auth.resetPasswordForEmail(str(fd, "email") ?? "", { redirectTo: `https://${host}/auth/callback` });
+  return { ok: true, message: t.login.forgotSent };
+}
+
+export async function setNewPassword(_: ActionState, fd: FormData): Promise<ActionState> {
+  const t = getDict(await getLocale());
+  const password = String(fd.get("password") ?? "");
+  if (password.length < 10) return { error: t.login.passwordShort };
+  if (password !== String(fd.get("repeat") ?? "")) return { error: t.login.passwordMismatch };
+  const { error } = await (await supabaseServer()).auth.updateUser({ password });
+  if (error) return { error: error.message };
+  const s = await getOptionalSession();
+  redirect(s ? homeFor(s.user.role) : "/login");
 }
 
 export async function signOut() {

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { setLocale, signIn, signOut } from "@/app/actions";
@@ -58,6 +59,7 @@ export default async function LoginPage() {
             </label>
           </ActionForm>
         )}
+        <Link href="/forgot-password" className="text-sm">{t.login.forgot}</Link>
         <p className="m-0 text-xs text-ink-2">{t.login.help}</p>
       </div>
     </main>

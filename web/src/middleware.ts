@@ -8,6 +8,7 @@ import { createServerClient } from "@supabase/ssr";
 const PUBLIC_PAGE = "/public-catalog";
 const PUBLIC_LANGS = ["en", "bg", "de", "fr", "it", "ro", "el"];
 const PUBLIC_APIS = ["/api/catalog-enquiry", "/api/catalog-chat"];
+const SIGN_IN = ["/login", "/forgot-password", "/auth/callback"];
 
 export async function middleware(request: NextRequest) {
   // The open catalogue: on its own address nothing else of the app can be reached
@@ -42,7 +43,7 @@ export async function middleware(request: NextRequest) {
     },
   });
   const { data } = await supabase.auth.getClaims();
-  if (!data?.claims && path !== "/login") {
+  if (!data?.claims && !SIGN_IN.includes(path)) {
     const to = request.nextUrl.clone();
     to.pathname = "/login";
     to.search = "";
@@ -51,7 +52,7 @@ export async function middleware(request: NextRequest) {
     return redirect;
   }
   // The customer panel: on its own address nothing else of the app can be reached
-  if (host === (process.env.PORTAL_HOST?.trim() || "portal.nutrikal.com") && path !== "/login" && !path.startsWith("/portal")) {
+  if (host === (process.env.PORTAL_HOST?.trim() || "portal.nutrikal.com") && ![...SIGN_IN, "/reset-password"].includes(path) && !path.startsWith("/portal")) {
     const to = request.nextUrl.clone();
     to.pathname = `/portal${path === "/" ? "" : path}`;
     const rewrite = NextResponse.rewrite(to, { request });
