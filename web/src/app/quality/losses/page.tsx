@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card, Empty, PageHeader } from "@/components/ui";
+import { QualityTabs } from "@/components/quality-tabs";
 import { q } from "@/lib/db/engine";
 import { fmt, formatPrice, formatQty } from "@/lib/i18n";
 import { requireRole } from "@/lib/session";
@@ -8,7 +9,7 @@ type Row = { product: string; product_bg: string | null; item: string; item_bg: 
 const PERIODS = [3, 6, 12] as const;
 
 /** How much material goes above plan, and why: scrap above all. */
-export default async function LossesPage({ searchParams }: PageProps<"/admin/losses">) {
+export default async function LossesPage({ searchParams }: PageProps<"/quality/losses">) {
   const { user, locale, t } = await requireRole("admin");
   const L = t.losses;
   const R = { ...t.factory.order.reasons, other: t.factory.order.reasonOther, none: L.none };
@@ -37,8 +38,9 @@ export default async function LossesPage({ searchParams }: PageProps<"/admin/los
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title={L.title} subtitle={L.subtitle} />
+      <QualityTabs t={t} active="losses" show />
       <div className="flex flex-wrap gap-2">
-        {PERIODS.map((m) => <Link key={m} href={`/admin/losses?months=${m}`} aria-current={m === months ? "page" : undefined} className={`btn ${m === months ? "btn-primary" : "btn-outline"}`}>{fmt(L.months, { n: m })}</Link>)}
+        {PERIODS.map((m) => <Link key={m} href={`/quality/losses?months=${m}`} aria-current={m === months ? "page" : undefined} className={`btn ${m === months ? "btn-primary" : "btn-outline"}`}>{fmt(L.months, { n: m })}</Link>)}
       </div>
       {rows.length === 0 ? <Card><Empty>{L.empty}</Empty></Card> : (
         <>

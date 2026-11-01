@@ -84,7 +84,6 @@ export async function AppShell({ children }: { children: ReactNode }) {
               title: t.nav.reports,
               items: [
                 { href: "/admin", label: t.nav.adminDashboard },
-                { href: "/admin/losses", label: t.losses.nav },
                 { href: "/accounting", label: t.nav.accounting },
                 { href: "/settings", label: t.nav.settings, also: ["/history"] },
               ],
