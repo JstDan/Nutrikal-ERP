@@ -295,6 +295,12 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
   .cal-day[data-empty] { display: flex; }
 }
 
+/* The search of the open catalog */
+.cat-search { width: 100%; min-width: 0; height: 54px; padding: 0 52px; border: 1px solid transparent; border-radius: 999px; outline: 0; background: var(--color-paper); color: var(--color-ink); font-size: 15px; box-shadow: 0 8px 24px rgb(34 40 49 / 0.09), 0 1px 3px rgb(34 40 49 / 0.06); transition: box-shadow 0.18s, border-color 0.18s; }
+.cat-search:hover { box-shadow: 0 10px 28px rgb(34 40 49 / 0.13), 0 1px 3px rgb(34 40 49 / 0.06); }
+.cat-search:focus { border-color: #7bc74d; box-shadow: 0 0 0 4px rgb(123 199 77 / 0.2), 0 10px 28px rgb(34 40 49 / 0.12); }
+.cat-search::-webkit-search-cancel-button { display: none; }
+
 /* The customer panel: calm, a little movement, nothing that gets in the way */
 .p-head { background: #222831; color: #ffffff; box-shadow: 0 6px 20px rgb(34 40 49 / 0.18); }
 .p-lang { min-height: 44px; max-width: 130px; border: 0; background: transparent; color: #ffffff; font-size: 13px; }
