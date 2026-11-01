@@ -126,8 +126,8 @@ function Dialog({ title, close, closeLabel, footer, children }: { title: string;
 }
 
 /** The open catalogue: browse, filter, a basket, and one enquiry in two steps. */
-export function CatalogBrowser({ ai, languages, data, locale, text, formats, categories, children }: {
-  ai: boolean; languages: { code: string; label: string }[]; data: PublicCatalog; locale: AnyLocale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; categories: Record<string, string>; children: ReactNode;
+export function CatalogBrowser({ ai, languages, data, locale, text, formats, categories, short, children }: {
+  ai: boolean; languages: { code: string; label: string }[]; data: PublicCatalog; locale: AnyLocale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; categories: Record<string, string>; short: Record<string, string>; children: ReactNode;
 }) {
   const T = text;
   const money = (n: number) => formatMoney(locale, n, "EUR", 2);
@@ -291,7 +291,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
           </div>
           <div role="group" aria-label={T.categories} className="hide-sm flex flex-wrap gap-2">
             <button type="button" aria-pressed={!category} onClick={() => setCategory("")} className={chip(!category)}>{T.all}</button>
-            {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{catName(c)}</button>)}
+            {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} aria-label={catName(c)} title={catName(c)} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{short[c.name] ?? catName(c)}</button>)}
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-8">

@@ -2212,6 +2212,7 @@ export const en = {
     markSpam: "Spam",
   },
   publicCatalog: {
+    chatTeaser: "Have a question? We’re here to help.",
     language: "Language",
     chatTitle: "Nutri AI",
     chatOpen: "Contact us",

@@ -5,6 +5,8 @@ import type { AnyLocale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
 const STORE = "nk_catalog_chat";
+const TEASER_STORE = "nk_catalog_teaser";
+const TEASER_MS = 5000;
 const WHATSAPP = "https://wa.me/359882919140";
 type Line = { role: "user" | "assistant"; text: string };
 
@@ -27,6 +29,7 @@ export function CatalogContactButton({ text, locale, ai, raised, onAdd, onChat }
   const [lines, setLines] = useState<Line[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [teaser, setTeaser] = useState(false);
   const chat = useRef<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const place = `fixed right-4 z-40 lg:bottom-6 lg:right-6 ${raised ? "bottom-[88px]" : "bottom-4"}`;
@@ -43,6 +46,17 @@ export function CatalogContactButton({ text, locale, ai, raised, onAdd, onChat }
     try { sessionStorage.setItem(STORE, JSON.stringify({ chat: chat.current, lines })); } catch { /* it then lasts until the page closes */ }
     end.current?.scrollIntoView({ block: "end" });
   }, [lines]);
+
+  // The invitation comes once, a moment after the page opens, and stays closed once closed
+  useEffect(() => {
+    try { if (sessionStorage.getItem(TEASER_STORE)) return; } catch { /* it then shows on every visit */ }
+    const timer = setTimeout(() => setTeaser(true), TEASER_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  const hideTeaser = () => {
+    setTeaser(false);
+    try { sessionStorage.setItem(TEASER_STORE, "1"); } catch { /* it then shows on every visit */ }
+  };
 
   const reply = (change: (t: string) => string) => setLines((l) => {
     const last = l.at(-1);
@@ -105,17 +119,27 @@ export function CatalogContactButton({ text, locale, ai, raised, onAdd, onChat }
     <>
       {!open && (
         <div className={`${place} flex flex-col items-end gap-2`}>
+          {teaser && !menu && (
+            <div className="chat-in flex max-w-[calc(100vw-32px)] items-center gap-1 rounded-2xl rounded-br-md border border-line bg-paper py-1 pr-1 pl-4 text-sm text-ink shadow-lg sm:max-w-[320px]">
+              <button type="button" onClick={() => { hideTeaser(); setMenu(true); }} className="min-h-11 min-w-0 flex-1 text-left">{T.chatTeaser}</button>
+              <button type="button" onClick={hideTeaser} aria-label={T.close} className="grid h-11 w-9 shrink-0 place-items-center text-lg text-ink-2 hover:text-ink">×</button>
+            </div>
+          )}
           {menu && (
             <div className="flex flex-col items-end gap-2">
-              <button type="button" onClick={() => { setMenu(false); setOpen(true); }} className="flex min-h-11 items-center gap-2 rounded-full bg-ink px-4 text-sm font-semibold text-white shadow-lg">{T.chatAsk}</button>
+              <button type="button" onClick={() => { setMenu(false); setOpen(true); }} className="flex min-h-11 items-center gap-2 rounded-full bg-ink px-4 text-sm font-semibold text-white shadow-lg"><span aria-hidden="true">✦</span>{T.chatAsk}</button>
               <a href={WHATSAPP} target="_blank" rel="noopener" className="flex min-h-11 items-center gap-2 rounded-full bg-[#25D366] px-4 text-sm font-semibold text-[#10381f] no-underline shadow-lg">
                 <WhatsAppIcon size={18} />WhatsApp
               </a>
             </div>
           )}
-          <button type="button" aria-expanded={menu} aria-label={T.chatOpen} title={T.chatOpen} onClick={() => setMenu((m) => !m)}
-            className="grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-[#fff] shadow-lg transition-transform hover:scale-105">
-            {menu ? <span aria-hidden="true" className="text-2xl leading-none">×</span> : <WhatsAppIcon />}
+          <button type="button" aria-expanded={menu} aria-label={T.chatOpen} title={T.chatOpen} onClick={() => { hideTeaser(); setMenu((m) => !m); }}
+            className="grid h-14 w-14 place-items-center rounded-full bg-ink text-white shadow-lg transition-transform hover:scale-105">
+            {menu ? <span aria-hidden="true" className="text-2xl leading-none">×</span> : (
+              <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a8 8 0 0 1-11.6 7.100L4 20.500l1.400-5.400A8 8 0 1 1 21 12z" />
+              </svg>
+            )}
           </button>
         </div>
       )}

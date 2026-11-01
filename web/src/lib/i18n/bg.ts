@@ -2214,6 +2214,7 @@ export const bg: Dict = {
     markSpam: "Спам",
   },
   publicCatalog: {
+    chatTeaser: "Имате въпрос? Тук сме, за да помогнем.",
     language: "Език",
     chatTitle: "Nutri AI",
     chatOpen: "Свържете се с нас",

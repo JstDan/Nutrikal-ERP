@@ -4,6 +4,7 @@ import { qPublic } from "@/lib/db/engine";
 import { aiConfigured } from "@/lib/ai/gateway";
 import type { AnyLocale } from "@/lib/i18n";
 import { PUBLIC_LOCALES, publicDict } from "@/lib/i18n/public";
+import { shortCategories } from "@/lib/i18n/public-short";
 import { CatalogBrowser, type PublicCatalog } from "@/components/catalog-browser";
 import { CatalogCompany, CatalogOptions, CatalogProcess } from "@/components/catalog-sections";
 
@@ -20,7 +21,7 @@ export default async function PublicCatalogPage() {
   const [row] = await qPublic<{ data: PublicCatalog }>("select catalog_public() as data");
   const t = publicDict(locale);
   return (
-    <CatalogBrowser ai={aiConfigured()} languages={PUBLIC_LOCALES} data={row.data} locale={locale} text={t.text} formats={t.formats} categories={t.categories}>
+    <CatalogBrowser ai={aiConfigured()} languages={PUBLIC_LOCALES} data={row.data} locale={locale} text={t.text} formats={t.formats} categories={t.categories} short={shortCategories(locale)}>
       <CatalogProcess text={t.text} />
       <CatalogOptions text={t.text} ingredients={row.data.ingredient_list} />
       <CatalogCompany text={t.text} locale={locale} />
