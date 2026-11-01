@@ -19,6 +19,10 @@ export interface ProformaPdfModel {
   notes: string | null;
   footer: string;
   logoDataUrl: string | null;
+  contact?: string[];                      // under the logo
+  sign?: [string, string];                 // the two lines to sign
+  base?: string;                           // the strip at the foot
+  pageOf?: string;                         // "Page {i} of {n}"
 }
 
 const INK: [number, number, number] = [34, 40, 49];
@@ -45,7 +49,7 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
   const pageH = doc.internal.pageSize.getHeight();
   const L = 25;
   const R = pageW - 25;
-  const write = (text: string, x: number, y: number, o: { bold?: boolean; size?: number; color?: [number, number, number]; align?: 'left' | 'right'; spacing?: number } = {}) => {
+  const write = (text: string, x: number, y: number, o: { bold?: boolean; size?: number; color?: [number, number, number]; align?: 'left' | 'right' | 'center'; spacing?: number } = {}) => {
     doc.setFont(FONT, o.bold ? 'bold' : 'normal');
     doc.setFontSize(o.size ?? 9);
     doc.setTextColor(...(o.color ?? INK));
@@ -114,6 +118,7 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
     doc.addImage(brandLogo.dataUrl, 'PNG', 15, 22 - (w * brandLogo.height / brandLogo.width) / 2, w, w * brandLogo.height / brandLogo.width);
   }
   write(m.title.toUpperCase(), pageW - 15, 25, { bold: true, size: 20, color: WHITE, align: 'right' });
+  (m.contact ?? []).forEach((line, i) => write(line, 15, 30.5 + i * 4, { size: 8, color: WHITE }));
 
   let y = SHEET + 2;
 
@@ -177,36 +182,56 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
     y = block([m.vatNote], L, y + 1, R - L) + 1;
   }
 
-  // Bank details (none on a purchase order or delivery note)
-  if (m.bank.heading) {
-    ensure(28);
-    y += 4;
-    label(m.bank.heading, L, y);
-    y += 1;
-    for (const line of m.bank.lines) {
-      y += 4.6;
-      write(line, L, y);
-    }
-    y += 4;
-  }
-
   if (m.notes) {
     ensure(10);
     y = block(m.notes.split('\n'), L, y + 2, R - L);
   }
 
-  // Footer strip on every page
+  // What closes the document stands at the foot of its last page, above the strip
+  const STRIP = 9;
+  const stripTop = 284 - STRIP;
+  const hasBank = !!m.bank.heading;
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(8.5);
+  const closing = m.footer ? doc.splitTextToSize(m.footer, hasBank ? colW : R - L) as string[] : [];
+  const closeH = Math.max(hasBank ? 6 + m.bank.lines.length * 4.6 : 0, closing.length * 4.2);
+  const signH = m.sign ? 20 : 0;
+  const footH = (closeH ? closeH + 7 : 0) + signH;
+  if (y + footH + 4 > stripTop - 4) {
+    doc.addPage();
+    y = 18;
+  }
+  if (closeH) {
+    const top = stripTop - 5 - footH;
+    doc.setDrawColor(...MIST);
+    doc.setLineWidth(0.15);
+    doc.line(L, top, R, top);
+    if (hasBank) {
+      label(m.bank.heading, L, top + 6);
+      m.bank.lines.forEach((line, i) => write(line, L, top + 11 + i * 4.6));
+    }
+    closing.forEach((line, i) => write(line, hasBank ? L + colW + 10 : L, top + (hasBank ? 6 : 5) + i * 4.2, { size: 8.5, color: MUTED }));
+  }
+  if (m.sign) {
+    const line = stripTop - 11;
+    doc.setDrawColor(...INK);
+    doc.setLineWidth(0.25);
+    m.sign.forEach((text, i) => {
+      const x = L + i * (colW + 10);
+      doc.line(x, line, x + colW, line);
+      write(text, x, line + 4.5, { size: 8, color: MUTED });
+    });
+  }
+
+  // The strip on every page
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
-    doc.setFont(FONT, 'normal');
-    doc.setFontSize(7);
-    const lines = doc.splitTextToSize(m.footer, R - L - (pages > 1 ? 16 : 0)) as string[];
-    const top = 284 - 5 - lines.length * 3.2;
     doc.setFillColor(...CANVAS);
-    doc.rect(15, top, pageW - 30, 284 - top, 'F');
-    lines.forEach((line, j) => write(line, L, top + 4.2 + j * 3.2, { size: 7, color: MUTED }));
-    if (pages > 1) write(`${i} / ${pages}`, R, top + 4.2, { size: 7, color: MUTED, align: 'right' });
+    doc.rect(15, stripTop, pageW - 30, STRIP, 'F');
+    if (m.base) write(m.base, L, stripTop + 5.6, { size: 7, color: MUTED });
+    write('nutrikal.com', pageW / 2 + 22, stripTop + 5.6, { size: 7, color: MUTED, align: 'center' });
+    if (m.pageOf) write(m.pageOf.replace('{i}', String(i)).replace('{n}', String(pages)), R, stripTop + 5.6, { size: 7, color: MUTED, align: 'right' });
   }
 
   return doc;

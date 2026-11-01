@@ -43,7 +43,7 @@ Talk to the owner in the language they write in (usually Bulgarian).
 - Next.js 16 with `cacheComponents: false` (every page is per-user and dynamic). Read `web/node_modules/next/dist/docs/` before using unfamiliar Next.js APIs — this version differs from older ones.
 
 ## Documents
-Offer, proforma, invoice, credit and debit notes, purchase order and delivery note share one look (owner, Nov 2026): dark top with the wordmark and a bold title, capsule photo `web/public/doc-bg.jpg`, white sheet (`drawDocShell` in `lib/calculator/pdf.ts`, `.doc-brand` on screen). Offers show the composition in two columns, what is included and what is not.
+Offer, proforma, invoice, credit and debit notes, purchase order and delivery note share one look (owner, Nov 2026): dark top with the wordmark and a bold title, capsule photo `web/public/doc-bg.jpg`, white sheet (`drawDocShell` in `lib/calculator/pdf.ts`, `.doc-brand` on screen), contacts under the logo and a strip at the foot with the page number (`lib/doc-chrome.ts`); invoices and notes end with the lines to sign. Offers show the composition in two columns, what is included and what is not.
 
 ## UI rules
 - **Every user-visible string goes in BOTH `web/src/lib/i18n/en.ts` and `bg.ts`.** No hard-coded text in components. Use `fmt()`, `formatNumber/Qty/Money/Date` from `web/src/lib/i18n`.

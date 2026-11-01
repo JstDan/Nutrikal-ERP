@@ -2,14 +2,17 @@ import { Wordmark } from "@/components/logo";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 
 /** The head shared by every Nutrikal document: wordmark on the ink band (white when plain, as on offers), title, then number and dates. */
-export function DocHeader({ title, meta, sellerName, logoDataUrl, plain = false }: { title: string; meta: string[]; sellerName: string; logoDataUrl: string | null; plain?: boolean }) {
+export function DocHeader({ title, meta, sellerName, logoDataUrl, plain = false, contact = [] }: { title: string; meta: string[]; sellerName: string; logoDataUrl: string | null; plain?: boolean; contact?: string[] }) {
   return (
     <header>
       <div className={plain ? "doc-band doc-band-plain" : "doc-band"}>
-        {logoDataUrl
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={logoDataUrl} alt={sellerName} className="doc-logo" />
-          : <Wordmark height={22} inverted={!plain} />}
+        <div className="min-w-0">
+          {logoDataUrl
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={logoDataUrl} alt={sellerName} className="doc-logo" />
+            : <Wordmark height={22} inverted={!plain} />}
+          {contact.map((line, i) => <div key={i} className="doc-contact">{line}</div>)}
+        </div>
         <h1 className="doc-title">{title}</h1>
       </div>
       {meta.length > 0 && (
@@ -41,7 +44,7 @@ export function SalesDocument({ model: m, lang, sellerName }: { model: ProformaP
 
   return (
     <article lang={lang} className="doc doc-brand">
-      <DocHeader title={m.title} meta={m.meta} sellerName={sellerName} logoDataUrl={m.logoDataUrl} />
+      <DocHeader title={m.title} meta={m.meta} sellerName={sellerName} logoDataUrl={m.logoDataUrl} contact={m.contact} />
       <div className="doc-body">
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           {party(m.seller)}
@@ -76,15 +79,24 @@ export function SalesDocument({ model: m, lang, sellerName }: { model: ProformaP
           {m.vatNote && <p className="m-0 mt-3 text-xs text-ink-2">{m.vatNote}</p>}
         </section>
 
-        {m.bank.heading && (
-          <section className="doc-section">
-            <h2 className="doc-label">{m.bank.heading}</h2>
-            {m.bank.lines.map((line, i) => <div key={i} className="break-words">{line}</div>)}
-          </section>
-        )}
         {m.notes && <p className="m-0 whitespace-pre-line">{m.notes}</p>}
+
+        {(m.bank.heading || m.footer) && (
+          <div className="doc-end">
+            {m.bank.heading && (
+              <section>
+                <h2 className="doc-label">{m.bank.heading}</h2>
+                {m.bank.lines.map((line, i) => <div key={i} className="break-words">{line}</div>)}
+              </section>
+            )}
+            {m.footer && <p className="m-0 text-sm text-ink-2">{m.footer}</p>}
+          </div>
+        )}
+        {m.sign && <div className="doc-sign">{m.sign.map((text) => <div key={text}>{text}</div>)}</div>}
       </div>
-      {m.footer && <footer className="doc-foot">{m.footer}</footer>}
+      {m.base && (
+        <footer className="doc-foot doc-strip"><span>{m.base}</span><span>nutrikal.com</span></footer>
+      )}
     </article>
   );
 }

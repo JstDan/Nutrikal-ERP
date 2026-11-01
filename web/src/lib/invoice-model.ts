@@ -1,5 +1,6 @@
 // The document of an invoice or note, the same for the team and in the customer panel.
 import { fmt, formatDate, formatNumber, formatPrice, getDict } from "@/lib/i18n";
+import { docChrome } from "@/lib/doc-chrome";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 
 type Party = Record<string, string | boolean | null>;
@@ -91,7 +92,9 @@ export function invoiceModel(x: InvoiceDoc, lines: InvoiceDocLine[], logo: strin
             fmt(D.paidOn, { date: formatDate(l, x.tax_point_date) })],
     },
     notes: isNote ? [fmt(NT.reasonDoc, { reason: x.reason ?? "" }), x.notes].filter(Boolean).join("\n") : x.notes,
-    footer: asProforma ? P.note : "",
+    footer: asProforma ? P.note : isNote ? "" : D.thanks,
+    ...docChrome(doc, { name: str(s.name), companyId: str(s.company_id), address: str(s.address), email: str(s.email), phone: str(s.phone) }),
+    sign: asProforma ? undefined : [`${D.madeBy}: ${str(s.name)}`, `${D.receivedBy}: ...........................`],
     logoDataUrl: logo,
   };
   return model;

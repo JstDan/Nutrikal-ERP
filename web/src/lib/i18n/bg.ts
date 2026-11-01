@@ -1283,6 +1283,10 @@ export const bg: Dict = {
     toOrder: "Към поръчката",
     clientLanguage: "Фактурата е на езика на клиента.",
     doc: {
+      thanks: "Благодарим ви, че избрахте Nutrikal. Радваме се да работим с вас и да изграждаме марката ви заедно.",
+      madeBy: "Съставил",
+      receivedBy: "Получил",
+      page: "Страница {i} от {n}",
       title: "Фактура",
       fileName: "Faktura",
       original: "Оригинал",

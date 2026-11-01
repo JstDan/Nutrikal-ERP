@@ -1281,6 +1281,10 @@ export const en = {
     toOrder: "To the order",
     clientLanguage: "The invoice is in the client's language.",
     doc: {
+      thanks: "Thank you for choosing Nutrikal. We are glad to work with you and build your brand together.",
+      madeBy: "Prepared by",
+      receivedBy: "Received by",
+      page: "Page {i} of {n}",
       title: "Invoice",
       fileName: "Invoice",
       original: "Original",

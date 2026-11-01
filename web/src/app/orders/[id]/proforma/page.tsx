@@ -1,3 +1,4 @@
+import { docChrome } from "@/lib/doc-chrome";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
@@ -130,6 +131,7 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
     },
     notes: o.notes,
     footer: final ? P.finalNote : P.note,
+    ...docChrome(getDict(l), { name: s?.company_name ?? "", companyId: s?.company_id ?? "", address: s?.company_address ?? "", email: s?.company_email ?? "", phone: s?.company_phone ?? "" }),
     logoDataUrl: s?.logo_data_url ?? null,
   };
 
