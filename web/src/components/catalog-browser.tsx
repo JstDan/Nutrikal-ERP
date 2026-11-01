@@ -138,7 +138,6 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
   const catName = (c: { name: string; name_bg: string | null }) => categories[c.name] ?? local(c.name, c.name_bg);
   const [term, setTerm] = useState("");
   const [category, setCategory] = useState("");
-  const [format, setFormat] = useState("");
   const chosen = data.categories.find((c) => c.id === category);
   const [basket, setBasket] = useState<Basket>({});
   const [loaded, setLoaded] = useState(false);
@@ -149,7 +148,6 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState<string | null>(null);
-  const [searching, setSearching] = useState(false);
   const started = useRef(0);
   const productsTop = useRef<HTMLElement>(null);
   const chatId = useRef<string | null>(null);
@@ -182,16 +180,15 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const shownFormats = useMemo(() => [...new Set(data.products.map((p) => p.format).filter((f): f is string => !!f))], [data.products]);
   const countries = useMemo(() => {
     const names = new Intl.DisplayNames([locale], { type: "region" });
     return COUNTRIES.map((c) => ({ code: c, name: names.of(c) ?? c })).sort((a, b) => a.name.localeCompare(b.name, locale));
   }, [locale]);
   const find = term.trim().toLowerCase();
   const shown = data.products.filter((p) =>
-    (!category || inCategory(p, category)) && (!format || p.format === format)
+    (!category || inCategory(p, category))
     && (!find || [p.code, p.name, p.name_en, p.name_bg, p.description, p.description_bg, ...p.ingredients.flatMap((i) => [i.name, i.name_bg])].some((x) => x?.toLowerCase().includes(find))));
-  const overview = !category && !format && !find;
+  const overview = !category && !find;
   const lines = data.products.filter((p) => basket[p.code]);
   const allValid = lines.every((p) => basket[p.code] >= p.min_qty);
   const total = lines.reduce((sum, p) => sum + (priceAt(p, basket[p.code]) ?? 0) * basket[p.code], 0);
@@ -299,39 +296,21 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
                 {languages.map((l) => <option key={l.code} value={l.code} lang={l.code}>{l.label}</option>)}
               </select>
             </label>
-            <button type="button" aria-label={T.search} title={T.search} aria-expanded={searching} onClick={() => { setSearching((x) => !x); setTerm(""); }} className="grid h-11 w-11 shrink-0 place-items-center text-ink">
-              {searching ? <span aria-hidden="true" className="text-xl leading-none">×</span> : (
-                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-              )}
-            </button>
             <button type="button" onClick={openBasket} className="btn btn-primary !px-3 sm:!px-5">{fmt(T.basketCount, { n: lines.length })}</button>
           </div>
         </div>
-        {searching && (
-          <div className="mx-auto max-w-[1200px] px-4 pb-2.5">
-            <label htmlFor="catalog-search" className="sr-only">{T.search}</label>
-            <input id="catalog-search" type="search" autoFocus value={term} placeholder={T.search} className="input w-full min-w-0"
-              onChange={(e) => { setTerm(e.target.value); productsTop.current?.scrollIntoView({ block: "start" }); }}
-              onKeyDown={(e) => { if (e.key === "Escape") { setSearching(false); setTerm(""); } }} />
-          </div>
-        )}
       </header>
 
       <main ref={productsTop} id="products" className="mx-auto flex max-w-[1200px] scroll-mt-16 flex-col gap-5 px-4 py-8">
-        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="flex max-w-[720px] min-w-0 flex-col gap-1">
-            <h1 className="m-0 text-3xl font-bold sm:text-4xl">{T.title}</h1>
-            <p className="m-0 text-ink-2">{T.intro}</p>
-          </div>
-          <label className="min-w-0 shrink-0 md:w-48">
-            <span className="sr-only">{T.formats}</span>
-            <select value={format} onChange={(e) => setFormat(e.target.value)} className="input w-full min-w-0">
-              <option value="">{T.allFormats}</option>
-              {shownFormats.map((f) => <option key={f} value={f}>{formats[f as "capsule"]}</option>)}
-            </select>
-          </label>
+        <div className="mx-auto flex w-full max-w-[720px] min-w-0 flex-col gap-1 text-center">
+          <h1 className="m-0 text-3xl font-bold sm:text-4xl">{T.title}</h1>
+          <p className="m-0 text-ink-2">{T.intro}</p>
         </div>
         <div className="flex min-w-0 flex-col gap-3">
+          <div className="mx-auto w-full max-w-[560px] min-w-0">
+            <label htmlFor="catalog-search" className="sr-only">{T.search}</label>
+            <input id="catalog-search" type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={T.search} className="input w-full min-w-0" />
+          </div>
           <label className="min-w-0 md:hidden">
             <span className="sr-only">{T.categories}</span>
             <select value={category} onChange={(e) => setCategory(e.target.value)} className="input w-full min-w-0">
@@ -339,7 +318,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
               {data.categories.map((c) => <option key={c.id} value={c.id}>{catName(c)}</option>)}
             </select>
           </label>
-          <div role="group" aria-label={T.categories} className="hide-sm flex flex-wrap gap-2">
+          <div role="group" aria-label={T.categories} className="hide-sm flex flex-wrap justify-center gap-2">
             <button type="button" aria-pressed={!category} onClick={() => setCategory("")} className={chip(!category)}>{T.all}</button>
             {data.categories.map((c) => <button key={c.id} type="button" aria-pressed={category === c.id} aria-label={catName(c)} title={catName(c)} onClick={() => setCategory(c.id)} className={chip(category === c.id)}>{short[c.name] ?? catName(c)}</button>)}
           </div>
