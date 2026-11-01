@@ -3078,6 +3078,33 @@ await ok('a change of status waits for the e-mail, only for an account of that c
   eq((await db.query('select * from client_status_jobs()')).rows.length, 0, 'sent once');
 });
 await fails('nobody signed in runs the mail job', () => as('admin', 'select * from client_status_jobs()'), 'permission');
+await ok('what is still to pay on an order follows its payments, with VAT', async () => {
+  await db.exec('reset role');
+  const order = (await db.query(`insert into sales_orders (code, client_id, status, currency, vat_pct, deposit_pct) values ('PORT-P', $1, 'draft', 'EUR', 20, 60) returning id`, [coA])).rows[0].id;
+  await db.query(`insert into sales_order_lines (order_id, kind, description, quantity, unit_price) values ($1, 'service', 'Партида', 1, 1000)`, [order]);
+  await db.query(`alter table sales_orders disable trigger user`);
+  const set = (sql) => db.query(`update sales_orders set ${sql} where id = $1`, [order]);
+  await set(`status = 'confirmed'`);
+  const due = async () => { await db.exec('reset role'); return Number((await as('clientA', 'select due from portal_orders() where code = $1', ['PORT-P']))[0].due); };
+  eq(await due(), 1200, 'nothing paid');
+  await set(`deposit_received_on = current_date`);
+  eq(await due(), 480, 'deposit paid');
+  await set(`balance_received_on = current_date`);
+  eq(await due(), 0, 'all paid');
+  await set(`status = 'cancelled', balance_received_on = null, deposit_received_on = null`);
+  eq(await due(), 0, 'cancelled');
+  await db.exec('reset role');
+  await db.query(`alter table sales_orders enable trigger user`);
+});
+await ok('a client reads only its own amounts', async () => {
+  eq((await as('clientB', `select 1 from portal_orders() where code = 'PORT-P'`)).length, 0, 'other client');
+});
+await ok('a client cannot call the helpers of the amounts', async () => {
+  let refused = false;
+  try { await as('clientA', 'select portal_order_due($1)', [ordA]); } catch { refused = true; }
+  eq(refused, true, 'refused');
+});
+
 await ok('a client sees nothing of the queue or the threads directly', async () => {
   eq((await as('clientA', 'select 1 from client_threads')).length, 0, 'threads');
   eq((await as('clientA', 'select 1 from client_status_mail')).length, 0, 'queue');

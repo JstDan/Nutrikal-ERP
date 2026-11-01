@@ -18,7 +18,7 @@ const de: PortalText = {
   welcome: "Willkommen, {name}",
   lead: "Alles zu Ihren Bestellungen an einem Ort.",
   language: "Sprache",
-  tiles: { orders: "Aktive Bestellungen", balance: "Offener Betrag", documents: "Dokumente", messages: "Neue Nachrichten" },
+  tiles: { orders: "Aktive Bestellungen", balance: "Offener Betrag", documents: "Dokumente", messages: "Neue Nachrichten", onOrders: "{amount} offen aus Bestellungen" },
   trust: { gmp: "GMP- und HACCP-zertifizierte Produktion", trace: "Jede Charge rückverfolgbar", team: "Ein echtes Team hinter Ihrer Marke" },
   next: {
     title: "Wie es weitergeht",
@@ -32,6 +32,7 @@ const de: PortalText = {
   nav: { home: "Übersicht", orders: "Bestellungen", documents: "Dokumente", invoices: "Rechnungen", support: "Support", account: "Konto" },
   home: { openBalance: "Offener Betrag", viewAll: "Alle ansehen", activeOrders: "Aktive Bestellungen", noOrders: "Noch keine Bestellungen.", unread: "{n} neu", recentDocuments: "Neueste Dokumente" },
   order: {
+    due: "Noch zu zahlen (inkl. MwSt.)",
     proforma: "Proforma-Rechnung", finalProforma: "Endgültige Proforma-Rechnung", deliveryNote: "Lieferschein",
     ref: "Ihre Referenz: {ref}", value: "Bestellwert (ohne MwSt.)", requested: "Wunschtermin", progress: "Fortschritt", products: "Produkte",
     batches: "Chargen", units: "Stück", produced: "Hergestellt", expires: "Mindestens haltbar bis", coa: "Analysenzertifikat", released: "Freigegeben", inReview: "In der Qualitätsprüfung",
@@ -67,7 +68,7 @@ const fr: PortalText = {
   welcome: "Bienvenue, {name}",
   lead: "Tout sur vos commandes, au même endroit.",
   language: "Langue",
-  tiles: { orders: "Commandes en cours", balance: "Montant dû", documents: "Documents", messages: "Nouveaux messages" },
+  tiles: { orders: "Commandes en cours", balance: "Montant dû", documents: "Documents", messages: "Nouveaux messages", onOrders: "{amount} à payer sur commandes" },
   trust: { gmp: "Site de production certifié GMP et HACCP", trace: "Chaque lot est traçable", team: "Une vraie équipe derrière votre marque" },
   next: {
     title: "La suite",
@@ -81,6 +82,7 @@ const fr: PortalText = {
   nav: { home: "Aperçu", orders: "Commandes", documents: "Documents", invoices: "Factures", support: "Assistance", account: "Compte" },
   home: { openBalance: "Montant dû", viewAll: "Tout voir", activeOrders: "Commandes en cours", noOrders: "Aucune commande pour le moment.", unread: "{n} nouveau(x)", recentDocuments: "Derniers documents" },
   order: {
+    due: "Reste à payer (TTC)",
     proforma: "Facture proforma", finalProforma: "Facture proforma finale", deliveryNote: "Bon de livraison",
     ref: "Votre référence : {ref}", value: "Valeur de la commande (HT)", requested: "Date souhaitée", progress: "Avancement", products: "Produits",
     batches: "Lots", units: "unités", produced: "Fabriqué le", expires: "À consommer de préférence avant", coa: "Certificat d'analyse", released: "Libéré", inReview: "En contrôle qualité",
@@ -116,7 +118,7 @@ const it: PortalText = {
   welcome: "Benvenuto, {name}",
   lead: "Tutto sui tuoi ordini, in un unico posto.",
   language: "Lingua",
-  tiles: { orders: "Ordini attivi", balance: "Importo da pagare", documents: "Documenti", messages: "Nuovi messaggi" },
+  tiles: { orders: "Ordini attivi", balance: "Importo da pagare", documents: "Documenti", messages: "Nuovi messaggi", onOrders: "{amount} da pagare sugli ordini" },
   trust: { gmp: "Stabilimento certificato GMP e HACCP", trace: "Ogni lotto è tracciabile", team: "Un vero team dietro il tuo marchio" },
   next: {
     title: "Cosa succede ora",
@@ -130,6 +132,7 @@ const it: PortalText = {
   nav: { home: "Panoramica", orders: "Ordini", documents: "Documenti", invoices: "Fatture", support: "Assistenza", account: "Account" },
   home: { openBalance: "Importo da pagare", viewAll: "Vedi tutti", activeOrders: "Ordini attivi", noOrders: "Ancora nessun ordine.", unread: "{n} nuovi", recentDocuments: "Ultimi documenti" },
   order: {
+    due: "Ancora da pagare (IVA inclusa)",
     proforma: "Fattura proforma", finalProforma: "Fattura proforma finale", deliveryNote: "Documento di trasporto",
     ref: "Il tuo riferimento: {ref}", value: "Valore dell'ordine (IVA esclusa)", requested: "Data richiesta", progress: "Avanzamento", products: "Prodotti",
     batches: "Lotti", units: "pezzi", produced: "Prodotto il", expires: "Da consumarsi preferibilmente entro", coa: "Certificato di analisi", released: "Rilasciato", inReview: "In controllo qualità",
@@ -165,7 +168,7 @@ const ro: PortalText = {
   welcome: "Bun venit, {name}",
   lead: "Totul despre comenzile dvs., într-un singur loc.",
   language: "Limbă",
-  tiles: { orders: "Comenzi active", balance: "Sumă de plată", documents: "Documente", messages: "Mesaje noi" },
+  tiles: { orders: "Comenzi active", balance: "Sumă de plată", documents: "Documente", messages: "Mesaje noi", onOrders: "{amount} de plată pe comenzi" },
   trust: { gmp: "Unitate de producție certificată GMP și HACCP", trace: "Fiecare lot este trasabil", team: "O echipă reală în spatele mărcii dvs." },
   next: {
     title: "Ce urmează",
@@ -179,6 +182,7 @@ const ro: PortalText = {
   nav: { home: "Prezentare", orders: "Comenzi", documents: "Documente", invoices: "Facturi", support: "Asistență", account: "Cont" },
   home: { openBalance: "Sumă de plată", viewAll: "Vezi tot", activeOrders: "Comenzi active", noOrders: "Încă nu există comenzi.", unread: "{n} noi", recentDocuments: "Ultimele documente" },
   order: {
+    due: "Rămas de plată (cu TVA)",
     proforma: "Factură proformă", finalProforma: "Factură proformă finală", deliveryNote: "Aviz de livrare",
     ref: "Referința dvs.: {ref}", value: "Valoarea comenzii (fără TVA)", requested: "Data solicitată", progress: "Progres", products: "Produse",
     batches: "Loturi", units: "buc.", produced: "Produs la", expires: "A se consuma de preferință înainte de", coa: "Certificat de analiză", released: "Eliberat", inReview: "În controlul calității",
@@ -214,7 +218,7 @@ const el: PortalText = {
   welcome: "Καλώς ήρθατε, {name}",
   lead: "Όλα για τις παραγγελίες σας, σε ένα σημείο.",
   language: "Γλώσσα",
-  tiles: { orders: "Ενεργές παραγγελίες", balance: "Ποσό προς πληρωμή", documents: "Έγγραφα", messages: "Νέα μηνύματα" },
+  tiles: { orders: "Ενεργές παραγγελίες", balance: "Ποσό προς πληρωμή", documents: "Έγγραφα", messages: "Νέα μηνύματα", onOrders: "{amount} προς πληρωμή σε παραγγελίες" },
   trust: { gmp: "Μονάδα παραγωγής με πιστοποίηση GMP και HACCP", trace: "Κάθε παρτίδα είναι ιχνηλάσιμη", team: "Μια πραγματική ομάδα πίσω από το brand σας" },
   next: {
     title: "Τι ακολουθεί",
@@ -228,6 +232,7 @@ const el: PortalText = {
   nav: { home: "Επισκόπηση", orders: "Παραγγελίες", documents: "Έγγραφα", invoices: "Τιμολόγια", support: "Υποστήριξη", account: "Λογαριασμός" },
   home: { openBalance: "Ποσό προς πληρωμή", viewAll: "Προβολή όλων", activeOrders: "Ενεργές παραγγελίες", noOrders: "Δεν υπάρχουν ακόμη παραγγελίες.", unread: "{n} νέα", recentDocuments: "Τελευταία έγγραφα" },
   order: {
+    due: "Υπόλοιπο πληρωμής (με ΦΠΑ)",
     proforma: "Προτιμολόγιο", finalProforma: "Τελικό προτιμολόγιο", deliveryNote: "Δελτίο αποστολής",
     ref: "Η αναφορά σας: {ref}", value: "Αξία παραγγελίας (χωρίς ΦΠΑ)", requested: "Επιθυμητή ημερομηνία", progress: "Πρόοδος", products: "Προϊόντα",
     batches: "Παρτίδες", units: "τεμ.", produced: "Παραγωγή", expires: "Ανάλωση κατά προτίμηση πριν από", coa: "Πιστοποιητικό ανάλυσης", released: "Εγκρίθηκε", inReview: "Σε έλεγχο ποιότητας",

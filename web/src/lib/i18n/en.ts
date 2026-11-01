@@ -2601,7 +2601,7 @@ export const en = {
     welcome: "Welcome, {name}",
     lead: "Everything about your orders in one place.",
     language: "Language",
-    tiles: { orders: "Active orders", balance: "Open balance", documents: "Documents", messages: "New messages" },
+    tiles: { orders: "Active orders", balance: "Open balance", documents: "Documents", messages: "New messages", onOrders: "{amount} due on orders" },
     trust: { gmp: "GMP and HACCP certified facility", trace: "Every batch traceable", team: "A real team behind your brand" },
     next: {
       title: "What happens next",
@@ -2617,6 +2617,7 @@ export const en = {
     order: {
       ref: "Your reference: {ref}", value: "Order value (excl. VAT)", requested: "Requested date", progress: "Progress", products: "Products",
       batches: "Batches", units: "units", produced: "Produced", expires: "Best before", coa: "Certificate of analysis", released: "Released", inReview: "In quality review",
+      due: "Still to pay (incl. VAT)",
       proforma: "Proforma invoice", finalProforma: "Final proforma invoice", deliveryNote: "Delivery note",
       shipments: "Shipments", tracking: "Tracking", noTracking: "No tracking number yet", documents: "Documents", invoices: "Invoices", messages: "Messages about this order",
     },

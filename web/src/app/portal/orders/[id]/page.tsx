@@ -73,6 +73,7 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
           </div>
         ))}
         <p className="m-0 flex justify-between gap-3 pt-2 text-base font-bold"><span>{O.value}</span><span className="text-right">{money(o.value)}</span></p>
+        {Number(o.due) > 0 && <p className="m-0 flex justify-between gap-3 text-sm"><span>{O.due}</span><span className="text-right font-semibold">{money(Number(o.due))}</span></p>}
         {o.requested_date && <p className="m-0 text-xs text-ink-2">{O.requested}: {date(o.requested_date)}</p>}
       </Panel>
 

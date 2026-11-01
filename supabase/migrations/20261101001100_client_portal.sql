@@ -70,6 +70,20 @@ as $$
          + coalesce((select so.transport_amount from public.sales_orders so where so.id = p_order), 0)
 $$;
 
+-- Still to pay on an order, VAT included. Invoices of orders are issued after the payment, so this is what a client owes on them.
+create or replace function public.portal_order_due(p_order uuid)
+returns numeric
+language sql stable security definer set search_path = public
+as $$
+  select case when so.status in ('draft', 'cancelled') or so.balance_received_on is not null then 0
+              when so.deposit_received_on is null then x.gross
+              when not public.order_paid_in_two(so.id) then 0
+              else greatest(x.gross - coalesce(so.deposit_amount, round(x.gross * so.deposit_pct / 100, 2)), 0) end
+    from public.sales_orders so,
+         lateral (select round(public.portal_order_value(so.id) * (1 + coalesce(so.vat_pct, 0) / 100), 2) as gross) x
+   where so.id = p_order
+$$;
+
 create or replace function public.portal_invoice_open(p_invoice uuid)
 returns numeric
 language sql stable security definer set search_path = public
@@ -81,7 +95,7 @@ as $$
          - coalesce((select sum(p.amount) from public.invoice_payments p where p.invoice_id = i.id), 0) end
     from public.invoices i where i.id = p_invoice
 $$;
-revoke execute on function public.portal_order_value(uuid), public.portal_invoice_open(uuid) from public, anon, authenticated;
+revoke execute on function public.portal_order_value(uuid), public.portal_order_due(uuid), public.portal_invoice_open(uuid) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------- reading
 create or replace function public.portal_me()
@@ -95,11 +109,11 @@ $$;
 
 create or replace function public.portal_orders()
 returns table (id uuid, code text, status text, customer_ref text, requested_date date, created_at timestamptz,
-               dispatched_at timestamptz, currency text, value numeric, products integer, unread integer)
+               dispatched_at timestamptz, currency text, value numeric, due numeric, products integer, unread integer)
 language sql stable security definer set search_path = public
 as $$
   select so.id, so.code, so.status::text, so.customer_ref, so.requested_date, so.created_at, so.dispatched_at, so.currency::text,
-         public.portal_order_value(so.id),
+         public.portal_order_value(so.id), public.portal_order_due(so.id),
          (select count(*)::int from public.sales_order_lines l where l.order_id = so.id and l.kind <> 'service'),
          (select count(*)::int from public.client_messages m where m.order_id = so.id and not m.from_client and m.read_at is null)
     from public.sales_orders so
@@ -113,7 +127,7 @@ language sql stable security definer set search_path = public
 as $$
   select jsonb_build_object(
     'id', so.id, 'code', so.code, 'status', so.status, 'customer_ref', so.customer_ref, 'requested_date', so.requested_date,
-    'currency', so.currency, 'value', public.portal_order_value(so.id), 'deposit_pct', so.deposit_pct,
+    'currency', so.currency, 'value', public.portal_order_value(so.id), 'due', public.portal_order_due(so.id), 'deposit_pct', so.deposit_pct,
     'confirmed_at', so.confirmed_at, 'deposit_received_on', so.deposit_received_on, 'balance_received_on', so.balance_received_on,
     'dispatched_at', so.dispatched_at,
     'production_started_at', (select min(coalesce(m.started_at, m.released_at)) from public.manufacturing_orders m join public.sales_order_lines l on l.id = m.sales_order_line_id where l.order_id = so.id and m.status in ('in_production', 'completed')),

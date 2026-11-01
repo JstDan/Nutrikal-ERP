@@ -2603,7 +2603,7 @@ export const bg: Dict = {
     welcome: "Добре дошли, {name}",
     lead: "Всичко за поръчките ви на едно място.",
     language: "Език",
-    tiles: { orders: "Активни поръчки", balance: "Неплатена сума", documents: "Документи", messages: "Нови съобщения" },
+    tiles: { orders: "Активни поръчки", balance: "Неплатена сума", documents: "Документи", messages: "Нови съобщения", onOrders: "{amount} за плащане по поръчки" },
     trust: { gmp: "Производство със сертификати GMP и HACCP", trace: "Всяка партида е проследима", team: "Истински екип зад вашата марка" },
     next: {
       title: "Какво следва",
@@ -2619,6 +2619,7 @@ export const bg: Dict = {
     order: {
       ref: "Ваш номер: {ref}", value: "Стойност на поръчката (без ДДС)", requested: "Желана дата", progress: "Напредък", products: "Продукти",
       batches: "Партиди", units: "бр.", produced: "Произведена", expires: "Годна до", coa: "Сертификат за анализ", released: "Освободена", inReview: "В проверка за качество",
+      due: "Остава за плащане (с ДДС)",
       proforma: "Проформа фактура", finalProforma: "Финална проформа фактура", deliveryNote: "Стокова разписка",
       shipments: "Пратки", tracking: "Проследяване", noTracking: "Още няма номер за проследяване", documents: "Документи", invoices: "Фактури", messages: "Съобщения за тази поръчка",
     },

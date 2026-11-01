@@ -19,9 +19,13 @@ export default async function PortalHome() {
   for (const i of invoices) if (Number(i.open_amount ?? 0) > 0) due.set(i.currency, (due.get(i.currency) ?? 0) + Number(i.open_amount));
   const balance = [...due].map(([currency, amount]) => formatPrice(locale, amount, currency)).join(" · ") || formatPrice(locale, 0, orders[0]?.currency ?? "EUR");
 
-  const tiles: { href: string; label: string; value: string | number }[] = [
+  const onOrders = new Map<string, number>();
+  for (const o of orders) if (Number(o.due) > 0) onOrders.set(o.currency, (onOrders.get(o.currency) ?? 0) + Number(o.due));
+  const dueText = [...onOrders].map(([currency, amount]) => formatPrice(locale, amount, currency)).join(" · ");
+
+  const tiles: { href: string; label: string; value: string | number; note?: string }[] = [
     { href: "/portal/orders", label: P.tiles.orders, value: active.length },
-    { href: "/portal/invoices", label: P.tiles.balance, value: balance },
+    { href: "/portal/invoices", label: P.tiles.balance, value: balance, note: dueText ? fmt(P.tiles.onOrders, { amount: dueText }) : undefined },
     { href: "/portal/documents", label: P.tiles.documents, value: documents.length },
     { href: "/portal/support", label: P.tiles.messages, value: await unread() },
   ];
@@ -38,6 +42,7 @@ export default async function PortalHome() {
           <Link key={x.href} href={x.href} style={{ animationDelay: `${(i + 1) * 60}ms` }} className="p-tile p-in">
             <span className="text-xs text-ink-2">{x.label}</span>
             <span className="text-xl font-bold break-words">{x.value}</span>
+            {x.note && <span className="text-xs text-ink-2">{x.note}</span>}
           </Link>
         ))}
       </div>
