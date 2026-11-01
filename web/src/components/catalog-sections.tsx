@@ -66,7 +66,7 @@ export function CatalogOptions({ text, ingredients }: { text: Dict["publicCatalo
             {T.packaging.map((p) => (
               <article key={p.img} className="flex min-w-0 flex-col gap-2 rounded-lg border border-line bg-paper p-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`${SITE}/${p.img}.webp`} alt={p.title} loading="lazy" width={800} height={600} className="aspect-[4/3] w-full rounded-md object-cover" />
+                <img src={`${SITE}/${p.img}.webp`} alt={p.title} loading="lazy" width={1280} height={853} className="aspect-[3/2] w-full rounded-md object-cover" />
                 <h3 className="m-0 text-sm font-bold">{p.title}</h3>
                 <p className="m-0 text-sm text-ink-2">{p.text}</p>
               </article>
