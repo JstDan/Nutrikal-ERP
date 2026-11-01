@@ -290,9 +290,11 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
             <a href="#contact" className="text-ink no-underline">{T.navContact}</a>
           </nav>
           <div className="flex shrink-0 items-center gap-1">
-            <label>
+            <label className="relative flex h-11 items-center">
               <span className="sr-only">{T.language}</span>
-              <select value={locale} onChange={(e) => { location.search = `?lang=${e.target.value}`; }} className="h-11 max-w-[104px] border-0 bg-transparent text-xs font-semibold text-ink uppercase">
+              {/* A select is as wide as its longest option; this hidden copy makes it as wide as the chosen one */}
+              <span aria-hidden="true" className="invisible pr-5 pl-1 text-xs font-semibold whitespace-nowrap uppercase">{languages.find((l) => l.code === locale)?.label}</span>
+              <select value={locale} onChange={(e) => { location.search = `?lang=${e.target.value}`; }} className="absolute inset-0 h-11 w-full min-w-0 border-0 bg-transparent text-xs font-semibold text-ink uppercase">
                 {languages.map((l) => <option key={l.code} value={l.code} lang={l.code}>{l.label}</option>)}
               </select>
             </label>

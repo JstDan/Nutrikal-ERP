@@ -154,8 +154,8 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
             </div>
           )}
           <button type="button" onClick={() => { hideTeaser(); setOpen(true); }}
-            className="nutri-capsule pointer-events-auto flex min-h-14 max-w-full min-w-0 items-center gap-3 rounded-full py-2 pr-8 pl-2 text-left text-base font-semibold transition-transform hover:scale-105">
-            <Avatar size={40} /><span className="min-w-0">{lines.length ? T.chatContinue : T.chatAsk}</span>
+            className="nutri-capsule pointer-events-auto flex min-h-11 max-w-full min-w-0 items-center gap-2 rounded-full py-1 pr-5 pl-1.5 text-left text-sm font-semibold transition-transform hover:scale-105">
+            <Avatar size={30} /><span className="min-w-0">{lines.length ? T.chatContinue : T.chatAsk}</span>
           </button>
         </div>
       )}
