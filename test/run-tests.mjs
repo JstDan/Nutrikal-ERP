@@ -3110,6 +3110,28 @@ await ok('a client sees nothing of the queue or the threads directly', async () 
   eq((await as('clientA', 'select 1 from client_status_mail')).length, 0, 'queue');
 });
 
+console.log('\nScrap and losses');
+await ok('material above plan is counted by reason', async () => {
+  await db.exec('reset role');
+  const item = (await db.query(`select id from items where is_active limit 1`)).rows[0].id;
+  const fv = (await db.query(`select id from formula_versions limit 1`)).rows[0].id;
+  await db.query(`alter table manufacturing_orders disable trigger user`);
+  const mk = async (code, reason, used) => {
+    const id = (await db.query(`insert into manufacturing_orders (code, formula_version_id, quantity, status, produced_on) values ($1, $2, 10, 'completed', current_date) returning id`, [code, fv])).rows[0].id;
+    await db.query(`insert into mo_material_usage (mo_id, item_id, reserved, used, reason) values ($1, $2, 10, $3, $4)`, [id, item, used, reason]);
+  };
+  await mk('MO-L1', 'scrap', 12); await mk('MO-L2', 'scrap', 11); await mk('MO-L3', 'Счупена машина', 13); await mk('MO-L4', null, 10);
+  await db.query(`alter table manufacturing_orders enable trigger user`);
+  const r = await as('admin', `select reason, batches, quantity from mo_loss_report(current_date - 1, current_date)`);
+  const scrap = r.find((x) => x.reason === 'scrap');
+  eq(scrap.batches, 2, 'scrap batches'); eq(Number(scrap.quantity), 3, 'scrap qty');
+  eq(Number(r.find((x) => x.reason === 'other').quantity), 3, 'free text is other');
+  eq(r.length, 2, 'nothing above plan stays out');
+});
+await fails('Sales has no loss report', () => as('sales', 'select * from mo_loss_report(current_date, current_date)'), '');
+await fails('the partner has no loss report', () => as('production', 'select * from mo_loss_report(current_date, current_date)'), '');
+await fails('a client has no loss report', () => as('clientA', 'select * from mo_loss_report(current_date, current_date)'), '');
+
 console.log('\nProduction calendar');
 await db.exec('reset role');
 await db.query(`alter table sales_orders disable trigger user`);

@@ -208,7 +208,7 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
                   <div className="min-w-0">
                     <div className="font-semibold break-words">{nm(u)}</div>
                     <div className="text-xs text-ink-2">{u.sku}</div>
-                    {u.reason && <div className="text-xs break-words text-ink-2 xl:hidden">{u.reason}</div>}
+                    {u.reason && <div className="text-xs break-words text-ink-2 xl:hidden">{t.factory.order.reasons[u.reason as "scrap"] ?? u.reason}</div>}
                   </div>
                   <span className="hide-sm">{formatQty(locale, u.reserved, u.base_unit)}</span>
                   <span className="hide-sm">{formatQty(locale, u.used, u.base_unit)}</span>
@@ -217,7 +217,7 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
                       {Number(u.diff) > 0 ? "+" : ""}{formatQty(locale, u.diff, u.base_unit)}{u.diff_pct != null ? ` · ${Number(u.diff_pct) > 0 ? "+" : ""}${formatNumber(locale, u.diff_pct, 1)} %` : ""}
                     </Chip>
                   </span>
-                  <span className="hidden min-w-0 break-words xl:block">{u.reason ?? "—"}</span>
+                  <span className="hidden min-w-0 break-words xl:block">{(u.reason && t.factory.order.reasons[u.reason as "scrap"]) ?? u.reason ?? "—"}</span>
                   <span className="hide-sm text-right font-semibold">{u.diff_value != null ? formatPrice(locale, u.diff_value) : "—"}</span>
                 </div>
               ))}

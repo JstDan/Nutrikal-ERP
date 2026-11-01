@@ -66,7 +66,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
             { href: "/formulas", label: t.nav.formulas },
             { href: "/deliveries", label: t.nav.deliveries },
             { href: "/production", label: t.nav.production },
-            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/production/calendar", label: t.calendar.title }] : []),
+            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/production/calendar", label: t.calendar.short }] : []),
             ...(user.role === "admin" ? [{ href: "/quality", label: t.nav.qualityTrace, also: ["/traceability"] }] : []),
             ...(user.role === "sales" ? [{ href: "/traceability", label: t.nav.traceability }] : []),
           ],
@@ -79,6 +79,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
               title: t.nav.reports,
               items: [
                 { href: "/admin", label: t.nav.adminDashboard },
+                { href: "/admin/losses", label: t.losses.nav },
                 { href: "/accounting", label: t.nav.accounting },
                 { href: "/settings", label: t.nav.settings, also: ["/history"] },
               ],

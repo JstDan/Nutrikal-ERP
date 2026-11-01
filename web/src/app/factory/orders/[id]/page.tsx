@@ -155,7 +155,7 @@ export default async function FactoryOrderPage({ params }: PageProps<"/factory/o
                         </label>
                       </div>
                     ))}
-                    <ReasonField name={`reason_${req.item_id}`} label={O.reason} choose={O.reasonChoose} other={O.reasonOther} otherLabel={O.reasonOtherLabel} options={O.reasons} />
+                    <ReasonField name={`reason_${req.item_id}`} label={O.reason} choose={O.reasonChoose} otherText={O.reasonOther} otherLabel={O.reasonOtherLabel} options={O.reasons} />
                   </fieldset>
                 ))}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -181,7 +181,7 @@ export default async function FactoryOrderPage({ params }: PageProps<"/factory/o
                   <div key={u.item_id} className="row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[minmax(0,1.2fr)_110px_110px_150px]">
                     <div className="min-w-0">
                       <div className="font-semibold break-words">{nm(u)}</div>
-                      {u.reason && <div className="text-xs break-words text-ink-2">{u.reason}</div>}
+                      {u.reason && <div className="text-xs break-words text-ink-2">{O.reasons[u.reason as "scrap"] ?? u.reason}</div>}
                     </div>
                     <span className="hide-sm">{formatQty(locale, u.reserved, u.base_unit)}</span>
                     <span className="hide-sm">{formatQty(locale, u.used, u.base_unit)}</span>

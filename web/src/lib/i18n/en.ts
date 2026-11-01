@@ -732,7 +732,7 @@ export const en = {
       noLots: "No usable lot at the facility.",
       reason: "Reason for the difference",
       reasonChoose: "Choose a reason",
-      reasons: ["Scrap", "Spilled material", "Machine setup", "Quality sample", "Weight difference"],
+      reasons: { scrap: "Scrap", spill: "Spilled material", setup: "Machine setup", sample: "Quality sample", weight: "Weight difference" },
       reasonOther: "Other",
       reasonOtherLabel: "Write the reason",
       batchNumber: "Your batch number",
@@ -2603,6 +2603,10 @@ export const en = {
     nextInvoice: "Next invoice number",
     nextInvoiceHint: "Shared by invoices, credit and debit notes. Change it only to continue from another tool.",
   },
+  losses: {
+    title: "Scrap and losses", subtitle: "Material used above plan in finished batches, valued at cost.", months: "Last {n} months", total: "Above plan: {value}",
+    byReason: "By reason", byProduct: "By product", details: "Details", batches: "{n} batches", empty: "No material above plan in this period.", none: "No reason given", nav: "Scrap and losses",
+  },
   calendar: {
     short: "Calendar",
     title: "Production calendar", subtitle: "What runs when. Dates the partner has not confirmed are marked.", factorySubtitle: "Your batches by date, by project code. Confirm each date or propose another.",
@@ -2670,6 +2674,7 @@ export const en = {
       statusBody: "Your order {code} is now: {status}.\n\n{next}\n\nFollow it in your customer panel: {url}",
       inbox: {
         title: "Client messages", note: "Conversations from the customer panel. What needs an answer comes first.", empty: "Nothing here.",
+        pick: "Choose a conversation.",
         general: "General", you: "You", nobody: "Nobody yet", status: "Status", assigned: "Responsible", save: "Save",
         filters: { open: "Open", waiting: "Waiting for the client", solved: "Solved", all: "All" },
         statuses: { open: "Open", waiting: "Waiting for the client", solved: "Solved" },
