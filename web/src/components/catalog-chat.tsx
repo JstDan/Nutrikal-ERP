@@ -8,7 +8,7 @@ const STORE = "nk_catalog_chat";
 const TEASER_STORE = "nk_catalog_teaser";
 const TEASER_MS = 5000;
 const WHATSAPP = "https://wa.me/359882919140";
-const AVATAR = "/catalog/site/nutri.webp";
+const AVATAR = "/catalog/site/nutri.svg";
 const KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 type Line = { role: "user" | "assistant"; text: string };
 
