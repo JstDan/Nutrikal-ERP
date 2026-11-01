@@ -307,7 +307,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
           <p className="m-0 text-ink-2">{T.intro}</p>
         </div>
         <div className="flex min-w-0 flex-col gap-3">
-          <div className="relative mx-auto mb-2 w-full max-w-[560px] min-w-0">
+          <div className="relative mx-auto mb-6 w-full max-w-[560px] min-w-0">
             <label htmlFor="catalog-search" className="sr-only">{T.search}</label>
             <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="pointer-events-none absolute top-1/2 left-5 -translate-y-1/2 text-ink-2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
             <input id="catalog-search" type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={T.search} className="cat-search" />
