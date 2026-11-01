@@ -30,7 +30,7 @@ export async function seedDemo(db: PGlite) {
     (await db.query<{ id: string }>("select id from public.locations where code = $1", [code])).rows[0].id;
 
   await as(ADMIN, `update company_settings set legal_name = 'Nutrikal', email = 'sales@nutrikal.com',
-                   default_deposit_pct = 50 where id`);
+                   default_deposit_pct = 60 where id`);
 
   // ---------------------------------------------------------------- CRM
   const acme = await one(SALES, `insert into clients (legal_name, status, country_code, vat_number, company_id, city, address_line1, postal_code,

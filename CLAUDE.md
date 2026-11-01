@@ -15,7 +15,7 @@ Talk to the owner in the language they write in (usually Bulgarian).
 - Partner invoices Nutrikal per batch (record against the batch for actual cost).
 - Client-supplied materials: not in v1.
 - Offers are costed per unit and priced by product format.
-- Payment terms: usually deposit + balance before dispatch; editable per client and per order.
+- Payment terms: by default 60% deposit + 40% before dispatch (owner, Nov 2026); editable per client and per order.
 - The ERP issues FINAL invoices. Invoice numbers: one 10-digit series shared by invoices, credit and debit notes; editable on a draft before issue with duplicate/gap warnings and audit log; locked after issue; corrections only via credit/debit notes. Design the invoice data to map to EN 16931 (Bulgaria plans mandatory structured e-invoicing from 2028).
 - Shelf life is tracked per raw material. Recipes have none (owner, Oct 2026): the expiry date of a finished batch is entered when it is reported.
 - Materials are released on receipt; finished batches need Admin release before dispatch; the COA is optional and can be attached later. Any lot can be blocked (owner, Oct 2026).

@@ -13,7 +13,7 @@ export const LEGACY_WASTE_PCT = '5';
 /** Earlier default payment terms – unsaved drafts that still carry one get the current default. */
 const OLD_DEFAULT_TERMS = [
   '100% advance payment',
-  '50% Down Payment and 50% Balance Payment when goods are ready to be shipped',
+  '60% Down Payment and 40% Balance Payment when goods are ready to be shipped',
 ];
 
 export function createEmptyForm(settings: Settings, offerNo: string): OfferForm {
