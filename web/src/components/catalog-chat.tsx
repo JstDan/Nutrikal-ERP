@@ -146,7 +146,7 @@ export function CatalogContactButton({ text, locale, ai, raised, hidden, quote, 
   return (
     <>
       {!open && (
-        <div className={`pointer-events-none fixed inset-x-0 z-40 flex flex-col items-center gap-2 px-4 lg:bottom-6 ${lift}`}>
+        <div className={`pointer-events-none fixed inset-x-0 z-40 flex flex-col items-end gap-2 px-4 lg:bottom-6 lg:px-6 ${lift}`}>
           {teaser && (
             <div className="chat-in pointer-events-auto flex max-w-full items-center gap-2 rounded-2xl border border-line bg-paper py-1 pr-1 pl-3 text-sm text-ink shadow-lg sm:max-w-[420px]">
               <button type="button" onClick={() => { hideTeaser(); setOpen(true); }} className="min-h-11 min-w-0 flex-1 text-left">{T.chatTeaser}</button>
