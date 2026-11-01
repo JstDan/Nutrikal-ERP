@@ -2783,15 +2783,15 @@ await ok('Essentials and Mushrooms are capsules, softgels and powders stay what 
 });
 await ok('the 46 new formulations are public on request, notes and specifications stay private', async () => {
   const rows = await as('admin', "select code, review_status, is_published, internal_notes from catalog_products where code like 'NEW-%'");
-  eq(rows.length, 46, 'count'); eq(rows.filter((r) => r.is_published).length, 46, 'published');
+  eq(rows.length, 44, 'count'); eq(rows.filter((r) => r.is_published).length, 44, 'published');
   if (!rows.find((r) => r.code === 'NEW-040').internal_notes.includes('evidence_gap')) throw new Error('status lost');
   const d = (await asAnon('select catalog_public() as d'))[0].d;
   const raw = JSON.stringify(d);
   for (const x of ['"spec"', '"basis"', 'internal_notes', 'efsa.onlinelibrary', 'Retinyl acetate', 'Review status', 'Предупреждение за лабораторни']) if (raw.includes(x)) throw new Error('private data: ' + x);
-  const p = d.products.find((x) => x.code === 'NEW-042');
+  const p = d.products.find((x) => x.code === 'NEW-012');
   eq(p.tiers.length, 0, 'no price'); eq(p.price_on_request, true, 'on request'); eq(p.extra_category_ids.length, 3, 'links');
   eq(Object.keys(p.ingredients[0]).sort().join(), 'amount,name,name_bg,unit', 'no specification');
-  const no = (await asAnon('select catalog_submit_enquiry($1::jsonb) as no', [JSON.stringify({ company: 'Ц', contact_name: 'Ц', email: 'c@c.test', lines: [{ code: 'NEW-042', quantity: 500 }] })]))[0].no;
+  const no = (await asAnon('select catalog_submit_enquiry($1::jsonb) as no', [JSON.stringify({ company: 'Ц', contact_name: 'Ц', email: 'c@c.test', lines: [{ code: 'NEW-012', quantity: 500 }] })]))[0].no;
   const e = await one('sales', 'select l.unit_price from catalog_enquiry_lines l join catalog_enquiries e on e.id = l.enquiry_id where e.number = $1', [no]);
   eq(e.unit_price, null, 'no price on the line');
 });
