@@ -2911,5 +2911,89 @@ await fails('five enquiries an hour from one address, then no more', async () =>
   for (let i = 0; i < 5; i++) await asAnon('select catalog_submit_enquiry($1::jsonb)', [enquiry()]);
 }, 'catalog_busy');
 
+console.log('\nCustomer panel');
+const portalUser = async (key, id) => {
+  U[key] = id;
+  await db.query('insert into auth.users (id) values ($1)', [id]);
+  await db.query(`insert into public.profiles (id, full_name, email, role) values ($1, $2, $3, 'client')`, [id, `Client ${key}`, `${key}@client.test`]);
+};
+await portalUser('clientA', 'cccccccc-0000-4000-8000-0000000000a1');
+await portalUser('clientB', 'cccccccc-0000-4000-8000-0000000000b2');
+const portalCo = async (name) => (await one('sales', `insert into clients (legal_name, country_code) values ($1, 'BG') returning id`, [name])).id;
+const coA = await portalCo('Портал А'), coB = await portalCo('Портал Б');
+await fails('Sales does not connect accounts', () => as('sales', 'select client_user_connect($1, $2)', [U.clientA, coA]), '');
+await as('admin', 'select client_user_connect($1, $2)', [U.clientA, coA]);
+await as('admin', 'select client_user_connect($1, $2)', [U.clientB, coB]);
+await fails('a staff account is not connected to a client', () => as('admin', 'select client_user_connect($1, $2)', [U.sales, coA]), 'Not a client');
+const portalOrder = async (code, client, status) => (await db.query(
+  `insert into sales_orders (code, client_id, status, currency, notes, confirmed_at) values ($1, $2, $3::order_status, 'EUR', 'ТАЙНА БЕЛЕЖКА', now()) returning id`, [code, client, status])).rows[0].id;
+await db.exec('reset role');
+const ordA = await portalOrder('PORT-A', coA, 'draft'), ordDraft = await portalOrder('PORT-D', coA, 'draft'), ordB = await portalOrder('PORT-B', coB, 'confirmed');
+await db.query(`insert into sales_order_lines (order_id, kind, description, quantity, unit_price) values ($1, 'service', 'Етикет', 2, 10.5)`, [ordA]);
+await db.query(`update sales_orders set status = 'confirmed' where id = $1`, [ordA]);
+await ok('a client account sees nothing beyond itself in any table or view', async () => {
+  await db.exec('reset role');
+  const all = (await db.query(`select table_name from information_schema.tables where table_schema = 'public'`)).rows.map((r) => r.table_name);
+  const seen = [];
+  for (const t of all) {
+    let n = 0;
+    try { n = (await as('clientA', `select 1 from public."${t}" limit 2`)).length; } catch { n = 0; }
+    if (n > 0) seen.push(t);
+  }
+  eq(seen.filter((t) => t !== 'profiles').join(), '', 'tables');
+  eq((await as('clientA', 'select id from profiles')).length, 1, 'only own profile');
+});
+await fails('a client writes to no table', () => as('clientA', `insert into client_messages (client_id, from_client, body) values ($1, false, 'x')`, [coA]), '');
+await ok('a client cannot change its own role', async () => {
+  try { await as('clientA', `update profiles set role = 'admin' where id = auth.uid()`); } catch { /* refused */ }
+  await db.exec('reset role');
+  eq((await db.query('select role::text as r from profiles where id = $1', [U.clientA])).rows[0].r, 'client', 'role');
+});
+await ok('a client sees its own orders, never a draft or another client', async () => {
+  eq((await as('clientA', 'select code from portal_orders()')).map((x) => x.code).join(), 'PORT-A', 'orders');
+  eq((await one('clientA', 'select portal_order($1) as d', [ordB])).d, null, 'other client');
+  eq((await one('clientA', 'select portal_order($1) as d', [ordDraft])).d, null, 'draft');
+  const d = (await one('clientA', 'select portal_order($1) as d', [ordA])).d;
+  eq(d.code, 'PORT-A', 'own'); eq(Number(d.value), 21, 'value');
+  if (JSON.stringify(d).includes('ТАЙНА')) throw new Error('internal note leaked');
+});
+await ok('staff get nothing from the portal functions', async () => {
+  eq((await as('sales', 'select code from portal_orders()')).length, 0, 'orders');
+});
+await ok('a stopped account sees nothing', async () => {
+  await as('admin', 'select client_user_active($1, false)', [U.clientA]);
+  eq((await as('clientA', 'select code from portal_orders()')).length, 0, 'orders');
+  await as('admin', 'select client_user_active($1, true)', [U.clientA]);
+});
+await ok('a file reaches the client only once it is shared', async () => {
+  const f = (await one('sales', `insert into client_files (client_id, order_id, file_name, storage_path) values ($1, $2, 'spec.pdf', 'p/spec.pdf') returning id`, [coA, ordA])).id;
+  eq((await as('clientA', 'select 1 from portal_documents()')).length, 0, 'not shared');
+  eq((await as('clientA', 'select 1 from portal_file($1)', [f])).length, 0, 'no download');
+  await as('sales', 'select client_file_share($1, true)', [f]);
+  eq((await as('clientA', 'select name from portal_documents()'))[0].name, 'spec.pdf', 'shared');
+  eq((await as('clientA', 'select storage_path from portal_file($1)', [f])).length, 1, 'download');
+  eq((await as('clientB', 'select 1 from portal_documents()')).length, 0, 'other client');
+  eq((await as('clientB', 'select 1 from portal_file($1)', [f])).length, 0, 'other client download');
+  await as('sales', 'select client_file_share($1, false)', [f]);
+  eq((await as('clientA', 'select 1 from portal_file($1)', [f])).length, 0, 'taken back');
+});
+await fails('Production does not share files', () => as('production', 'select client_file_share($1, true)', ['00000000-0000-0000-0000-000000000000']), '');
+await ok('messages stay within one client and reach the team', async () => {
+  await as('clientA', `select portal_post($1, 'Кога е готово?')`, [ordA]);
+  eq((await as('admin', `select id from notifications where kind = 'client_message'`)).length > 0, true, 'told');
+  eq((await as('sales', 'select body from client_messages where order_id = $1', [ordA]))[0].body, 'Кога е готово?', 'team reads');
+  eq((await as('clientB', 'select body from portal_feed($1)', [ordA])).length, 0, 'other client');
+  await as('sales', `select client_message_send($1, $2, 'Следващата седмица')`, [coA, ordA]);
+  eq((await one('clientA', 'select portal_me() as d')).d.unread, 1, 'unread');
+  await as('clientA', 'select portal_mark_read($1)', [ordA]);
+  eq((await one('clientA', 'select portal_me() as d')).d.unread, 0, 'read');
+  eq((await as('clientA', 'select author from portal_feed($1)', [ordA])).length, 2, 'both sides');
+});
+await fails('no post on an order of another client', () => as('clientB', `select portal_post($1, 'x')`, [ordA]), 'Not allowed');
+await fails('no reply to the wrong client', () => as('sales', `select client_message_send($1, $2, 'x')`, [coB, ordA]), 'another client');
+await ok('Production reads no client message', async () => {
+  eq((await as('production', 'select id from client_messages')).length, 0, 'none');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
