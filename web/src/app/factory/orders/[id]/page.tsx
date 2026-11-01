@@ -1,3 +1,4 @@
+import { ReasonField } from "@/components/reason-field";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
@@ -154,9 +155,7 @@ export default async function FactoryOrderPage({ params }: PageProps<"/factory/o
                         </label>
                       </div>
                     ))}
-                    <label className="field"><span className="text-xs">{O.reason}</span>
-                      <input name={`reason_${req.item_id}`} className="input" />
-                    </label>
+                    <ReasonField name={`reason_${req.item_id}`} label={O.reason} choose={O.reasonChoose} other={O.reasonOther} otherLabel={O.reasonOtherLabel} options={O.reasons} />
                   </fieldset>
                 ))}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

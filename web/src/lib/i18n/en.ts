@@ -731,6 +731,10 @@ export const en = {
       qtyUsed: "Used from this lot",
       noLots: "No usable lot at the facility.",
       reason: "Reason for the difference",
+      reasonChoose: "Choose a reason",
+      reasons: ["Scrap", "Spilled material", "Machine setup", "Quality sample", "Weight difference"],
+      reasonOther: "Other",
+      reasonOtherLabel: "Write the reason",
       batchNumber: "Your batch number",
       produced: "Quantity made (packs)",
       producedOn: "Production date",
@@ -2600,6 +2604,7 @@ export const en = {
     nextInvoiceHint: "Shared by invoices, credit and debit notes. Change it only to continue from another tool.",
   },
   calendar: {
+    short: "Calendar",
     title: "Production calendar", subtitle: "What runs when. Dates the partner has not confirmed are marked.", factorySubtitle: "Your batches by date, by project code. Confirm each date or propose another.",
     week: "Week", month: "Month", today: "Today", prev: "Earlier", next: "Later", weekNo: "Week {n}",
     states: { pending: "Not confirmed", confirmed: "Confirmed", proposed: "New date proposed" },
