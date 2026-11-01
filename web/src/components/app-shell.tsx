@@ -40,35 +40,40 @@ export async function AppShell({ children }: { children: ReactNode }) {
         },
       ]
     : [
+        { items: [{ href: "/", label: t.nav.dashboard }] },
         {
           title: t.nav.sales,
           items: [
-            { href: "/", label: t.nav.dashboard },
             { href: "/clients", label: t.nav.clients },
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/offers", label: t.nav.offers, also: ["/calculator"] }] : []),
             { href: "/orders", label: t.nav.orders },
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/invoices", label: t.nav.invoices }] : []),
-          ],
-        },
-        {
-          title: t.nav.tools,
-          items: [
-            ...((user.role === "admin" || user.role === "sales") && !user.readOnly ? [{ href: "/assistant", label: t.nav.assistant }] : []),
-            { href: "/chat", label: t.nav.chat, badge: unread },
-            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/client-messages", label: t.portal.staff.inbox.title, badge: clientUnread }] : []),
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/catalog", label: t.nav.catalog }] : []),
           ],
         },
         {
-          title: t.nav.operations,
+          title: t.nav.communication,
           items: [
-            { href: "/inventory", label: t.nav.inventory },
-            { href: "/formulas", label: t.nav.formulas },
-            { href: "/deliveries", label: t.nav.deliveries },
-            { href: "/production", label: t.nav.production },
+            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/client-messages", label: t.portal.staff.inbox.title, badge: clientUnread }] : []),
+            { href: "/chat", label: t.nav.chat, badge: unread },
+            ...((user.role === "admin" || user.role === "sales") && !user.readOnly ? [{ href: "/assistant", label: t.nav.assistant }] : []),
+          ],
+        },
+        {
+          title: t.nav.production,
+          items: [
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/production/calendar", label: t.calendar.short }] : []),
+            { href: "/production", label: t.nav.production },
+            { href: "/formulas", label: t.nav.formulas },
             ...(user.role === "admin" ? [{ href: "/quality", label: t.nav.qualityTrace, also: ["/traceability"] }] : []),
             ...(user.role === "sales" ? [{ href: "/traceability", label: t.nav.traceability }] : []),
+          ],
+        },
+        {
+          title: t.nav.warehouse,
+          items: [
+            { href: "/inventory", label: t.nav.inventory },
+            { href: "/deliveries", label: t.nav.deliveries },
           ],
         },
         ...(user.access === "bookkeeper"

@@ -25,6 +25,8 @@ export const en = {
   nav: {
     qualityTrace: "Quality and traceability",
     tools: "Tools",
+    communication: "Communication",
+    warehouse: "Warehouse",
     catalog: "Catalog",
     quality: "Quality",
     traceability: "Traceability",

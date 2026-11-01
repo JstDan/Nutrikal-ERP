@@ -27,6 +27,8 @@ export const bg: Dict = {
   nav: {
     qualityTrace: "Качество и проследимост",
     tools: "Инструменти",
+    communication: "Комуникация",
+    warehouse: "Склад",
     catalog: "Каталог",
     quality: "Качество",
     traceability: "Проследимост",
