@@ -248,7 +248,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
           <div className="flex shrink-0 items-center gap-1">
             <label>
               <span className="sr-only">{T.language}</span>
-              <select value={locale} onChange={(e) => { location.search = `?lang=${e.target.value}`; }} className="h-11 max-w-[64px] border-0 bg-transparent text-xs font-semibold text-ink uppercase">
+              <select value={locale} onChange={(e) => { location.search = `?lang=${e.target.value}`; }} className="h-11 max-w-[104px] border-0 bg-transparent text-xs font-semibold text-ink uppercase">
                 {languages.map((l) => <option key={l.code} value={l.code} lang={l.code}>{l.label}</option>)}
               </select>
             </label>
