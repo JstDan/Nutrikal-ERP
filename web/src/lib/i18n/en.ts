@@ -1761,11 +1761,11 @@ export const en = {
   },
   calc: {
     title: "Formula calculator",
-    subtitle: "Cost a custom formula, set the price and download the client PDF offer",
+    subtitle: "Cost a new formula, set the price and download the client PDF offer",
     tabs: { label: "Calculator sections", offers: "Offers", calculator: "Calculator", materials: "Raw materials", catalog: "Catalog formulas" },
     mode: {
       label: "Formula type",
-      custom: "Custom formula",
+      custom: "New formula",
       customHint: "Raw materials from the price list, with packaging and markup",
       catalog: "Catalog formula",
       catalogHint: "Ready product from the catalog, priced per unit by quantity",
@@ -1798,7 +1798,7 @@ export const en = {
       composition: "Composition per serving",
       compositionHint: "From the product catalog.",
       editIngredients: "Change ingredients",
-      editIngredientsHint: "Makes a custom formula from this product's ingredients, with everything entered so far, priced from the raw materials.",
+      editIngredientsHint: "Makes a new formula from this product's ingredients, with everything entered so far, priced from the raw materials.",
       editConfirm: "The custom formula already has raw materials. Replace them with this product's ingredients?",
       replace: "Replace",
       glassJar: "Glass jar",

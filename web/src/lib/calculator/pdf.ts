@@ -140,7 +140,7 @@ export function toPdfModel(
   const capsule = isCapsule(type);
   const units = parseNum(form.numberOfUnits) ?? 0;
   const perUnit = form.quantityPerUnit;
-  const name = productName(form) || 'Custom formula';
+  const name = productName(form) || 'New formula';
   const catalogCaps = offerCapsules(form);
 
   const productLine: OfferLine = {
