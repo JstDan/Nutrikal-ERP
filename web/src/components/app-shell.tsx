@@ -34,7 +34,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
             { href: "/factory/orders", label: t.nav.productionOrders },
             { href: "/factory/stock", label: t.nav.stock },
             { href: "/factory/deliveries", label: t.nav.incoming },
-            { href: "/chat", label: t.nav.chat, badge: unread },
+            { href: "/chat", label: t.nav.clientMessages, badge: unread },
             { href: "/notifications", label: t.nav.notifications },
           ],
         },
