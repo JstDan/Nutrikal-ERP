@@ -29,7 +29,6 @@ export const bg: Dict = {
     tools: "Инструменти",
     communication: "Комуникация",
     batches: "Партиди",
-    quality: "Качество",
     warehouse: "Склад",
     catalog: "Каталог",
     quality: "Качество",

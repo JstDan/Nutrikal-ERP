@@ -27,7 +27,6 @@ export const en = {
     tools: "Tools",
     communication: "Communication",
     batches: "Batches",
-    quality: "Quality",
     warehouse: "Warehouse",
     catalog: "Catalog",
     quality: "Quality",

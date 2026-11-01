@@ -72,7 +72,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
         {
           title: t.nav.warehouse,
           items: [
-            { href: "/inventory", label: t.nav.inventory },
+            { href: "/inventory", label: t.nav.stock },
             { href: "/deliveries", label: t.nav.deliveries },
           ],
         },
