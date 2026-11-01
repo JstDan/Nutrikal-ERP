@@ -2217,7 +2217,6 @@ export const en = {
     chatTeaser: "Have a question? We’re here to help.",
     language: "Language",
     chatTitle: "Nutri AI",
-    chatOpen: "Contact us",
     chatAsk: "Ask Nutri AI",
     chatNotice: "You are chatting with an AI assistant. Answers are guidance only; prices and terms are confirmed in an offer. This conversation is saved so our team can help you, and on this device for 30 days so you can continue later.",
     chatWelcome: "Hi, I’m Nutri AI. Tell me what you want to launch and I’ll help you pick the right products.",

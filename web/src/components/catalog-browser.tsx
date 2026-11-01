@@ -20,6 +20,8 @@ const OVERVIEW = 8;
 const STEP = 100;
 const STORE = "nk_catalog_basket";
 const VIDEO = "WF61pORKbUo";
+// The country a language most likely means; the visitor can still change it. English says nothing about it.
+const LANGUAGE_COUNTRY: Partial<Record<AnyLocale, string>> = { bg: "BG", de: "DE", fr: "FR", it: "IT", ro: "RO", el: "GR" };
 const COUNTRIES = ["AE", "AT", "AU", "BE", "BG", "CA", "CH", "CY", "CZ", "DE", "DK", "EE", "EG", "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IL", "IT", "JO", "KW", "LB", "LT", "LU", "LV", "MD", "ME", "MK", "MT", "NL", "NO", "OM", "PL", "PT", "QA", "RO", "RS", "SA", "SE", "SI", "SK", "TR", "UA", "US"];
 const priceAt = (p: Product, qty: number) => [...p.tiers].reverse().find((t) => t.min_qty <= qty)?.unit_price ?? p.tiers[0]?.unit_price ?? null;
 
@@ -142,7 +144,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
   const [open, setOpen] = useState<Product | null>(null);
   const [showBasket, setShowBasket] = useState(false);
   const [step, setStep] = useState<"lines" | "details">("lines");
-  const [form, setForm] = useState({ company: "", contact_name: "", email: "", phone: "", country_code: "", message: "", website: "" });
+  const [form, setForm] = useState({ company: "", contact_name: "", email: "", phone: "", country_code: LANGUAGE_COUNTRY[locale] ?? "", message: "", website: "" });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState<string | null>(null);
@@ -150,7 +152,11 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
   const productsTop = useRef<HTMLElement>(null);
   const chatId = useRef<string | null>(null);
   const onChat = useCallback((id: string) => { chatId.current = id; }, []);
-  const addFromChat = useCallback((code: string, quantity: number) => setBasket((b) => ({ ...b, [code]: quantity })), []);
+  // Quantity 0 takes the product out
+  const addFromChat = useCallback((code: string, quantity: number) => setBasket((b) => {
+    const { [code]: _, ...rest } = b;
+    return quantity ? { ...b, [code]: quantity } : rest;
+  }), []);
 
   useEffect(() => {
     started.current = Date.now();
@@ -318,7 +324,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
 
       {children}
 
-      <CatalogContactButton text={T} locale={locale} ai={ai} raised={lines.length > 0} hidden={showBasket || !!open} onAdd={addFromChat} onChat={onChat} />
+      <CatalogContactButton text={T} locale={locale} ai={ai} raised={lines.length > 0} hidden={showBasket || !!open} quote={basket} onAdd={addFromChat} onChat={onChat} onQuote={openBasket} />
 
       {lines.length > 0 && !showBasket && !open && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper p-3 lg:hidden">
