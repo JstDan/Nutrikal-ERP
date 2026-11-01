@@ -2824,6 +2824,12 @@ await ok('a visitor chats through the functions only; Sales reads it, Production
   eq((await as('production', 'select id from catalog_chats')).length, 0, 'production');
   eq((await as('designer', 'select id from catalog_chat_messages')).length, 0, 'designer');
 });
+await ok('a long conversation keeps its last 40 messages in order', async () => {
+  let chat = null;
+  for (let i = 0; i < 25; i++) { chat = (await asAnon("select catalog_chat_turn($1, $2, 'en', $3) as t", [chat, 'mem' + i, 'Q' + i]))[0].t.chat; await asAnon("select catalog_chat_reply($1, 'A')", [chat]); }
+  const t = (await asAnon("select catalog_chat_turn($1, 'mem', 'en', 'Last') as t", [chat]))[0].t;
+  eq(t.history.length, 40, 'length'); eq(t.history.at(-1).content, 'Last', 'newest last');
+});
 await fails('nobody signed in reads a conversation', () => asAnon('select * from catalog_chat_messages'), 'denied');
 await fails('Sales does not write in a visitor conversation', () => as('sales', "insert into catalog_chats (visitor_key) values ('x')"), 'denied');
 await fails('an empty question is refused', () => asAnon("select catalog_chat_turn(null, 'v1', 'en', '  ')"), 'catalog_invalid');

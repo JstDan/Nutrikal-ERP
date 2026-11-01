@@ -318,7 +318,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
 
       {children}
 
-      {!showBasket && !open && <CatalogContactButton text={T} locale={locale} ai={ai} raised={lines.length > 0} onAdd={addFromChat} onChat={onChat} />}
+      <CatalogContactButton text={T} locale={locale} ai={ai} raised={lines.length > 0} hidden={showBasket || !!open} onAdd={addFromChat} onChat={onChat} />
 
       {lines.length > 0 && !showBasket && !open && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper p-3 lg:hidden">
