@@ -11,6 +11,7 @@ const ORDER = `so.id, so.code as title, c.legal_name as sub, count(*) over ()::i
 
 /** Everything waiting for this person, in working order; empty groups are left out. */
 export async function loadTodo(tx: Tx, role: string, locale: Locale): Promise<TodoGroup[]> {
+  const unit = locale === "bg" ? "case i.base_unit when 'pcs' then 'бр.' when 'kg' then 'кг' else i.base_unit::text end" : "i.base_unit::text";
   const admin = role === "admin";
   const orderLink = (id: string) => `/orders/${id}`;
   const queries: [TodoKey, string, unknown[], (id: string) => string][] = [
@@ -35,7 +36,7 @@ export async function loadTodo(tx: Tx, role: string, locale: Locale): Promise<To
                      and not exists (select 1 from manufacturing_orders m where m.sales_order_line_id = l.id and m.status <> 'cancelled'))
                 order by so.created_at`, [], orderLink],
       ["purchases", `select r.id, case when $1 = 'bg' then coalesce(i.name_bg, i.name) else i.name end as title,
-                            r.quantity::float || ' ' || i.base_unit as sub, count(*) over ()::int as total
+                            r.quantity::float || ' ' || ${unit} as sub, count(*) over ()::int as total
                        from purchase_requests r join items i on i.id = r.item_id where r.status = 'open' order by r.created_at`,
         [locale], () => "/purchasing"],
       ["batches", `select l.id, case when $1 = 'bg' then coalesce(i.name_bg, i.name) else i.name end as title,

@@ -44,6 +44,7 @@ Talk to the owner in the language they write in (usually Bulgarian).
 ## UI rules
 - **Every user-visible string goes in BOTH `web/src/lib/i18n/en.ts` and `bg.ts`.** No hard-coded text in components. Use `fmt()`, `formatNumber/Qty/Money/Date` from `web/src/lib/i18n`.
 - **NEVER horizontal scrolling** on any page or width (owner's strong rule). Data lists use CSS grid rows (`.row`) and drop columns on narrow screens with `hide-md` (<1024px) / `hide-sm` (<768px) — no `<table>` with overflow.
+- The signed-in app uses Inter at 14px with tabular numbers and sentence-case buttons and labels (`.app-ui` in globals.css, owner, Nov 2026); on wide screens rows and buttons may be under 44px. The open catalog keeps Poppins and the button style below. Right-align money and quantities in lists.
 - Design tokens from nutrikal.com live in `web/src/app/globals.css`: Poppins (Montserrat for Cyrillic), ink #222831, white, light grey #EBEBEB, border #C6CDD9, green #7BC74D only for positive states, red #D72C0D for critical. Buttons: `.btn .btn-primary` / `.btn-outline` (uppercase, 12px, 600, wide tracking, 2px radius).
 - Touch targets ≥ 44px; real `<button>`, `<a>`, `<label>`; text contrast ≥ 4.5:1.
 - Items show `name_bg` in the Bulgarian interface when present.

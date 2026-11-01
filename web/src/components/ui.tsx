@@ -28,7 +28,7 @@ export function PageHeader({ title, subtitle, actions, crumb }: { title: string;
       {crumb && <div className="text-[13px] text-ink-2">{crumb}</div>}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="m-0 text-[28px] leading-tight font-extrabold tracking-[0.6px] break-words">{title}</h1>
+          <h1 className="m-0 text-2xl leading-tight font-bold break-words">{title}</h1>
           {subtitle && <p className="mt-1 mb-0 text-sm text-ink-2">{subtitle}</p>}
         </div>
         {actions && <div className="flex flex-wrap gap-2">{actions}</div>}

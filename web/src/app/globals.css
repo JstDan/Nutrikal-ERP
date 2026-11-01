@@ -112,6 +112,16 @@ body {
   overflow-x: hidden; /* never scroll sideways */
 }
 
+/* The signed-in app is a tool read all day: Inter (plain Cyrillic), 14px, numbers in even columns,
+   sentence case. The open catalog keeps the nutrikal.com look below. */
+.app-ui { font-family: "Inter", "Noto Sans", ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.45; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.app-ui .btn { padding: 6px 14px; border-radius: 4px; font-size: 13px; letter-spacing: 0; text-transform: none; }
+.app-ui .label, .app-ui .uppercase { letter-spacing: 0; text-transform: none; }
+.app-ui [class*="tracking-"] { letter-spacing: 0; }
+@media (min-width: 1024px) {
+  .app-ui .btn, .app-ui .input { min-height: 38px; }
+}
+
 /* Buttons follow nutrikal.com: uppercase 12px, 600, wide tracking, 2px radius */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;

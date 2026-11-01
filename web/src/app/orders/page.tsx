@@ -62,7 +62,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
       <section aria-label={t.orders.title} className="card px-5 pt-2 pb-3">
         <div className={`row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${grid}`}>
           <span>{t.orders.code}</span><span>{t.orders.client}</span><span>{t.orders.products}</span>
-          <span className="hide-lg">{t.orders.packs}</span><span className="hide-lg">{seesPrices ? t.orders.total : ""}</span>
+          <span className="hide-lg text-right">{t.orders.packs}</span><span className="hide-lg text-right">{seesPrices ? t.orders.total : ""}</span>
           <span className="hide-lg">{t.orders.requested}</span><span>{t.orders.status}</span>
         </div>
         {rows.length === 0 && <div className="py-4"><Empty>{t.orders.empty}</Empty></div>}
@@ -75,8 +75,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/orders">)
                 <span className="block min-w-0 break-words md:inline">{o.client}</span>
               </div>
               <span className="hide-sm min-w-0 break-words">{o.products ?? "—"}</span>
-              <span className="hide-lg">{formatNumber(locale, o.total_packs)}</span>
-              <span className="hide-lg">{tot ? formatPrice(locale, tot.total, tot.currency) : ""}</span>
+              <span className="hide-lg text-right">{formatNumber(locale, o.total_packs)}</span>
+              <span className="hide-lg text-right">{tot ? formatPrice(locale, tot.total, tot.currency) : ""}</span>
               <span className="hide-lg">{formatDate(locale, o.requested_date)}</span>
               <Chip tone={orderTone(o.status)}>{t.enums.orderStatus[o.status as "draft"]}</Chip>
             </div>
