@@ -9,7 +9,7 @@ export function PortalLanguage({ label, locale, options }: { label: string; loca
     <form action={setPortalLocale}>
       <label>
         <span className="sr-only">{label}</span>
-        <select name="locale" defaultValue={locale} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="p-lang">
+        <select key={locale} name="locale" defaultValue={locale} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="p-lang">
           {options.map((l) => <option key={l.code} value={l.code} lang={l.code}>{l.label}</option>)}
         </select>
       </label>
