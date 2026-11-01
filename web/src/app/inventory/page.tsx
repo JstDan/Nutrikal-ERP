@@ -97,6 +97,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
         subtitle={t.inventory.subtitle}
         actions={canReceive && (
           <>
+            {user.role === "admin" && <Link href="/inventory/corrections" className="btn btn-outline">{t.nav.corrections}</Link>}
             <Link href="/inventory/items/new" className="btn btn-outline">{t.inventory.newItem}</Link>
             <Link href="/inventory/receive" className="btn btn-primary">{t.inventory.receive}</Link>
           </>

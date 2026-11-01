@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireRole } from "@/lib/session";
 import { fmt } from "@/lib/i18n";
 import { Chip, Empty, PageHeader } from "@/components/ui";
+import { SettingsTabs } from "@/components/settings-tabs";
 import { historyFilter, loadHistory, PAGE_SIZE, show } from "@/lib/history";
 
 export default async function HistoryPage({ searchParams }: PageProps<"/history">) {
@@ -25,6 +26,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
         subtitle={H.subtitle}
         actions={<a href={`/history/export?${new URLSearchParams(filter)}`} className="btn btn-outline" download>{H.downloadCsv}</a>}
       />
+      <SettingsTabs t={t} active="history" />
       <form method="get" className="card flex flex-wrap items-end gap-4 p-5">
         <label className="field min-w-0 flex-[2_1_220px]"><span>{H.table}</span>
           <select name="table" defaultValue={f.table} className="input">

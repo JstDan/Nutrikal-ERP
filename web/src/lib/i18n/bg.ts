@@ -25,6 +25,7 @@ export const bg: Dict = {
     noResults: "Няма намерени",
   },
   nav: {
+    qualityTrace: "Качество и проследимост",
     tools: "Инструменти",
     catalog: "Каталог",
     quality: "Качество",
@@ -2566,7 +2567,7 @@ export const bg: Dict = {
     },
     title: "Настройки",
     subtitle: "Всички настройки на системата, само за администратор",
-    tabs: { general: "Общи", calculator: "Калкулатор", costs: "Производствени разходи", templates: "Шаблони за задачи", mail: "Поща", users: "Потребители" },
+    tabs: { history: "История на промените", general: "Общи", calculator: "Калкулатор", costs: "Производствени разходи", templates: "Шаблони за задачи", mail: "Поща", users: "Потребители" },
     general: "Общи",
     tolerance: "Допустима разлика при отчет на партида (%)",
     toleranceHint: "Над нея производството посочва причина за всеки материал",

@@ -23,6 +23,7 @@ export const en = {
     noResults: "Nothing found",
   },
   nav: {
+    qualityTrace: "Quality and traceability",
     tools: "Tools",
     catalog: "Catalog",
     quality: "Quality",
@@ -2564,7 +2565,7 @@ export const en = {
     },
     title: "Settings",
     subtitle: "All settings of the system, for Admin only",
-    tabs: { general: "General", calculator: "Calculator", costs: "Production costs", templates: "Task templates", mail: "Mail", users: "Users" },
+    tabs: { history: "History of changes", general: "General", calculator: "Calculator", costs: "Production costs", templates: "Task templates", mail: "Mail", users: "Users" },
     general: "General",
     tolerance: "Allowed difference when reporting a batch (%)",
     toleranceHint: "Above this, Production must give a reason per material",

@@ -5,6 +5,7 @@ import { formatDate, formatQty } from "@/lib/i18n";
 import { Card, Chip, Empty, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { LiveSearch } from "@/components/live-search";
+import { QualityTabs } from "@/components/quality-tabs";
 import { qcTone } from "@/lib/status";
 import { attachCoa, setLotStatus } from "@/app/batch-actions";
 
@@ -76,6 +77,7 @@ export default async function QualityPage({ searchParams }: PageProps<"/quality"
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={Q.title} subtitle={Q.subtitle} />
+      <QualityTabs t={t} active="quality" show />
 
       <Card title={Q.waiting} id="waiting-h">
         <p className="m-0 text-sm text-ink-2">{Q.waitingNote}</p>

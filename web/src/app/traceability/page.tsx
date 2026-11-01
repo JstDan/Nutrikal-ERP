@@ -6,6 +6,7 @@ import { Chip, Empty, PageHeader } from "@/components/ui";
 import { DocHeader } from "@/components/sales-document";
 import { LiveSearch } from "@/components/live-search";
 import { PrintButton } from "@/components/print-button";
+import { QualityTabs } from "@/components/quality-tabs";
 import { qcTone } from "@/lib/status";
 
 type Found = {
@@ -58,6 +59,7 @@ export default async function TraceabilityPage({ searchParams }: PageProps<"/tra
   return (
     <div className="flex flex-col gap-6">
       <div className="print:hidden"><PageHeader title={T.title} subtitle={T.subtitle} /></div>
+      <QualityTabs t={t} active="traceability" show={user.role === "admin"} />
       <form method="get" role="search" className="flex min-w-0 flex-wrap gap-2 print:hidden">
         <label htmlFor="trace-q" className="sr-only">{T.title}</label>
         <LiveSearch id="trace-q" defaultValue={term} placeholder={T.searchPlaceholder} className="input min-w-0 flex-[1_1_240px]" />
