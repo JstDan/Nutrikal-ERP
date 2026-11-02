@@ -636,6 +636,41 @@ export async function removeOrderLine(fd: FormData) {
   revalidatePath(`/orders/${str(fd, "order_id")}`);
 }
 
+// ------------------------------------------- corrections until production
+// The database decides what may change (correct_order_*); every one needs a reason.
+async function correctOrder(fd: FormData, sql: string, params: unknown[]): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    await q(user.id, sql, params);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/orders/${str(fd, "order_id")}`);
+  return { ok: true, message: t.common.saved };
+}
+export async function correctOrderLine(_: ActionState, fd: FormData): Promise<ActionState> {
+  return correctOrder(fd, "select correct_order_line($1, $2, $3, $4)",
+    [str(fd, "line_id"), num(fd, "quantity"), num(fd, "unit_price"), str(fd, "reason")]);
+}
+export async function correctOrderRemoveLine(_: ActionState, fd: FormData): Promise<ActionState> {
+  return correctOrder(fd, "select correct_order_remove_line($1, $2)", [str(fd, "line_id"), str(fd, "reason")]);
+}
+export async function correctOrderAddOffer(_: ActionState, fd: FormData): Promise<ActionState> {
+  return correctOrder(fd, "select correct_order_add_offer($1, $2, $3)", [str(fd, "order_id"), str(fd, "offer_id"), str(fd, "reason")]);
+}
+export async function correctOrderAddService(_: ActionState, fd: FormData): Promise<ActionState> {
+  return correctOrder(fd, "select correct_order_add_service($1, $2, $3, $4, $5)",
+    [str(fd, "order_id"), str(fd, "description"), num(fd, "quantity"), num(fd, "unit_price"), str(fd, "reason")]);
+}
+export async function correctOrderTerms(_: ActionState, fd: FormData): Promise<ActionState> {
+  return correctOrder(fd, "select correct_order_terms($1, $2, $3::balance_terms, $4, $5)",
+    [str(fd, "order_id"), num(fd, "vat_pct"), str(fd, "balance_terms"), num(fd, "balance_net_days"), str(fd, "reason")]);
+}
+export async function correctOrderClient(_: ActionState, fd: FormData): Promise<ActionState> {
+  return correctOrder(fd, "select correct_order_client($1, $2, $3, $4)",
+    [str(fd, "order_id"), str(fd, "client_id"), str(fd, "currency"), str(fd, "reason")]);
+}
+
 export async function saveOrder(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   try {
