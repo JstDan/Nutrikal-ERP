@@ -176,12 +176,20 @@ export function toPdfModel(
     pack = [net ? `${formatNumber(net, 0)} g` : '', `${servings} servings`].filter(Boolean).join(', ');
     format = 'Doypack';
   }
-  const dosePortion = capsule ? `${caps} ${caps === 1 ? 'capsule' : 'capsules'}` : `${formatNumber(doseG, 2)} g`;
-  const doseRows = !catalog && form.includeComposition
-    ? form.rows
-        .filter((r) => (parseNum(r.amount) ?? 0) > 0)
-        .map((r) => ({ name: r.name, amount: `${formatNumber(parseNum(r.amount) ?? 0, 4)} ${r.unit}` }))
-    : [];
+  const portion = (n: number) => `${formatNumber(n, 2)} ${n === 1 ? 'capsule' : 'capsules'}`;
+  // A catalog product brings its own serving and composition from the product catalogue
+  const dosePortion = catalog
+    ? catalog.capsules_per_serving ? portion(catalog.capsules_per_serving) : catalog.serving_g ? `${formatNumber(catalog.serving_g, 2)} g` : '1 serving'
+    : capsule ? portion(caps) : `${formatNumber(doseG, 2)} g`;
+  const doseRows = !form.includeComposition
+    ? []
+    : catalog
+      ? (catalog.composition ?? [])
+          .filter((i) => i.amount > 0)
+          .map((i) => ({ name: i.note ? `${i.name} (${i.note})` : i.name, amount: `${formatNumber(i.amount, 4)} ${i.unit}` }))
+      : form.rows
+          .filter((r) => (parseNum(r.amount) ?? 0) > 0)
+          .map((r) => ({ name: r.name, amount: `${formatNumber(parseNum(r.amount) ?? 0, 4)} ${r.unit}` }));
   const noteLines = form.notes.split('\n').map((l) => l.trim()).filter(Boolean);
 
   // Sales prices table: the offer quantity plus any price tiers; one column per quantity, no totals.
@@ -226,7 +234,8 @@ export function toPdfModel(
     salesPrices,
     dosePortion,
     doseRows,
-    productName: name,
+    // The code stands under the name, not in it
+    productName: catalog && name.startsWith(catalog.code) ? name.slice(catalog.code.length).trim() || name : name,
     productCode: catalog?.code ?? '',
     pack,
     format,
@@ -347,7 +356,7 @@ function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, s
     }
     return py;
   };
-  const yc = party(PDF.customer, L, [m.customer.name, m.customer.contactPerson, m.customer.addressLines.join(', ')]);
+  const yc = party(PDF.customer, L, [m.customer.name, m.customer.contactPerson === m.customer.name ? '' : m.customer.contactPerson, m.customer.addressLines.join(', ')]);
   const ys = party(PDF.supplier, COL2, [m.supplier.name, m.contact.name, [m.contact.phone, m.contact.email].filter(Boolean).join(' · ')]);
 
   // 3. No price lines, totals or bank details on the offer – prices are in the sales prices table.
