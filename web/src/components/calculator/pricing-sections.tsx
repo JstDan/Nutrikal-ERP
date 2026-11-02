@@ -189,9 +189,9 @@ export function OfferLinesSection({ form, setForm, step = 7 }: SectionProps & { 
             className="input"
           />
         </Field>
-        {form.mode !== "catalog" && <Toggle checked={form.includeComposition} onChange={(v) => setForm((f) => ({ ...f, includeComposition: v }))}>
+        <Toggle checked={form.includeComposition} onChange={(v) => setForm((f) => ({ ...f, includeComposition: v }))}>
           {t.markup.includeComposition}
-        </Toggle>}
+        </Toggle>
       </div>
     </Section>
   );
