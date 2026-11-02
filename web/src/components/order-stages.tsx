@@ -1,6 +1,6 @@
 import type { Dict } from "@/lib/i18n/en";
 
-const KEYS = ["paid", "planned", "produced", "ready", "dispatched", "invoiced", "closed"] as const;
+const KEYS = ["paid", "planned", "produced", "ready", "invoiced", "dispatched", "closed"] as const;
 export type OrderStage = (typeof KEYS)[number];
 
 /** Where the order stands: done = ink, current = green, ahead = grey. done lists the stages reached. */
