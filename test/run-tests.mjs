@@ -3353,5 +3353,43 @@ await ok('e2e: a recipe without servings per pack is named by prepare production
   eq((await one('admin', 'select prepare_order_production($1) as r', [o])).r.created, 1, 'prepared once set');
 });
 
+// --- Approve with risk: a not authorised Novel Food ingredient (owner, Nov 2026) ---
+const risk = {};
+await ok('risk: a recipe with a not authorised Novel Food ingredient', async () => {
+  risk.f = (await one('sales', `insert into formulas (name, product_format, serving_size) values ('Risk recipe', 'capsule', 1) returning id`)).id;
+  risk.v = (await one('sales', 'select id from formula_versions where formula_id = $1', [risk.f])).id;
+  await as('sales', `insert into formula_lines (version_id, item_id, amount) values ($1, $2, 100), ($1, $3, 10)`, [risk.v, mcc.id, novelBlocked.id]);
+});
+await fails('risk: without a reason the approval is still refused', () =>
+  as('admin', 'select approve_formula_version($1)', [risk.v]), 'not authorised novel food');
+await fails('risk: a blank reason is no reason', () =>
+  as('admin', `select approve_formula_version($1, '   ')`, [risk.v]), 'not authorised novel food');
+await fails('risk: sales cannot approve with risk', () =>
+  as('sales', `select approve_formula_version($1, 'client insists')`, [risk.v]), 'not allowed');
+await ok('risk: a reason a draft carries does not count until Admin approves', async () => {
+  await as('sales', `update formula_versions set novel_risk_note = 'set by sales' where id = $1`, [risk.v]);
+  const v = await one('admin', 'select novel_risk_note, novel_risk_by from formula_versions where id = $1', [risk.v]);
+  eq(v.novel_risk_note, null, 'note cleared on a draft'); eq(v.novel_risk_by, null, 'nobody');
+});
+await ok('risk: Admin approves with a reason; reason, who and when are kept', async () => {
+  await as('admin', `select approve_formula_version($1, '  Export outside the EU  ')`, [risk.v]);
+  const v = await one('admin', 'select status, novel_risk_note, novel_risk_by, novel_risk_at from formula_versions where id = $1', [risk.v]);
+  eq(v.status, 'approved', 'approved'); eq(v.novel_risk_note, 'Export outside the EU', 'reason trimmed');
+  eq(v.novel_risk_by, U.admin, 'accepted by admin'); eq(!!v.novel_risk_at, true, 'when');
+});
+await fails('risk: the accepted risk is locked with the approved version', () =>
+  as('admin', `update formula_versions set novel_risk_note = 'changed' where id = $1`, [risk.v]), 'locked');
+await ok('risk: a reason is not kept when nothing is blocked', async () => {
+  const f = (await one('sales', `insert into formulas (name, product_format, serving_size) values ('No risk recipe', 'capsule', 1) returning id`)).id;
+  const v = (await one('sales', 'select id from formula_versions where formula_id = $1', [f])).id;
+  await as('sales', `insert into formula_lines (version_id, item_id, amount) values ($1, $2, 100)`, [v, mcc.id]);
+  await as('admin', `select approve_formula_version($1, 'not needed')`, [v]);
+  eq((await one('admin', 'select novel_risk_note from formula_versions where id = $1', [v])).novel_risk_note, null, 'no note');
+});
+await fails('risk: production does not see recipe versions', async () => {
+  const rows = await as('production', 'select id from formula_versions where id = $1', [risk.v]);
+  if (rows.length === 0) throw new Error('not visible');
+}, 'not visible');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
