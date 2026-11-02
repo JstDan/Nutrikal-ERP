@@ -2018,6 +2018,7 @@ export const en = {
       discountHint: "Applied to the product price only",
       tiers: "Price tiers",
       tiersHint: "Other order quantities, each with its own discount on the unit price above.",
+      tiersHintCatalog: "Other order quantities, each with its own discount on the catalog price for that quantity. A tier at a catalog step replaces the step on the offer.",
       addTier: "Add price tier",
       tierQty: "Quantity",
       removeTier: "Remove price tier",

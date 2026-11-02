@@ -1154,6 +1154,23 @@ await ok('a price tier is a quantity with a discount on the unit price of the of
   catch (e) { refused = e.message; }
   eq(/no price level/.test(refused), true, 'another price is refused');
 });
+await ok('a catalog product has price tiers too: a quantity with a discount on its catalog price (owner, Nov 2026)', async () => {
+  const off = await one('sales',
+    `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, data, results)
+     values ('NK-T-CATD', 'Client', '', $1, 'Catalog tiered', $2::jsonb, '{"unitPrice": 4.1}'::jsonb) returning id`,
+    [client.id, JSON.stringify({ mode: 'catalog', numberOfUnits: '1000', priceTiers: [{ key: 'a', qty: '2000', discount: '5', markup: '' }],
+      catalog: { tiers: [{ min_qty: 1000, price: 4.1 }, { min_qty: 3000, price: 3.6 }] } })]);
+  // 2000 falls in the 1000 step: 4.10 × 0.95 = 3.895 → 3.90
+  const r = await one('sales', `select create_order_from_calc_offers($1, $2, '[]', 20, null, null, null, $3::jsonb) as id`,
+    [client.id, [off.id], JSON.stringify([{ offer_id: off.id, quantity: 2000, unit_price: 3.9 }])]);
+  const l = await one('sales', 'select quantity, unit_price::float as price from sales_order_lines where order_id = $1', [r.id]);
+  eq(`${l.quantity}x${l.price}`, '2000x3.9', 'catalog tier');
+  await as('sales', `update sales_orders set status = 'cancelled' where id = $1`, [r.id]);
+  let refused = '';
+  try { await as('sales', `select create_order_from_calc_offers($1, $2, '[]', 20, null, null, null, $3::jsonb)`,
+    [client.id, [off.id], JSON.stringify([{ offer_id: off.id, quantity: 2500, unit_price: 3.9 }])]); } catch (e) { refused = e.message; }
+  eq(/no price level/.test(refused), true, 'a quantity that is neither a step nor a tier is refused');
+});
 await ok('the offer of a cancelled order can be deleted; the order line keeps its product and price', async () => {
   const line = await one('sales', `select l.id, l.order_id from sales_order_lines l join calc_offers co on co.id = l.calc_offer_id
     where co.offer_no = 'NK-T-CATT'`);
