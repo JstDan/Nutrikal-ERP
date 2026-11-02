@@ -91,7 +91,7 @@ export const en = {
   },
   topbar: {
     search: "Search",
-    searchPlaceholder: "Search clients, projects, items, lots",
+    searchPlaceholder: "Search clients, orders, offers, recipes, items, lots, invoices",
     language: "Language",
     signOut: "Sign out",
     actAs: "Developer: acting as",
@@ -99,6 +99,13 @@ export const en = {
     toLight: "Switch to light mode",
     notifications: "Notifications",
     unread: "{n} unread",
+  },
+  search: {
+    title: "Search",
+    hint: "Type in the search field at the top.",
+    resultsFor: "Results for “{q}”",
+    none: "Nothing found.",
+    groups: { clients: "Clients", projects: "Projects", orders: "Orders", offers: "Offers", formulas: "Recipes", items: "Items", lots: "Lots", invoices: "Invoices", production: "Manufacturing orders" },
   },
   dashboard: {
     todo: {

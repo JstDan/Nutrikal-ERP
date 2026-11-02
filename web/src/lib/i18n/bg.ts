@@ -93,7 +93,7 @@ export const bg: Dict = {
   },
   topbar: {
     search: "Търсене",
-    searchPlaceholder: "Търси клиенти, проекти, артикули, партиди",
+    searchPlaceholder: "Търси клиенти, поръчки, оферти, рецепти, артикули, партиди, фактури",
     language: "Език",
     signOut: "Изход",
     actAs: "Developer: действате като",
@@ -101,6 +101,13 @@ export const bg: Dict = {
     toLight: "Превключи към светъл режим",
     notifications: "Известия",
     unread: "{n} непрочетени",
+  },
+  search: {
+    title: "Търсене",
+    hint: "Пиши в полето за търсене горе.",
+    resultsFor: "Резултати за „{q}“",
+    none: "Нищо не е намерено.",
+    groups: { clients: "Клиенти", projects: "Проекти", orders: "Поръчки", offers: "Оферти", formulas: "Рецепти", items: "Артикули", lots: "Партиди", invoices: "Фактури", production: "Производствени поръчки" },
   },
   dashboard: {
     todo: {
