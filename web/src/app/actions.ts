@@ -362,6 +362,14 @@ export async function approveFormulaVersion(_: ActionState, fd: FormData): Promi
 export async function newFormulaVersion(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user } = await getSession();
   const formulaId = str(fd, "formula_id");
+  // Only one draft per formula: if one exists already (made in another tab,
+  // by someone else or by a double click), open it instead of failing.
+  const [draft] = await q<{ version: number }>(
+    user.id, "select version from formula_versions where formula_id = $1 and status = 'draft'", [formulaId]);
+  if (draft) {
+    revalidatePath("/formulas", "layout");
+    redirect(`/formulas/${formulaId}?v=${draft.version}`);
+  }
   let version: number;
   try {
     const [row] = await q<{ version: number }>(
