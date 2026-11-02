@@ -3,7 +3,7 @@
 import { marginFromMarkup, unitPriceFor, type CalcResult } from "@/lib/calculator/calc";
 import { catalogMinQty } from "@/lib/calculator/catalogImport";
 import { parseNum } from "@/lib/calculator/numbers";
-import { tierUnitPrice } from "@/lib/calculator/priceOptions";
+import { catalogTierUnitPrice, tierUnitPrice } from "@/lib/calculator/priceOptions";
 import { isCapsule, type ExtraItem, type PriceTier, type ServicePreset } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
 import { fmt } from "@/lib/i18n";
@@ -130,15 +130,19 @@ export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6
         </Field>
       </div>
 
-      {!catalog && (
       <div className="flex flex-col gap-3 border-t border-mist pt-5">
         <SubHeading>{t.markup.tiers}</SubHeading>
-        <p className="m-0 text-[13px] text-ink-2">{t.markup.tiersHint}</p>
+        <p className="m-0 text-[13px] text-ink-2">{catalog ? t.markup.tiersHintCatalog : t.markup.tiersHint}</p>
         {form.priceTiers.map((tier) => {
           const tierDiscount = parseNum(tier.discount);
           const discountBad = tier.discount.trim() !== "" && (tierDiscount === null || tierDiscount < 0 || tierDiscount >= 100);
-          const legacyMarkup = tier.discount.trim() === "" ? parseNum(tier.markup) : null;
-          const price = costKnown ? tierUnitPrice(tier, { unitPrice: unitPriceFor(unitCost, markup), unitCost }) : null;
+          const legacyMarkup = !catalog && tier.discount.trim() === "" ? parseNum(tier.markup) : null;
+          // catalog: the price step of the tier's quantity less the discount; custom: the unit price above less the discount
+          const tierQty = parseNum(tier.qty);
+          const belowMin = catalog && minQty != null && tierQty != null && tierQty > 0 && tierQty < minQty;
+          const price = catalog
+            ? catalogTierUnitPrice(form, tier)
+            : costKnown ? tierUnitPrice(tier, { unitPrice: unitPriceFor(unitCost, markup), unitCost }) : null;
           return (
             <div key={tier.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3 rounded-sm border border-line p-3 md:grid-cols-[160px_160px_minmax(0,1fr)_auto]">
               <Field label={t.markup.tierQty} htmlFor={`tier-qty-${tier.key}`}>
@@ -150,12 +154,14 @@ export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6
                   invalid={discountBad} suffix="%" />
               </Field>
               <div className="col-span-3 row-start-2 min-w-0 text-[13px] text-ink-2 md:col-span-1 md:row-start-auto md:self-center">
-                {!costKnown ? (
+                {belowMin ? (
+                  <span className="text-red-ink">{fmt(t.catalog.minQty, { n: num(minQty) })}</span>
+                ) : !catalog && !costKnown ? (
                   t.markup.tierNeedsFormula
                 ) : price !== null ? (
                   <>
                     <div className="font-semibold text-ink">{fmt(t.markup.tierPrice, { price: eur(price) })}</div>
-                    {price > 0 && <div>{t.markup.margin}: {pct(((price - unitCost) / price) * 100)}</div>}
+                    {price > 0 && unitCost > 0 && <div>{t.markup.margin}: {pct(((price - unitCost) / price) * 100)}</div>}
                     {legacyMarkup !== null && <div>{fmt(t.markup.tierLegacyMarkup, { pct: pct(legacyMarkup) })}</div>}
                   </>
                 ) : null}
@@ -170,7 +176,6 @@ export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6
           <button type="button" onClick={addTier} className="btn btn-outline">+ {t.markup.addTier}</button>
         </div>
       </div>
-      )}
     </Section>
   );
 }
