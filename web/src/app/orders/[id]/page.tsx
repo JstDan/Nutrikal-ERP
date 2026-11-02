@@ -4,6 +4,7 @@ import { DispatchCard } from "@/components/dispatch-card";
 import { OrderStages } from "@/components/order-stages";
 import { ClientFiles } from "@/components/client-files";
 import { ClientMessages } from "@/components/client-messages";
+import { OrderCorrections } from "@/components/order-corrections";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
@@ -155,6 +156,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const showPrepare = isAdmin && ["confirmed", "in_production"].includes(o.status)
     && products.some((l) => !mos.some((m) => m.sales_order_line_id === l.id && m.status !== "cancelled"));
   const doneTasks = board ? board.tasks.filter((x) => x.status === "done").length : 0;
+  // Corrections until a batch is sent to production (the database checks it again)
+  const correctable = canEdit && !user.readOnly && ["draft", "unpaid", "confirmed"].includes(o.status)
+    && !mos.some((m) => ["released", "in_production", "completed"].includes(m.status));
   const realtime = supabaseConfigured()
     ? { url: process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(), key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim() }
     : null;
@@ -429,6 +433,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           </div>
           {final.done && twoPayments && <Link href={`/orders/${o.id}/proforma?final=1`} className="btn btn-primary self-start">{F.open}</Link>}
         </Fold>
+      )}
+
+      {c && correctable && (
+        <OrderCorrections orderId={o.id} clientId={o.client_id} currency={c.currency} vatPct={c.vat_pct}
+          balanceTerms={c.balance_terms} balanceNetDays={c.balance_net_days} userId={user.id} locale={locale} t={t} />
       )}
 
       {c ? (

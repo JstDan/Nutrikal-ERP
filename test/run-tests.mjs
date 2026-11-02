@@ -3391,5 +3391,106 @@ await fails('risk: production does not see recipe versions', async () => {
   if (rows.length === 0) throw new Error('not visible');
 }, 'not visible');
 
+console.log('\nCorrections of an order until it goes to production (owner, Nov 2026)');
+const cor = {};
+const corLines = async (o) => as('sales', 'select kind, description, quantity, unit_price::float as price from sales_order_lines where order_id = $1 order by sort_order', [o]);
+await ok('corrections: an unpaid order from two offers of a client', async () => {
+  cor.client = (await one('sales', `insert into clients (legal_name, country_code) values ('Correct Me Ltd', 'BG') returning id`)).id;
+  cor.other = (await one('sales', `insert into clients (legal_name, country_code) values ('Right Client Ltd', 'BG') returning id`)).id;
+  const offer = async (no) => (await one('sales',
+    `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, data, results)
+     values ($1, 'Buyer', '', $2, $1 || ' product', '{"numberOfUnits": "1000"}'::jsonb, '{"unitPrice": 4}'::jsonb) returning id`, [no, cor.client])).id;
+  cor.offer1 = await offer('NK-COR-1'); cor.offer2 = await offer('NK-COR-2');
+  cor.order = (await one('sales', 'select create_order_from_calc_offers($1, $2) as id', [cor.client, [cor.offer1]])).id;
+  eq((await one('sales', 'select status from sales_orders where id = $1', [cor.order])).status, 'unpaid', 'unpaid');
+  cor.line = (await one('sales', 'select id from sales_order_lines where order_id = $1', [cor.order])).id;
+});
+await fails('corrections: a reason is required', () =>
+  as('sales', `select correct_order_line($1, 2000, 3.5, ' ')`, [cor.line]), 'reason');
+await fails('corrections: production cannot correct an order', () =>
+  as('production', `select correct_order_line($1, 2000, 3.5, 'x')`, [cor.line]), 'not allowed');
+await fails('corrections: lines stay locked outside a correction', () =>
+  as('sales', 'delete from sales_order_lines where id = $1', [cor.line]), 'only change on a draft');
+await ok('corrections: Sales changes quantity and price; the log keeps before, after, reason and who', async () => {
+  await as('sales', `select correct_order_line($1, 2000, 3.5, 'Client wants more at a lower price')`, [cor.line]);
+  eq((await corLines(cor.order)).map((l) => `${l.quantity}x${l.price}`).join(), '2000x3.5', 'line');
+  const c = await one('admin', 'select kind, detail, reason, created_by from order_corrections where order_id = $1', [cor.order]);
+  eq(`${c.kind}:${JSON.stringify(c.detail.quantity)}:${JSON.stringify(c.detail.unit_price)}`, 'line:[1000,2000]:[4,3.5]', 'before and after');
+  eq(`${c.reason}:${c.created_by}`, `Client wants more at a lower price:${U.sales}`, 'reason and who');
+});
+await fails('corrections: nothing changed is not a correction', () =>
+  as('sales', `select correct_order_line($1, 2000, 3.5, 'again')`, [cor.line]), 'nothing to correct');
+await ok('corrections: another offer of the client and a service are added, the service removed', async () => {
+  await as('sales', `select correct_order_add_offer($1, $2, 'Second product')`, [cor.order, cor.offer2]);
+  const s = (await one('sales', `select correct_order_add_service($1, 'Label design', 1, 150, 'Forgotten') as id`, [cor.order])).id;
+  eq((await corLines(cor.order)).map((l) => `${l.kind}:${l.quantity}x${l.price}`).join(), 'calc_offer:2000x3.5,calc_offer:1000x4,service:1x150', 'lines');
+  await as('sales', `select correct_order_remove_line($1, 'Client designs the label')`, [s]);
+  eq((await corLines(cor.order)).length, 2, 'service removed');
+});
+await fails('corrections: an offer already in the order is not added twice', () =>
+  as('sales', `select correct_order_add_offer($1, $2, 'again')`, [cor.order, cor.offer2]), 'already in an order');
+await ok('corrections: VAT and the terms of the balance', async () => {
+  await as('sales', `select correct_order_terms($1, 9, 'net_days', 30, 'Reduced rate, 30 days')`, [cor.order]);
+  const o = await one('sales', 'select vat_pct::float as vat, balance_terms, balance_net_days from sales_orders where id = $1', [cor.order]);
+  eq(`${o.vat}:${o.balance_terms}:${o.balance_net_days}`, '9:net_days:30', 'terms');
+});
+await ok('corrections: client and currency; the offers and their recipes go with the order', async () => {
+  await as('sales', `select correct_order_client($1, $2, 'eur', 'Ordered for the sister company')`, [cor.order, cor.other]);
+  eq((await one('sales', 'select client_id from sales_orders where id = $1', [cor.order])).client_id, cor.other, 'order client');
+  const offers = await as('sales', 'select distinct client_id from calc_offers where id = any($1::uuid[])', [[cor.offer1, cor.offer2]]);
+  eq(offers.map((x) => x.client_id).join(), cor.other, 'offers moved');
+  const recipes = await as('sales', 'select distinct client_id from formulas where calc_offer_id = any($1::uuid[])', [[cor.offer1, cor.offer2]]);
+  eq(recipes.every((x) => x.client_id === cor.other), true, 'recipes moved');
+});
+await fails('corrections: the offer of the order stays locked for anything else', () =>
+  as('sales', `update calc_offers set product_name = 'changed' where id = $1`, [cor.offer1]), 'in an order');
+await ok('corrections: one product is removed; the last one is not', async () => {
+  const l2 = (await one('sales', 'select id from sales_order_lines where order_id = $1 and calc_offer_id = $2', [cor.order, cor.offer2])).id;
+  await as('sales', `select correct_order_remove_line($1, 'Not this time')`, [l2]);
+  let refused = '';
+  try { await as('sales', `select correct_order_remove_line($1, 'all')`, [cor.line]); } catch (e) { refused = e.message; }
+  eq(/last product/.test(refused), true, 'last product kept');
+  eq((await one('admin', 'select count(*)::int as n from order_corrections where order_id = $1', [cor.order])).n, 7, 'seven corrections logged');
+});
+await fails('corrections: production does not see the corrections', async () => {
+  const rows = await as('production', 'select id from order_corrections where order_id = $1', [cor.order]);
+  if (rows.length === 0) throw new Error('not visible');
+}, 'not visible');
+await ok('corrections: a planned batch not yet sent is cancelled when its quantity changes; prepared again at the new quantity', async () => {
+  const off = await e2eOffer('NK-COR-P', 'capsules_plastic', { mode: 'custom', productType: 'capsules_plastic', capsulesPerDose: '1', quantityPerUnit: '60',
+    numberOfUnits: '100', rows: [{ name: 'E2E Zinc', amount: '5', unit: 'mg' }] }, 3);
+  const r = await e2eRecipe(off);
+  await as('admin', 'select approve_formula_version($1)', [r.version]);
+  cor.p = (await one('sales', 'select create_order_from_calc_offers($1, $2) as id', [e2e.client, [off]])).id;
+  await as('admin', `select confirm_order_payment($1, 'full')`, [cor.p]);
+  eq((await one('admin', 'select prepare_order_production($1) as r', [cor.p])).r.created, 1, 'prepared');
+  const line = (await one('sales', 'select id from sales_order_lines where order_id = $1', [cor.p])).id;
+  const mo = await one('admin', 'select id, status from manufacturing_orders where sales_order_line_id = $1', [line]);
+  await as('sales', `select correct_order_line($1, 150, 3, 'Client adds 50 jars')`, [line]);
+  eq((await one('admin', 'select status from manufacturing_orders where id = $1', [mo.id])).status, 'cancelled', 'old batch cancelled');
+  eq((await one('admin', `select count(*)::int as n from stock_reservations where manufacturing_order_id = $1 and status = 'active'`, [mo.id])).n, 0, 'reservations released');
+  eq((await one('admin', 'select prepare_order_production($1) as r', [cor.p])).r.created, 1, 'prepared again');
+  eq((await one('admin', `select quantity from manufacturing_orders where sales_order_line_id = $1 and status <> 'cancelled'`, [line])).quantity, 150, 'new quantity');
+});
+await fails('corrections: a product tied to a recipe keeps its client', () =>
+  as('sales', `select correct_order_client($1, $2, 'EUR', 'x')`, [cor.p, cor.other]), 'tied to recipes');
+await ok('corrections: with an issued invoice VAT no longer changes, quantities still do', async () => {
+  const inv = (await one('sales', `select create_order_invoice($1, 'full') as id`, [cor.p])).id;
+  await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [inv]);
+  let refused = '';
+  try { await as('sales', `select correct_order_terms($1, 9, 'before_dispatch', null, 'x')`, [cor.p]); } catch (e) { refused = e.message; }
+  eq(/issued/.test(refused), true, 'VAT locked by the issued invoice');
+  const line = (await one('sales', 'select id from sales_order_lines where order_id = $1', [cor.p])).id;
+  await as('sales', `select correct_order_line($1, 150, 2.9, 'Price agreed again')`, [line]);
+  eq((await one('sales', 'select status from invoices where id = $1', [inv])).status, 'issued', 'issued invoice untouched');
+});
+await fails('corrections: an order sent to production is no longer corrected', async () => {
+  await db.query('alter table manufacturing_orders disable trigger user');
+  await db.query(`update manufacturing_orders set status = 'released' where sales_order_line_id in (select id from sales_order_lines where order_id = $1) and status <> 'cancelled'`, [cor.p]);
+  await db.query('alter table manufacturing_orders enable trigger user');
+  const line = (await one('sales', 'select id from sales_order_lines where order_id = $1', [cor.p])).id;
+  await as('sales', `select correct_order_line($1, 200, 2.9, 'too late')`, [line]);
+}, 'not yet sent to production');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
