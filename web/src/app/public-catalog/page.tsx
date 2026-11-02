@@ -9,9 +9,19 @@ import { CatalogBrowser, type PublicCatalog } from "@/components/catalog-browser
 import { PRODUCT_NAMES } from "@/lib/i18n/product-names";
 import { CatalogCompany, CatalogOptions, CatalogProcess } from "@/components/catalog-sections";
 
-export const metadata: Metadata = {
+const SHARE = {
   title: "Nutrikal Catalog",
   description: "Ready food supplement formulas for private label",
+  images: [{ url: "/catalog/site/og-catalog.jpg", width: 1200, height: 630, alt: "Nutrikal: ready-made formulas for your own brand" }],
+};
+
+// The picture shown when the catalogue is shared (1200 × 630)
+export const metadata: Metadata = {
+  metadataBase: new URL(`https://${process.env.CATALOG_HOST?.trim() || "catalog.nutrikal.com"}`),
+  title: SHARE.title,
+  description: SHARE.description,
+  openGraph: { ...SHARE, type: "website", siteName: "Nutrikal" },
+  twitter: { card: "summary_large_image", ...SHARE },
 };
 
 /** The open catalogue: no sign-in, and all it can read is catalog_public(). */
