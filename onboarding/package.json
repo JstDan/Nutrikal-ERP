@@ -1,0 +1,14 @@
+{
+  "name": "nutrikal-onboarding",
+  "private": true,
+  "type": "module",
+  "description": "Scripted onboarding videos of Nutrikal ERP, one per role, recorded against a local demo database",
+  "scripts": {
+    "onboarding:record": "node scripts/record-all.mjs",
+    "onboarding:reset": "node scripts/reset-db.mjs"
+  },
+  "devDependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "playwright": "^1.56.0"
+  }
+}

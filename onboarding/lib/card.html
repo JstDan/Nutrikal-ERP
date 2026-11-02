@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Nutrikal ERP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&family=Montserrat:wght@400;600;800&display=swap">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { font-family: Poppins, Montserrat, system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
+  body.title, body.recap { background: #222831; color: #fff; }
+  body.chapter { background: #EBEBEB; color: #222831; }
+  main { width: 1400px; }
+  .brand { font-size: 22px; font-weight: 800; letter-spacing: 6px; }
+  .brand span { color: #7BC74D; font-size: 14px; letter-spacing: 3px; margin-left: 10px; }
+  .kicker { margin-top: 70px; font-size: 22px; font-weight: 600; letter-spacing: 4px; text-transform: uppercase; color: #7BC74D; }
+  body.chapter .kicker { color: #222831; opacity: .6; }
+  h1 { margin: 18px 0 0; font-size: 84px; line-height: 1.08; font-weight: 800; }
+  p { margin: 28px 0 0; font-size: 30px; line-height: 1.45; opacity: .85; max-width: 1200px; }
+  ul { margin: 40px 0 0; padding: 0; list-style: none; font-size: 32px; line-height: 1.6; }
+  li::before { content: "✓"; color: #7BC74D; font-weight: 800; margin-right: 18px; }
+  .bar { margin-top: 60px; height: 6px; width: 160px; background: #7BC74D; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">NUTRIKAL<span>ERP</span></div>
+  <div class="kicker" id="kicker"></div>
+  <h1 id="title"></h1>
+  <p id="text"></p>
+  <ul id="list"></ul>
+  <div class="bar"></div>
+</main>
+<script>
+  // Shown as a layer over the app (srcdoc with window.CARD) or opened directly with ?kind=…
+  const q = window.CARD ? new URLSearchParams(window.CARD) : new URLSearchParams(location.search);
+  document.body.className = q.get("kind") || "title";
+  document.getElementById("kicker").textContent = q.get("kicker") || "";
+  document.getElementById("title").textContent = q.get("title") || "";
+  document.getElementById("text").textContent = q.get("text") || "";
+  const list = document.getElementById("list");
+  for (const item of (q.get("list") || "").split("|").filter(Boolean)) {
+    const li = document.createElement("li"); li.textContent = item; list.appendChild(li);
+  }
+</script>
+</body>
+</html>
