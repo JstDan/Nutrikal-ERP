@@ -71,8 +71,8 @@ export function normalizeForm(f: OfferForm, settings: Settings): OfferForm {
     clientId: f.clientId ?? null,
     // Extra services are added to the order now, not to the offer: unsaved drafts drop them (saved offers keep theirs).
     extraItems: f.id ? (f.extraItems ?? []) : [],
-    // Tiers from before the markup field existed come back with an empty markup.
-    priceTiers: (f.priceTiers ?? []).map((x) => ({ key: x.key, qty: x.qty ?? '', markup: x.markup ?? '' })),
+    // Tiers from before the discount (or the markup) field existed come back with it empty.
+    priceTiers: (f.priceTiers ?? []).map((x) => ({ key: x.key, qty: x.qty ?? '', discount: x.discount ?? '', markup: x.markup ?? '' })),
     discount: f.discount ?? '0',
     // Size 00 only: an older size's standard fill becomes the size 00 fill (a fill typed by hand stays)
     capsuleSize: CAPSULE_SIZE,

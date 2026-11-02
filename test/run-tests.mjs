@@ -1135,6 +1135,25 @@ await ok('an order takes another price level of the offer: a tier at its own mar
   eq(`${(await one('sales', 'select quantity from sales_order_lines where order_id = $1', [rc.id])).quantity}`, '3000', 'catalog step');
   await as('sales', `update sales_orders set status = 'cancelled' where id = $1`, [rc.id]);
 });
+await ok('a price tier is a quantity with a discount on the unit price of the offer (owner, Nov 2026)', async () => {
+  const off = await one('sales',
+    `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, data, results)
+     values ('NK-T-DISC', 'Client', '', $1, 'Discounted', $2::jsonb, $3::jsonb) returning id`,
+    [client.id, JSON.stringify({ numberOfUnits: '1000', priceTiers: [{ key: 'a', qty: '3000', discount: '7,5', markup: '' }] }),
+     JSON.stringify({ unitPrice: 3.21, unitCost: 2.4 })]);
+  const levels = (qty, price) => JSON.stringify([{ offer_id: off.id, quantity: qty, unit_price: price }]);
+  // 3.21 × 0.925 = 2.96925 → 2.97
+  const r = await one('sales', `select create_order_from_calc_offers($1, $2, '[]', 20, null, null, null, $3::jsonb) as id`,
+    [client.id, [off.id], levels(3000, 2.97)]);
+  const l = await one('sales', 'select quantity, unit_price::float as price from sales_order_lines where order_id = $1', [r.id]);
+  eq(`${l.quantity}x${l.price}`, '3000x2.97', 'discounted tier');
+  await as('sales', `update sales_orders set status = 'cancelled' where id = $1`, [r.id]);
+  let refused = '';
+  // the old markup reading of the same tier (2.4 × 1.075 = 2.58) is not a price of this offer
+  try { await as('sales', `select create_order_from_calc_offers($1, $2, '[]', 20, null, null, null, $3::jsonb)`, [client.id, [off.id], levels(3000, 2.58)]); }
+  catch (e) { refused = e.message; }
+  eq(/no price level/.test(refused), true, 'another price is refused');
+});
 await ok('the offer of a cancelled order can be deleted; the order line keeps its product and price', async () => {
   const line = await one('sales', `select l.id, l.order_id from sales_order_lines l join calc_offers co on co.id = l.calc_offer_id
     where co.offer_no = 'NK-T-CATT'`);
