@@ -22,6 +22,7 @@ type Formula = {
 type Version = {
   id: string; version: number; status: string; change_note: string | null;
   notes: string | null; approved_at: string | null; approver: string | null;
+  novel_risk_note: string | null; novel_risk_at: string | null; risk_by: string | null;
 };
 type Line = {
   id: string; sku: string; name: string; name_bg: string | null; amount: string; unit: string; amount_mg: string;
@@ -68,8 +69,10 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
         where f.id = $1`, [id])).rows[0];
     if (!formula) return null;
     const versions = (await tx.query<Version>(
-      `select v.id, v.version, v.status, v.change_note, v.notes, v.approved_at::text, pr.full_name as approver
+      `select v.id, v.version, v.status, v.change_note, v.notes, v.approved_at::text, pr.full_name as approver,
+              v.novel_risk_note, v.novel_risk_at::text, rb.full_name as risk_by
          from formula_versions v left join profiles pr on pr.id = v.approved_by
+         left join profiles rb on rb.id = v.novel_risk_by
         where v.formula_id = $1 order by v.version desc`, [id])).rows;
     const wanted = Number(sp.v);
     const current =
@@ -514,6 +517,15 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
 
           <Card title={d.settings} id="settings-h">
             {v.approved_at && <p className="m-0 text-sm text-ink-2">{fmt(d.approvedOn, { date: formatDate(locale, v.approved_at), name: v.approver ?? "—" })}</p>}
+            {v.novel_risk_note && (
+              <div className="flex gap-2.5 text-sm">
+                <Dot tone="red" />
+                <div className="min-w-0 break-words">
+                  <p className="m-0 font-semibold">{fmt(d.riskAccepted, { date: formatDate(locale, v.novel_risk_at ?? ""), name: v.risk_by ?? "—" })}</p>
+                  <p className="m-0 whitespace-pre-line text-ink-2">{v.novel_risk_note}</p>
+                </div>
+              </div>
+            )}
             {editable ? (
               <ActionForm action={saveFormulaVersion} submitLabel={t.common.save} resetOnSuccess={false}>
                 <input type="hidden" name="version_id" value={v.id} />
@@ -534,9 +546,16 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
               {isDraft && !isAdmin && <p className="m-0 text-sm text-ink-2">{d.adminApproves}</p>}
               {isDraft && (
                 <div className="btn-stack">
-                  {isAdmin && (
+                  {isAdmin && c.novel_not_authorised === 0 && (
                     <ActionForm action={approveFormulaVersion} submitLabel={d.approve} resetOnSuccess={false}>
                       <input type="hidden" name="version_id" value={v.id} />
+                    </ActionForm>
+                  )}
+                  {isAdmin && c.novel_not_authorised > 0 && (
+                    <ActionForm action={approveFormulaVersion} submitLabel={d.approveWithRisk} resetOnSuccess={false}>
+                      <input type="hidden" name="version_id" value={v.id} />
+                      <p className="m-0 flex gap-2.5 text-sm"><Dot tone="red" /><span className="min-w-0 break-words">{d.riskWarning}</span></p>
+                      <label className="field"><span>{d.riskReason}</span><textarea name="risk_note" required className="input" /></label>
                     </ActionForm>
                   )}
                   <form action={discardFormulaDraft}>

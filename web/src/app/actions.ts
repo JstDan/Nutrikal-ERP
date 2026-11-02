@@ -351,7 +351,7 @@ export async function saveFormulaVersion(_: ActionState, fd: FormData): Promise<
 export async function approveFormulaVersion(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   try {
-    await q(user.id, "select approve_formula_version($1)", [str(fd, "version_id")]);
+    await q(user.id, "select approve_formula_version($1, $2)", [str(fd, "version_id"), str(fd, "risk_note")]);
   } catch (e) {
     return { error: errorText(e) };
   }
