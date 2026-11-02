@@ -1,7 +1,27 @@
+import Decimal from 'decimal.js';
 import { unitPriceFor, type CalcResult } from './calc';
 import { catalogTiersFor } from './catalogCapsules';
 import { parseNum } from './numbers';
-import type { OfferForm } from './types';
+import type { OfferForm, PriceTier } from './types';
+
+/**
+ * Price per unit of a price tier: the unit price of the offer less the tier's discount, rounded like the offer
+ * (owner, Nov 2026). Tiers saved before the discount existed keep their own markup on the unit cost. The database
+ * checks an order at a tier the same way (create_order_from_calc_offers). Null while the tier is incomplete.
+ */
+export function tierUnitPrice(
+  tier: Pick<PriceTier, 'discount' | 'markup'>,
+  result: Pick<CalcResult, 'unitPrice' | 'unitCost'>,
+): number | null {
+  const discount = parseNum(tier.discount ?? '');
+  if (discount !== null) {
+    if (discount < 0 || discount >= 100) return null;
+    return new Decimal(result.unitPrice).mul(new Decimal(1).sub(new Decimal(discount).div(100)))
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
+  }
+  const markup = parseNum(tier.markup ?? '');
+  return markup !== null ? unitPriceFor(result.unitCost, markup) : null;
+}
 
 /** One quantity of an offer and its price per unit (EUR). */
 export type PriceOption = { units: number; price: number };
@@ -20,8 +40,8 @@ export function offerPriceOptions(
     ? catalogTiersFor(form).map((x) => ({ units: x.min_qty, price: x.price }))
     : (form.priceTiers ?? []).flatMap((tier) => {
         const qty = parseNum(tier.qty);
-        const markup = parseNum(tier.markup);
-        return qty && qty > 0 && markup !== null ? [{ units: qty, price: unitPriceFor(result.unitCost, markup) }] : [];
+        const price = tierUnitPrice(tier, result);
+        return qty && qty > 0 && price !== null ? [{ units: qty, price }] : [];
       });
   return [...(units > 0 && result.complete ? [{ units, price: result.unitPrice }] : []), ...tiers]
     .filter((p, i, all) => all.findIndex((q) => q.units === p.units) === i)

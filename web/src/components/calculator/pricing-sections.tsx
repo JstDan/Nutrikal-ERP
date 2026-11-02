@@ -3,6 +3,7 @@
 import { marginFromMarkup, unitPriceFor, type CalcResult } from "@/lib/calculator/calc";
 import { catalogMinQty } from "@/lib/calculator/catalogImport";
 import { parseNum } from "@/lib/calculator/numbers";
+import { tierUnitPrice } from "@/lib/calculator/priceOptions";
 import { isCapsule, type ExtraItem, type PriceTier, type ServicePreset } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
 import { fmt } from "@/lib/i18n";
@@ -75,7 +76,7 @@ export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6
   const catalog = form.mode === "catalog";
   const minQty = catalog && form.catalog ? catalogMinQty(form.catalog.tiers) : null;
 
-  const addTier = () => setForm((f) => ({ ...f, priceTiers: [...f.priceTiers, { key: crypto.randomUUID(), qty: "", markup: "" }] }));
+  const addTier = () => setForm((f) => ({ ...f, priceTiers: [...f.priceTiers, { key: crypto.randomUUID(), qty: "", discount: "", markup: "" }] }));
   const updateTier = (key: string, patch: Partial<PriceTier>) =>
     setForm((f) => ({ ...f, priceTiers: f.priceTiers.map((x) => (x.key === key ? { ...x, ...patch } : x)) }));
   const removeTier = (key: string) => setForm((f) => ({ ...f, priceTiers: f.priceTiers.filter((x) => x.key !== key) }));
@@ -134,23 +135,28 @@ export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6
         <SubHeading>{t.markup.tiers}</SubHeading>
         <p className="m-0 text-[13px] text-ink-2">{t.markup.tiersHint}</p>
         {form.priceTiers.map((tier) => {
-          const tierMarkup = parseNum(tier.markup);
-          const price = costKnown && tierMarkup !== null ? unitPriceFor(unitCost, tierMarkup) : null;
+          const tierDiscount = parseNum(tier.discount);
+          const discountBad = tier.discount.trim() !== "" && (tierDiscount === null || tierDiscount < 0 || tierDiscount >= 100);
+          const legacyMarkup = tier.discount.trim() === "" ? parseNum(tier.markup) : null;
+          const price = costKnown ? tierUnitPrice(tier, { unitPrice: unitPriceFor(unitCost, markup), unitCost }) : null;
           return (
             <div key={tier.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3 rounded-sm border border-line p-3 md:grid-cols-[160px_160px_minmax(0,1fr)_auto]">
               <Field label={t.markup.tierQty} htmlFor={`tier-qty-${tier.key}`}>
                 <NumberField id={`tier-qty-${tier.key}`} integer value={tier.qty} onChange={(v) => updateTier(tier.key, { qty: v })} suffix={t.results.pcs} />
               </Field>
-              <Field label={t.markup.markup} htmlFor={`tier-markup-${tier.key}`}>
-                <NumberField id={`tier-markup-${tier.key}`} value={tier.markup} onChange={(v) => updateTier(tier.key, { markup: v })} suffix="%" />
+              <Field label={t.markup.discount} htmlFor={`tier-discount-${tier.key}`} error={discountBad ? t.markup.tierDiscountInvalid : undefined}>
+                {/* typing a discount replaces the markup of an older tier */}
+                <NumberField id={`tier-discount-${tier.key}`} value={tier.discount} onChange={(v) => updateTier(tier.key, { discount: v, markup: "" })}
+                  invalid={discountBad} suffix="%" />
               </Field>
               <div className="col-span-3 row-start-2 min-w-0 text-[13px] text-ink-2 md:col-span-1 md:row-start-auto md:self-center">
                 {!costKnown ? (
                   t.markup.tierNeedsFormula
-                ) : price !== null && tierMarkup !== null ? (
+                ) : price !== null ? (
                   <>
                     <div className="font-semibold text-ink">{fmt(t.markup.tierPrice, { price: eur(price) })}</div>
-                    <div>{t.markup.margin}: {pct(marginFromMarkup(tierMarkup))}</div>
+                    {price > 0 && <div>{t.markup.margin}: {pct(((price - unitCost) / price) * 100)}</div>}
+                    {legacyMarkup !== null && <div>{fmt(t.markup.tierLegacyMarkup, { pct: pct(legacyMarkup) })}</div>}
                   </>
                 ) : null}
               </div>

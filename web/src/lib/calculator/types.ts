@@ -146,10 +146,13 @@ export interface ExtraItem {
   price: string;
 }
 
-/** Alternative price for a specific order quantity: its own markup on the unit cost. Numbers as typed. */
+/** Alternative price for a specific order quantity: a discount % on the unit price of the offer (owner, Nov 2026).
+ *  Tiers saved before that have their own markup on the unit cost and an empty discount. Numbers as typed. */
 export interface PriceTier {
   key: string;
   qty: string;
+  discount: string;
+  /** Older offers only: the tier's own markup on the unit cost; cleared once a discount is typed. */
   markup: string;
 }
 
