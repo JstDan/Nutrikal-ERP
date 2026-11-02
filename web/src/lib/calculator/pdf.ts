@@ -262,7 +262,19 @@ export function offerFileName(form: Pick<OfferForm, 'offer' | 'invoice' | 'recei
 
 const imageFormat = (img: PdfImage) => (img.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG');
 
+/** An offer always stands on one page: the body shrinks step by step until it fits. */
 export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null = null): jsPDF {
+  let last: jsPDF | null = null;
+  for (const scale of [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65]) {
+    const { doc, fits } = drawOffer(m, fonts, docPhoto, scale);
+    if (fits) return doc;
+    last = doc;
+  }
+  return last!;
+}
+
+function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, scale: number): { doc: jsPDF; fits: boolean } {
+  const z = (n: number) => n * scale;
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
   const register = (file: string, data: string, family: string, style: string) => {
     doc.addFileToVFS(file, data);
@@ -302,7 +314,6 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   const L = 25;
   const R = pageW - 25;
   const COL2 = pageW / 2 + 3;
-  const bottomLimit = pageH - 26;
   const SHEET = 52;
   drawDocShell(doc, SHEET, docPhoto);
 
@@ -336,18 +347,18 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   const party = (title: string, x: number, width: number, name: string, rows: [string, string][]) => {
     let py = SHEET + 11;
     write(title, x, py, { weight: 'semibold', size: 7.5, color: MUTED });
-    py += 5.5;
+    py += z(5.5);
     if (name) {
-      write(name, x, py, { weight: 'bold', size: 11 });
-      py += 5.6;
+      write(name, x, py, { weight: 'bold', size: z(11) });
+      py += z(5.6);
     }
-    doc.setFontSize(9);
+    doc.setFontSize(z(9));
     for (const [label, value] of rows.filter(([, v]) => v)) {
       const line = label ? `${label}: ${value}` : value;
       doc.setFont(...fontFor('regular', line));
       for (const part of doc.splitTextToSize(line, width) as string[]) {
-        write(part, x, py, { size: 9 });
-        py += 4.7;
+        write(part, x, py, { size: z(9) });
+        py += z(4.7);
       }
     }
     return py;
@@ -366,7 +377,17 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
     const [font, fontStyle] = fontFor(weight, text);
     return { font, fontStyle: fontStyle as 'normal' | 'bold' };
   };
-  let y = Math.max(yc, ys) + 6;
+  let y = Math.max(yc, ys) + z(6);
+
+  // Payment terms and the thanks stand at the foot of the page, above the strip; the body ends above them
+  doc.setFont(...fontFor('regular', m.paymentTerms));
+  doc.setFontSize(z(9));
+  const payment = m.paymentTerms ? doc.splitTextToSize(m.paymentTerms, COL2 - L - 8) as string[] : [];
+  doc.setFontSize(z(8.5));
+  const thanks = doc.splitTextToSize(PDF.thanks, R - COL2) as string[];
+  const closeH = Math.max(payment.length ? z(6) + payment.length * z(4.4) : 0, thanks.length * z(4.2));
+  const closeTop = 277 - 5 - closeH;
+  const bottomLimit = closeTop - 8;
 
   const ensureSpace = (needed: number) => {
     if (y + needed > bottomLimit) {
@@ -376,28 +397,29 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   };
 
   // 4. Product, amount per serving, sales prices, excl. VAT note, payment terms, standard terms
-  const textLines = (lines: string[], size = 9.5, color = TEXT) => {
+  const textLines = (lines: string[], base = 9.5, color = TEXT) => {
+    const size = z(base);
     doc.setFontSize(size);
     for (const line of lines) {
       doc.setFont(...fontFor('regular', line));
       for (const part of doc.splitTextToSize(line, R - L) as string[]) {
-        ensureSpace(6);
+        ensureSpace(size * 0.53);
         write(part, L, y, { size, color });
         y += size * 0.53;
       }
     }
   };
   const heading = (title: string) => {
-    write(title, L, y, { weight: 'semibold', size: 10.5 });
-    y += 2.5;
+    write(title, L, y, { weight: 'semibold', size: z(10.5) });
+    y += z(2.5);
   };
   const block = (title: string, lines: string[], size = 9.5, color = TEXT) => {
     if (!lines.length) return;
-    ensureSpace(14);
+    ensureSpace(z(14));
     heading(title);
-    y += 3;
+    y += z(3);
     textLines(lines, size, color);
-    y += 5;
+    y += z(5);
   };
   const underline = (cell: { x: number; y: number; width: number; height: number }, color = LINE) => {
     doc.setDrawColor(...color);
@@ -405,18 +427,18 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
     doc.line(cell.x, cell.y + cell.height, cell.x + cell.width, cell.y + cell.height);
   };
   // Product name with the packaging lines under it.
-  ensureSpace(18);
-  write(m.productName, L, y, { weight: 'bold', size: 15 });
-  y += 6.5;
+  ensureSpace(z(18));
+  write(m.productName, L, y, { weight: 'bold', size: z(15) });
+  y += z(6.5);
   textLines(m.packaging, 9.5, MUTED);
-  y += 6;
+  y += z(6);
 
   if (m.doseRows.length) {
-    ensureSpace(24);
+    ensureSpace(z(24));
     heading(fmt(PDF.amountPerDose, { portion: m.dosePortion }));
     autoTable(doc, {
       startY: y,
-      margin: { left: L, right: pageW - R, top: 15, bottom: 20 },
+      margin: { left: L, right: pageW - R, top: 15, bottom: pageH - bottomLimit },
       theme: 'plain',
       // Two columns of ingredients keep the offer on one page
       body: Array.from({ length: Math.ceil(m.doseRows.length / 2) }, (_, i) => {
@@ -425,7 +447,7 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
         const b = m.doseRows[i + half];
         return [a.name, a.amount, '', b?.name ?? '', b?.amount ?? ''];
       }),
-      styles: { font: 'Poppins', fontSize: 8.5, textColor: TEXT, cellPadding: { top: 1.1, bottom: 1.1, left: 0, right: 0 }, overflow: 'linebreak' },
+      styles: { font: 'Poppins', fontSize: z(8.5), textColor: TEXT, cellPadding: { top: z(1.1), bottom: z(1.1), left: 0, right: 0 }, overflow: 'linebreak' },
       columnStyles: { 0: { cellWidth: 56 }, 1: { cellWidth: 19, halign: 'right' }, 2: { cellWidth: 10 }, 3: { cellWidth: 56 }, 4: { cellWidth: 19, halign: 'right' } },
       didParseCell: (data) => {
         const text = data.cell.text.join(' ');
@@ -433,72 +455,64 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
       },
       didDrawCell: (data) => { if (data.column.index !== 2 && data.cell.text.join('')) underline(data.cell); },
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + z(7);
   }
   // Notes: under the table, or with their own heading when the table is switched off.
   if (m.doseRows.length) {
     if (m.noteLines.length) {
       textLines(m.noteLines);
-      y += 5;
+      y += z(5);
     }
   } else {
     block(PDF.note, m.noteLines);
   }
   // Sales prices, then the excl. VAT line, payment terms and standard terms at the end.
   if (m.salesPrices) {
-    ensureSpace(30);
+    ensureSpace(z(30));
     heading(PDF.salesPrices);
     autoTable(doc, {
       startY: y,
-      margin: { left: L, right: pageW - R, top: 15, bottom: 20 },
+      margin: { left: L, right: pageW - R, top: 15, bottom: pageH - bottomLimit },
       theme: 'plain',
       head: [[PDF.units, ...m.salesPrices.map((p) => formatNumber(p.units, 0))]],
       body: [[PDF.pricePerUnit, ...m.salesPrices.map((p) => `€${money(p.price)}`)]],
-      styles: { font: 'Poppins', fontSize: 9.5, textColor: TEXT, cellPadding: { top: 2.2, bottom: 2.2, left: 0, right: 2 }, halign: 'right' },
-      headStyles: { font: 'Poppins', fontSize: 9.5, textColor: MUTED },
+      styles: { font: 'Poppins', fontSize: z(9.5), textColor: TEXT, cellPadding: { top: z(2.2), bottom: z(2.2), left: 0, right: 2 }, halign: 'right' },
+      headStyles: { font: 'Poppins', fontSize: z(9.5), textColor: MUTED },
       columnStyles: { 0: { halign: 'left', cellWidth: 46 } },
       didParseCell: (data) => {
         if (data.section === 'head' && data.column.index === 0) data.cell.styles.halign = 'left';
-        if (data.section === 'body' && data.column.index > 0) Object.assign(data.cell.styles, { fontStyle: 'bold', fontSize: 11.5 });
+        if (data.section === 'body' && data.column.index > 0) Object.assign(data.cell.styles, { fontStyle: 'bold', fontSize: z(11.5) });
       },
       didDrawCell: (data) => underline(data.cell, data.section === 'head' ? NAVY : LINE),
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + z(5);
   }
 
-  ensureSpace(8);
-  write(PDF.pricesExclVat, L, y, { size: 8.5, color: MUTED });
-  y += 7;
+  ensureSpace(z(8));
+  write(PDF.pricesExclVat, L, y, { size: z(8.5), color: MUTED });
+  y += z(7);
   // What the price covers, side by side
-  ensureSpace(20);
   const half = (title: string, text: string, x: number) => {
-    write(title, x, y, { weight: 'semibold', size: 9 });
+    write(title, x, y, { weight: 'semibold', size: z(9) });
     doc.setFont(...fontFor('regular', text));
-    doc.setFontSize(8.5);
-    (doc.splitTextToSize(text, COL2 - L - 8) as string[]).forEach((part, i) => write(part, x, y + 4.4 + i * 3.9, { size: 8.5, color: MUTED }));
+    doc.setFontSize(z(8.5));
+    const parts = doc.splitTextToSize(text, COL2 - L - 8) as string[];
+    parts.forEach((part, i) => write(part, x, y + z(4.4) + i * z(3.9), { size: z(8.5), color: MUTED }));
+    return parts.length;
   };
-  half(PDF.included, PDF.includedText, L);
-  half(PDF.notIncluded, PDF.notIncludedText, COL2);
-  y += 20;
+  ensureSpace(z(20));
+  const halfLines = Math.max(half(PDF.included, PDF.includedText, L), half(PDF.notIncluded, PDF.notIncludedText, COL2));
+  y += z(4.4) + halfLines * z(3.9) + z(4);
   block(PDF.terms, [m.terms, PDF.moreTerms].filter(Boolean), 8, MUTED);
 
-  // Payment terms and the thanks stand at the foot of the last page, above the strip
-  doc.setFont(...fontFor('regular', m.paymentTerms));
-  doc.setFontSize(9);
-  const payment = m.paymentTerms ? doc.splitTextToSize(m.paymentTerms, COL2 - L - 8) as string[] : [];
-  doc.setFontSize(8.5);
-  const thanks = doc.splitTextToSize(PDF.thanks, R - COL2) as string[];
-  const closeH = Math.max(payment.length ? 6 + payment.length * 4.4 : 0, thanks.length * 4.2);
-  ensureSpace(closeH + 10);
-  const closeTop = 277 - 5 - closeH;
   doc.setDrawColor(...LINE);
   doc.setLineWidth(0.15);
   doc.line(L, closeTop - 5, R, closeTop - 5);
   if (payment.length) {
-    write(PDF.paymentTerms, L, closeTop, { weight: 'semibold', size: 9 });
-    payment.forEach((line, i) => write(line, L, closeTop + 5 + i * 4.4, { size: 9 }));
+    write(PDF.paymentTerms, L, closeTop, { weight: 'semibold', size: z(9) });
+    payment.forEach((line, i) => write(line, L, closeTop + z(5) + i * z(4.4), { size: z(9) }));
   }
-  thanks.forEach((line, i) => write(line, COL2, closeTop + i * 4.2, { size: 8.5, color: MUTED }));
+  thanks.forEach((line, i) => write(line, COL2, closeTop + i * z(4.2), { size: z(8.5), color: MUTED }));
 
   // 5. Footer strip on every page
   const pages = doc.getNumberOfPages();
@@ -512,7 +526,7 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
     write(fmt(PDF.page, { n: i, m: pages }), R, 281.6, { size: 7, color: MUTED, align: 'right' });
   }
 
-  return doc;
+  return { doc, fits: pages === 1 };
 }
 
 // ---------------------------------------------------------------------------
