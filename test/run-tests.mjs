@@ -1159,6 +1159,15 @@ await fails('the offer of an order that is not cancelled cannot be deleted', () 
   as('admin', `delete from calc_offers where offer_no = 'NK-T-OA'`), 'can no longer be changed');
 await fails('an offer already in an order cannot be ordered again', () =>
   as('sales', 'select create_order_from_calc_offers($1, $2)', [client.id, [calcA.id]]), 'already in an order');
+await ok('the calculator sees which offers are locked by an order (offerState)', async () => {
+  const state = (id) => as('sales', `select exists (select 1 from sales_order_lines l join sales_orders so on so.id = l.order_id
+                                                     where l.calc_offer_id = o.id and so.status <> 'cancelled') as locked
+                                       from calc_offers o where o.id = $1`, [id]);
+  eq((await state(calcA.id))[0].locked, true, 'in an order');
+  const free = await calcOffer('NK-T-OF', client.id, 100, 5);
+  eq((await state(free.id))[0].locked, false, 'not in an order');
+  eq((await state('00000000-0000-4000-8000-0000000000ff')).length, 0, 'missing');
+});
 await fails('an offer of another client cannot be ordered', async () => {
   const x = await calcOffer('NK-T-OX', client2.id, 100, 5);
   await as('sales', 'select create_order_from_calc_offers($1, $2)', [client.id, [x.id]]);
