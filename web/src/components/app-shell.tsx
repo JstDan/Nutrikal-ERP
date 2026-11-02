@@ -112,7 +112,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-[999_1_560px] flex-col">
         <header className="flex flex-wrap print:hidden items-center gap-3 border-b border-line bg-white px-4 py-3 sm:px-8">
           {!isProduction && (
-            <form action="/clients" method="get" role="search" className="flex min-w-0 flex-[1_1_260px]">
+            <form action="/search" method="get" role="search" className="flex min-w-0 flex-[1_1_260px]">
               <label htmlFor="global-search" className="sr-only">{t.topbar.search}</label>
               <input id="global-search" name="q" type="search" placeholder={t.topbar.searchPlaceholder} className="input" />
             </form>
