@@ -9,7 +9,7 @@ import { createCatalogProduct } from "@/app/catalog-actions";
 import { SearchSelect } from "@/components/search-select";
 import { formulaTone } from "@/lib/status";
 import {
-  addFormulaClaim, addFormulaLine, addFormulaPackaging, removeFormulaPackaging, approveFormulaVersion, discardFormulaDraft, newFormulaVersion,
+  addFormulaClaim, addFormulaLine, setFormulaServing, addFormulaPackaging, removeFormulaPackaging, approveFormulaVersion, discardFormulaDraft, newFormulaVersion,
   linkPendingLine, removeFormulaClaim, removeFormulaLine, removePendingLine, saveFormulaLine, saveFormulaVersion,
 } from "@/app/actions";
 
@@ -223,6 +223,22 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
               <Fact label={d.servingsPerPack}>{f.servings_per_pack ?? "—"}</Fact>
               <Fact label={d.shell}>{f.shell ? (locale === "bg" && f.shell_bg ? f.shell_bg : f.shell) : "—"}</Fact>
             </div>
+            {canEdit && (
+              <details open={f.servings_per_pack == null} className="text-sm">
+                <summary className="flex min-h-11 cursor-pointer items-center font-semibold">{d.changeServing}</summary>
+                <ActionForm action={setFormulaServing} submitLabel={d.saveServing} resetOnSuccess={false}>
+                  <input type="hidden" name="formula_id" value={f.id} />
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="field min-w-0 flex-[0_1_180px]"><span>{d.serving} ({unitLabel})</span>
+                      <input name="serving_size" type="number" min="0.001" step="any" required defaultValue={Number(f.serving_size)} className="input" />
+                    </label>
+                    <label className="field min-w-0 flex-[0_1_180px]"><span>{d.servingsPerPack}</span>
+                      <input name="servings_per_pack" type="number" min={1} step={1} required defaultValue={f.servings_per_pack ?? ""} className="input" />
+                    </label>
+                  </div>
+                </ActionForm>
+              </details>
+            )}
             <div className="cq">
               <div className={`row cq-hide-xs border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${lineGrid}`}>
                 <span>{d.item}</span><span>{d.amount}</span><span>{d.overage}</span>

@@ -33,11 +33,15 @@ export async function prepareProduction(_: ActionState, fd: FormData): Promise<A
   const { user, t } = await getSession();
   const d = t.orders.detail;
   try {
-    const [{ r }] = await q<{ r: { created: number; reserved: number; requested: number; no_recipe: string[] } }>(
+    const [{ r }] = await q<{ r: { created: number; reserved: number; requested: number; no_recipe: string[]; no_servings?: string[] } }>(
       user.id, "select prepare_order_production($1, $2::date) as r", [str(fd, "order_id"), str(fd, "planned_date")]);
     revalidatePath("/", "layout");
     const done = fmt(d.prepared, { created: r.created, reserved: r.reserved, requested: r.requested });
-    return { ok: true, message: r.no_recipe.length ? `${done} ${fmt(d.preparedNoRecipe, { names: r.no_recipe.join(", ") })}` : done };
+    const notes = [
+      r.no_recipe.length ? fmt(d.preparedNoRecipe, { names: r.no_recipe.join(", ") }) : "",
+      r.no_servings?.length ? fmt(d.preparedNoServings, { names: r.no_servings.join(", ") }) : "",
+    ].filter(Boolean);
+    return { ok: true, message: [done, ...notes].join(" ") };
   } catch (e) {
     return { error: errorText(e) };
   }

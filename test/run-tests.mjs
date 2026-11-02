@@ -1185,7 +1185,7 @@ await fails('a line cannot be linked to a formula before the payment', async () 
 await fails('an unpaid order has no invoice', () =>
   as('sales', 'select create_order_invoice($1)', [calcOrder.id]), 'payment is confirmed');
 await ok('admin confirms the payment: paid in full', async () => {
-  await as('admin', `update sales_orders set status = 'confirmed' where id = $1`, [calcOrder.id]);
+  await as('admin', `select confirm_order_payment($1, 'full')`, [calcOrder.id]);
   const o = await one('admin', 'select status, deposit_received_on, balance_received_on from sales_orders where id = $1', [calcOrder.id]);
   eq(o.status, 'confirmed', 'status'); eq(!!o.deposit_received_on && !!o.balance_received_on, true, 'paid');
 });
@@ -3205,6 +3205,153 @@ await fails('a closed batch does not move', async () => {
   await db.query(`alter table manufacturing_orders enable trigger user`);
   await as('admin', 'select mo_reschedule($1, current_date + 1)', [calMo]);
 }, 'closed');
+
+console.log('\nEnd to end: offers as the calculator saves them, recipes, order, payment, production, release, dispatch, invoices');
+// The offers carry what the calculator form really sends: a catalog offer has no product type, the default
+// capsules per dose '1' and may keep rows of an earlier custom formula.
+const e2e = {};
+const e2eRecipe = async (offerId) => one('sales', `select f.id, f.product_format as fmt, f.serving_size::float as size, f.serving_unit as unit, f.servings_per_pack as per,
+    (select sku from items where id = f.shell_item_id) as shell, v.id as version,
+    (select string_agg(i.sku, ',' order by i.sku) from formula_packaging p join items i on i.id = p.item_id where p.version_id = v.id) as pack,
+    (select count(*)::int from formula_lines where version_id = v.id) as lines,
+    (select count(*)::int from formula_pending_lines where version_id = v.id) as pending
+  from formulas f join formula_versions v on v.formula_id = f.id where f.calc_offer_id = $1 order by v.version desc limit 1`, [offerId]);
+const e2eOffer = async (no, productType, data, price) => (await one('sales',
+  `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, product_type, data, results)
+   values ($1, 'Buyer', 'buyer@e2e.test', $2, $1 || ' product', $3, $4::jsonb, $5::jsonb) returning id`,
+  [no, e2e.client, productType, JSON.stringify(data), JSON.stringify({ unitPrice: price })])).id;
+await ok('e2e setup: a client without own terms and two raw materials', async () => {
+  e2e.client = (await one('sales', `insert into clients (legal_name, country_code) values ('E2E Brands Ltd', 'DE') returning id`)).id;
+  for (const [k, sku, name] of [['mg', 'RM-E2E-MG', 'E2E Magnesium'], ['zn', 'RM-E2E-ZN', 'E2E Zinc']]) {
+    e2e[k] = (await one('admin', `insert into items (sku, type, name, base_unit, novel_food_status, shelf_life_months)
+                                  values ($1, 'raw_material', $2, 'kg', 'not_novel', 24) returning id`, [sku, name])).id;
+  }
+});
+await ok('e2e A: a custom formula in plastic jars: capsules, servings, a matched and a pending ingredient, shell, jar and lid', async () => {
+  e2e.offerA = await e2eOffer('NK-E2E-A', 'capsules_plastic', { mode: 'custom', productType: 'capsules_plastic', capsulesPerDose: '2', quantityPerUnit: '60',
+    numberOfUnits: '1000', lid: 'plastic', rows: [{ name: 'E2E Magnesium', amount: '300', unit: 'mg' }, { name: 'E2E Unknown herb', amount: '10', unit: 'mg' }] }, 4);
+  const r = await e2eRecipe(e2e.offerA);
+  eq(`${r.fmt}:${r.size}${r.unit}:${r.per}`, 'capsule:2pcs:30', 'serving');
+  eq(`${r.lines}/${r.pending}`, '1/1', 'lines/pending'); eq(r.shell, 'PK-CAPS-00', 'shell'); eq(r.pack, 'PK-JAR-PL,PK-LID-PL', 'jar and lid');
+});
+await ok('e2e B: a catalog capsule product as the form saves it: the catalog decides serving, servings per jar, composition and packaging', async () => {
+  e2e.offerB = await e2eOffer('NK-E2E-B', null, { mode: 'catalog', productType: null, capsulesPerDose: '1', quantityPerUnit: '', numberOfUnits: '500',
+    jar: 'glass', catalogCapsules: '90', rows: [{ name: 'Stale row', amount: '5', unit: 'mg' }],
+    catalog: { code: 'NTL-E2E', name: 'E2E Catalog Caps', capsules_per_serving: 2, capsules_per_container: 60, servings_per_container: 30, serving_g: null,
+      tiers: [{ min_qty: 500, price: 5 }], composition: [{ name: 'E2E Magnesium', amount: 200, unit: 'mg', note: null }, { name: 'E2E Zinc', amount: 10, unit: 'mg', note: null }] } }, 7.9);
+  const r = await e2eRecipe(e2e.offerB);
+  eq(`${r.fmt}:${r.size}${r.unit}:${r.per}`, 'capsule:2pcs:45', '90 capsules a jar, 2 a serving');
+  eq(`${r.lines}/${r.pending}`, '2/0', 'catalog composition, no stale row'); eq(r.shell, 'PK-CAPS-00', 'shell'); eq(r.pack, 'PK-JAR-GL,PK-LID-AL', 'glass jar, aluminium lid');
+});
+await ok('e2e C: a catalog powder: grams per serving from the catalog, no capsule, jar or lid', async () => {
+  e2e.offerC = await e2eOffer('NK-E2E-C', null, { mode: 'catalog', productType: null, capsulesPerDose: '1', numberOfUnits: '500', rows: [],
+    catalog: { code: 'NTL-E2EP', name: 'E2E Catalog Powder', capsules_per_serving: null, capsules_per_container: null, serving_g: 10, servings_per_container: 30,
+      tiers: [{ min_qty: 500, price: 6 }], composition: [{ name: 'E2E Magnesium', amount: 2, unit: 'g', note: null }] } }, 6);
+  const r = await e2eRecipe(e2e.offerC);
+  eq(`${r.fmt}:${r.size}${r.unit}:${r.per}`, 'powder:10g:30', 'serving'); eq(`${r.shell}:${r.pack}`, 'null:null', 'no packaging');
+});
+await fails('e2e: a recipe with an ingredient still to link is not approved', async () => {
+  await as('admin', 'select approve_formula_version($1)', [(await e2eRecipe(e2e.offerA)).version]);
+}, 'Link every ingredient');
+await ok('e2e: a discarded draft and a new version keep the ingredient to link; linked, it is approved', async () => {
+  const a = await e2eRecipe(e2e.offerA);
+  await as('sales', `update formula_versions set status = 'archived' where id = $1`, [a.version]);
+  await as('sales', 'select new_formula_version($1)', [a.id]);
+  const v2 = await e2eRecipe(e2e.offerA);
+  eq(`${v2.lines}/${v2.pending}`, '1/1', 'copied with the pending line');
+  const p = await one('sales', 'select id from formula_pending_lines where version_id = $1', [v2.version]);
+  await as('sales', 'select link_recipe_pending_line($1, $2)', [p.id, e2e.zn]);
+  await as('admin', 'select approve_formula_version($1)', [v2.version]);
+  for (const o of [e2e.offerB, e2e.offerC]) await as('admin', 'select approve_formula_version($1)', [(await e2eRecipe(o)).version]);
+  eq((await as('sales', `select v.status from formula_versions v join formulas f on f.id = v.formula_id
+                          where f.calc_offer_id = any($1) and v.status = 'approved'`, [[e2e.offerA, e2e.offerB, e2e.offerC]])).length, 3, 'three approved');
+});
+await ok('e2e: the order takes the company terms: 60 % deposit, balance before dispatch', async () => {
+  e2e.order = (await one('sales', 'select create_order_from_calc_offers($1, $2) as id', [e2e.client, [e2e.offerA, e2e.offerB, e2e.offerC]])).id;
+  const o = await one('sales', 'select status, deposit_pct::float as d, balance_terms from sales_orders where id = $1', [e2e.order]);
+  eq(`${o.status}:${o.d}:${o.balance_terms}`, 'unpaid:60:before_dispatch', 'terms');
+  const l = await as('sales', 'select quantity, unit_price::float as p from sales_order_lines where order_id = $1 order by sort_order', [e2e.order]);
+  eq(l.map((x) => `${x.quantity}x${x.p}`).join(), '1000x4,500x7.9,500x6', 'lines');
+});
+await ok('e2e: the bookkeeper confirms the advance; admin prepares production for all three products', async () => {
+  await as('bookkeeper', `select confirm_order_payment($1, 'advance', 1000)`, [e2e.order]);
+  eq((await one('sales', 'select status from sales_orders where id = $1', [e2e.order])).status, 'confirmed', 'confirmed');
+  const r = (await one('admin', 'select prepare_order_production($1) as r', [e2e.order])).r;
+  eq(`${r.created}:${r.no_recipe.length}:${r.no_servings.length}`, '3:0:0', 'three batches');
+  e2e.mos = (await as('admin', `select m.id, m.code from manufacturing_orders m join sales_order_lines l on l.id = m.sales_order_line_id
+                                 where l.order_id = $1 order by l.sort_order`, [e2e.order]));
+});
+await ok('e2e: materials arrive at the partner; each batch is scheduled, reserved and sent to production', async () => {
+  for (const m of e2e.mos) {
+    m.lots = {};
+    for (const x of await as('admin', 'select item_id, required::float as q from mo_material_requirements($1)', [m.id])) {
+      m.lots[x.item_id] = await recv(x.item_id, Math.ceil(x.q * 1000) / 1000 + 0.001, 'NK-WH');
+    }
+    await as('admin', 'select schedule_mo($1, current_date + 3)', [m.id]);
+    // the stock waits in the Nutrikal warehouse: Admin moves it to the partner
+    eq((await one('admin', 'select move_mo_materials_to_production($1) as n', [m.id])).n > 0, true, 'moved');
+    eq((await one('admin', 'select move_mo_materials_to_production($1) as n', [m.id])).n, 0, 'nothing left to move');
+    await as('admin', 'select release_mo($1)', [m.id]);
+  }
+  eq((await one('sales', 'select status from sales_orders where id = $1', [e2e.order])).status, 'in_production', 'order in production');
+});
+await fails('e2e: only Admin moves materials to production', () => as('production', 'select move_mo_materials_to_production($1)', [e2e.mos[0].id]), 'not allowed');
+await ok('e2e: the partner confirms the dates, starts and reports each batch; batches wait in quarantine', async () => {
+  e2e.lots = [];
+  for (const [i, m] of e2e.mos.entries()) {
+    await as('production', 'select mo_date_answer($1, null, null)', [m.id]);
+    await as('production', 'select start_production($1)', [m.id]);
+    // The partner names the lots it used: lots at its locations, as much as was reserved
+    const usage = [];
+    for (const r of await as('admin', `select item_id, sum(quantity)::float as quantity from stock_reservations
+                                        where manufacturing_order_id = $1 and status = 'active' group by item_id`, [m.id])) {
+      let left = r.quantity;
+      for (const s of await as('admin', `select lot_id, location_id, quantity::float as q from stock_balances
+                                          where item_id = $1 and qc_status = 'released' and is_production_location(location_id) and quantity > 0
+                                          order by expires_on nulls last, lot_number`, [r.item_id])) {
+        if (left <= 1e-9) break;
+        const take = Math.min(left, s.q);
+        usage.push({ lot_id: s.lot_id, location_id: s.location_id, quantity: Math.round(take * 10000) / 10000 });
+        left -= take;
+      }
+    }
+    const qty = (await one('admin', 'select quantity from manufacturing_orders where id = $1', [m.id])).quantity;
+    const lot = (await one('production', `select complete_production($1, $2, $3, current_date, $4::jsonb, '[]'::jsonb, current_date + 700) as lot`,
+      [m.id, `E2E-B${i + 1}`, qty, JSON.stringify(usage)])).lot;
+    eq((await one('admin', 'select qc_status from lots where id = $1', [lot])).qc_status, 'quarantine', 'quarantine');
+    e2e.lots.push({ lot, qty });
+  }
+});
+await ok('e2e: Admin releases the batches; the order is ready; the final payment is confirmed', async () => {
+  for (const x of e2e.lots) await as('admin', `select set_lot_qc_status($1, 'released')`, [x.lot]);
+  await as('admin', `update sales_orders set status = 'ready' where id = $1`, [e2e.order]);
+  await as('bookkeeper', 'select confirm_final_payment($1)', [e2e.order]);
+});
+await ok('e2e: advance invoice, dispatch with a delivery note, final invoice, order closed', async () => {
+  const adv = (await one('sales', `select create_order_invoice($1, 'advance') as id`, [e2e.order])).id;
+  await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [adv]);
+  const lines = JSON.stringify(e2e.lots.map((x) => ({ lot_id: x.lot, location_id: L['PF-QUAR'], quantity: x.qty })));
+  await as('bookkeeper', 'select dispatch_order($1, current_date, $2::jsonb)', [e2e.order, lines]);
+  eq((await one('sales', 'select status from sales_orders where id = $1', [e2e.order])).status, 'dispatched', 'dispatched');
+  const fin = (await one('sales', 'select create_order_invoice($1) as id', [e2e.order])).id;
+  eq((await one('sales', 'select purpose from invoices where id = $1', [fin])).purpose, 'final', 'final invoice');
+  await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [fin]);
+  await as('sales', `update sales_orders set status = 'closed' where id = $1`, [e2e.order]);
+  eq((await one('sales', 'select status from sales_orders where id = $1', [e2e.order])).status, 'closed', 'closed');
+});
+await ok('e2e: a recipe without servings per pack is named by prepare production instead of stopping the order', async () => {
+  const off = await e2eOffer('NK-E2E-D', 'capsules_plastic', { mode: 'custom', productType: 'capsules_plastic', capsulesPerDose: '1', quantityPerUnit: '',
+    numberOfUnits: '100', rows: [{ name: 'E2E Zinc', amount: '5', unit: 'mg' }] }, 3);
+  const r = await e2eRecipe(off);
+  eq(r.per, null, 'no servings per pack');
+  await as('admin', 'select approve_formula_version($1)', [r.version]);
+  const o = (await one('sales', 'select create_order_from_calc_offers($1, $2) as id', [e2e.client, [off]])).id;
+  await as('admin', `select confirm_order_payment($1, 'full')`, [o]);
+  const p = (await one('admin', 'select prepare_order_production($1) as r', [o])).r;
+  eq(`${p.created}:${p.no_servings.join()}`, '0:NK-E2E-D product', 'named');
+  await as('sales', 'update formulas set servings_per_pack = 100 where id = $1', [r.id]);
+  eq((await one('admin', 'select prepare_order_production($1) as r', [o])).r.created, 1, 'prepared once set');
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

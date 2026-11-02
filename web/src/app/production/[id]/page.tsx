@@ -9,7 +9,7 @@ import { moveMoDate } from "@/app/calendar-actions";
 import { moTone } from "@/lib/status";
 import { SearchSelect } from "@/components/search-select";
 import {
-  addMoPackaging, cancelMo, orderMoMaterial, releaseMo, removeMoPackaging, requestPurchases, reserveMo, revertMo, saveMo,
+  addMoPackaging, cancelMo, moveMoToProduction, orderMoMaterial, releaseMo, removeMoPackaging, requestPurchases, reserveMo, revertMo, saveMo,
   scheduleMo, startProduction,
 } from "@/app/actions";
 
@@ -160,7 +160,10 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
             })}
           </div>
           {(mo.status === "scheduled" || mo.status === "released") && notAtProduction > 0 && (
-            <p role="status" className="m-0 text-sm font-semibold text-amber-ink">{fmt(d.notAtProduction, { n: notAtProduction })}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p role="status" className="m-0 min-w-0 flex-[1_1_260px] text-sm font-semibold text-amber-ink">{fmt(d.notAtProduction, { n: notAtProduction })}</p>
+              {canPlan && <ActionForm action={moveMoToProduction} submitLabel={d.moveToProduction} resetOnSuccess={false}>{hidden(mo.id)}</ActionForm>}
+            </div>
           )}
           {open && (
             <div className="flex flex-wrap gap-3">

@@ -306,6 +306,21 @@ export async function linkPendingLine(_: ActionState, fd: FormData): Promise<Act
   return { ok: true, message: t.common.saved };
 }
 
+/** Serving size and servings per pack of a recipe: needed to plan a batch. */
+export async function setFormulaServing(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const size = num(fd, "serving_size");
+  const per = num(fd, "servings_per_pack");
+  if (!size || size <= 0 || !per || per < 1 || !Number.isInteger(per)) return { error: t.formulas.detail.servingInvalid };
+  try {
+    await q(user.id, "update formulas set serving_size = $2, servings_per_pack = $3 where id = $1", [str(fd, "formula_id"), size, per]);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/formulas/${str(fd, "formula_id")}`);
+  return { ok: true, message: t.common.saved };
+}
+
 export async function removePendingLine(fd: FormData) {
   const { user } = await getSession();
   await q(user.id, "delete from formula_pending_lines where id = $1", [str(fd, "pending_id")]);
@@ -752,6 +767,11 @@ export async function removeMoPackaging(fd: FormData) {
 export async function reserveMo(_: ActionState, fd: FormData): Promise<ActionState> {
   const { t } = await getSession();
   return moCall(fd, "select reserve_mo_materials($1) as n", [str(fd, "mo_id")], (r) => fmt(t.production.detail.reservedN, { n: Number(r.n) }));
+}
+
+export async function moveMoToProduction(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { t } = await getSession();
+  return moCall(fd, "select move_mo_materials_to_production($1) as n", [str(fd, "mo_id")], (r) => fmt(t.production.detail.movedN, { n: Number(r.n) }));
 }
 
 export async function requestPurchases(_: ActionState, fd: FormData): Promise<ActionState> {

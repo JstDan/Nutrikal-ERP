@@ -148,9 +148,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   // The advance received (VAT included), else its % of the order as ordered
   const advancePaid = c?.deposit_amount != null ? Number(c.deposit_amount) : Math.round(gross * depPct) / 100;
   const finalIssued = invoices.some((x) => (x.purpose === "final" || x.purpose === "full") && x.status === "issued");
-  // Once the goods have left: the invoice due next (the advance one first when it is still open)
+  // Once the goods are ready, before they leave (owner, Nov 2026): the invoice due next (the advance one first when it is still open)
   const shipped = ["dispatched", "closed"].includes(o.status);
-  const dueInvoice: OrderInvoice["purpose"] | null = !canEdit || !shipped || finalIssued ? null
+  const dueInvoice: OrderInvoice["purpose"] | null = !canEdit || !(shipped || o.status === "ready") || finalIssued ? null
     : !twoPayments ? "full" : invoiceOf("advance")?.status !== "issued" ? "advance" : c?.balance_received_on ? "final" : null;
   const showPrepare = isAdmin && ["confirmed", "in_production"].includes(o.status)
     && products.some((l) => !mos.some((m) => m.sales_order_line_id === l.id && m.status !== "cancelled"));
@@ -219,15 +219,15 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       step = note(d.stepProducing);
     } else if (primaryFinal) {
       step = finalPayment;
-    } else if (o.status === "ready") {
+    } else if (o.status === "ready" && !dueInvoice) {
       step = (
         <>
           {note(user.canPay ? d.stepDispatch : t.dispatch.onlyAdmin)}
           {user.canPay && <a href="#dispatch-h" className="btn btn-primary self-start">{t.dispatch.submit}</a>}
         </>
       );
-    } else if (shipped && dueInvoice) {
-      step = (<>{note(d.invoiceNote)}{invoiceButton(dueInvoice, invoiceOf(dueInvoice) ? d.openInvoice : d.makeInvoice)}</>);
+    } else if (dueInvoice) {
+      step = (<>{note(shipped ? d.invoiceNoteShipped : d.invoiceNote)}{invoiceButton(dueInvoice, invoiceOf(dueInvoice) ? d.openInvoice : d.makeInvoice)}</>);
     } else if (shipped && showFinalPayment) {
       step = finalPayment;
     } else if (shipped && !finalIssued) {
