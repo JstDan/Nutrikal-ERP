@@ -10,3 +10,6 @@ Thumbs.db
 
 # Original standalone calculator app (ported into web/; kept locally for reference)
 /Nutrikal Calculator/
+
+# Onboarding videos: the app worktree used for recording
+/.onboarding-app/
