@@ -19,8 +19,11 @@ const PDF = {
   offer: 'Offer',
   number: 'No',
   date: 'Date',
-  customer: 'CUSTOMER',
-  supplier: 'SUPPLIER',
+  customer: 'Prepared for',
+  supplier: 'Prepared by',
+  product: 'Product',
+  pack: 'Pack',
+  format: 'Format',
   identificationNo: 'Identification No',
   vatNo: 'VAT No',
   contactPerson: 'Contact Person',
@@ -34,16 +37,13 @@ const PDF = {
   includedText: 'Manufacturing in a GMP and HACCP certified facility, container with lid, label printing and application.',
   notIncluded: 'Not included',
   notIncludedText: 'Label design, batch testing and COA, shipping and customs, VAT.',
-  moreTerms: 'Lead time usually 6-10 weeks once order, deposit and artwork are confirmed. Compliance in the destination market is the client’s responsibility unless agreed otherwise in writing. Some raw materials have their own minimums, which may affect price and timing.',
+  moreTerms: 'Lead time usually 6-10 weeks after order, deposit and artwork are confirmed. Compliance in the destination market is the client’s responsibility. Some raw materials have their own minimums, which may affect price and timing.',
   ingredient: 'Ingredient',
   amountPerDoseColumn: 'Amount',
   note: 'Note',
   paymentTerms: 'Payment terms',
-  terms: 'Disclaimer',
-  pricesExclVat: 'All prices are excl. VAT.',
-  salesPrices: 'Sales prices',
-  units: 'Quantity (units)',
-  pricePerUnit: 'Price per unit (EUR)',
+  fromUnits: 'From {n} units',
+  pricesNote: 'Per unit, EUR, EXW Varna, Bulgaria, without VAT.',
   page: 'Page {n} of {m}',
   packaging_capsules_glass: 'Glass bottle',
   packaging_capsules_plastic: 'Plastic bottle',
@@ -83,9 +83,11 @@ export interface OfferPdfModel {
   dosePortion: string;
   /** Ingredients contained in one dose (no prices). Empty when the composition is switched off. */
   doseRows: { name: string; amount: string }[];
-  /** Product name and packaging lines (container, per serving, servings per container), above the amount per serving table. */
+  /** The product row: name, catalogue code when there is one, what is in a pack and how it is packed. */
   productName: string;
-  packaging: string[];
+  productCode: string;
+  pack: string;
+  format: string;
   /** The account manager's notes, printed under the amount per serving table. */
   noteLines: string[];
   /** Standard offer terms (Settings). */
@@ -140,7 +142,7 @@ export function toPdfModel(
   const capsule = isCapsule(type);
   const units = parseNum(form.numberOfUnits) ?? 0;
   const perUnit = form.quantityPerUnit;
-  const name = productName(form) || 'Custom formula';
+  const name = productName(form) || 'New formula';
   const catalogCaps = offerCapsules(form);
 
   const productLine: OfferLine = {
@@ -157,34 +159,22 @@ export function toPdfModel(
   };
 
   // Product name + packaging, amount per serving table (no prices), then the account manager's notes.
-  const packaging: string[] = [];
   const doseG = result.doseWeightMg / 1000;
   const caps = parseNum(form.capsulesPerDose) ?? 1;
   const servings = result.dosesPerUnit !== null ? formatNumber(result.dosesPerUnit, 2) : '–';
+  let pack: string;
+  let format: string;
   if (catalog) {
-    packaging.push(`Product code: ${catalog.code}`, ...(catalog.category ? [catalog.category] : []));
     const catalogServings = offerServings(form);
-    if (catalogCaps) {
-      packaging.push(
-        `${PDF[form.jar === 'glass' ? 'packaging_capsules_glass' : 'packaging_capsules_plastic']}${hasAluminiumLid(form) ? ` ${PDF.aluminiumLid}` : ''}, ${catalogCaps} capsules per container.`,
-        ...(catalog.capsules_per_serving ? [`Capsules/Serving: ${catalog.capsules_per_serving}`] : []),
-        ...(catalogServings ? [`Servings/Container: ${formatNumber(catalogServings, 2)}`] : []),
-      );
-    }
+    pack = catalogCaps ? [`${catalogCaps} capsules`, ...(catalogServings ? [`${formatNumber(catalogServings, 2)} servings`] : [])].join(', ') : '';
+    format = catalogCaps ? `${PDF[form.jar === 'glass' ? 'packaging_capsules_glass' : 'packaging_capsules_plastic']}${hasAluminiumLid(form) ? ` ${PDF.aluminiumLid}` : ''}` : '';
   } else if (capsule) {
-    const size = `, capsule size ${CAPSULE_SIZE.replace('size', '')}`;
-    packaging.push(
-      `${PDF[`packaging_${type}`]}s${hasAluminiumCap(form) ? ` ${PDF.aluminiumLid}` : ''}, ${perUnit} capsules each${size}.`,
-      `Capsules/Serving: ${formatNumber(caps, 2)}`,
-      `Servings/Container: ${servings}`,
-    );
+    pack = `${perUnit} capsules, ${servings} servings`;
+    format = `${PDF[`packaging_${type}`]}${hasAluminiumCap(form) ? ` ${PDF.aluminiumLid}` : ''}, size ${CAPSULE_SIZE.replace('size', '')} capsules`;
   } else {
     const net = result.netWeightPerPouchG;
-    packaging.push(
-      `Doypack${net ? `, net ${formatNumber(net, 0)} g` : ''}.`,
-      `Gr/Serving: ${formatNumber(doseG, 2)}gr`,
-      `Servings/Container: ${servings}`,
-    );
+    pack = [net ? `${formatNumber(net, 0)} g` : '', `${servings} servings`].filter(Boolean).join(', ');
+    format = 'Doypack';
   }
   const dosePortion = capsule ? `${caps} ${caps === 1 ? 'capsule' : 'capsules'}` : `${formatNumber(doseG, 2)} g`;
   const doseRows = !catalog && form.includeComposition
@@ -237,7 +227,9 @@ export function toPdfModel(
     dosePortion,
     doseRows,
     productName: name,
-    packaging,
+    productCode: catalog?.code ?? '',
+    pack,
+    format,
     noteLines,
     terms: settings.terms_text.trim(),
     footerText: settings.footer_text,
@@ -260,9 +252,22 @@ export function offerFileName(form: Pick<OfferForm, 'offer' | 'invoice' | 'recei
   return `Offer_${no}_${who}.pdf`;
 }
 
+const FINE_PRINT = 6.5;
 const imageFormat = (img: PdfImage) => (img.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG');
 
+/** An offer always stands on one page: the body shrinks step by step until it fits. */
 export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null = null): jsPDF {
+  let last: jsPDF | null = null;
+  for (const scale of [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65]) {
+    const { doc, fits } = drawOffer(m, fonts, docPhoto, scale);
+    if (fits) return doc;
+    last = doc;
+  }
+  return last!;
+}
+
+function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, scale: number): { doc: jsPDF; fits: boolean } {
+  const z = (n: number) => n * scale;
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
   const register = (file: string, data: string, family: string, style: string) => {
     doc.addFileToVFS(file, data);
@@ -302,7 +307,6 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   const L = 25;
   const R = pageW - 25;
   const COL2 = pageW / 2 + 3;
-  const bottomLimit = pageH - 26;
   const SHEET = 52;
   drawDocShell(doc, SHEET, docPhoto);
 
@@ -332,41 +336,36 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   };
   facts.forEach(([head, value], i) => fact(head, value, i === 0 ? 15 : i === facts.length - 1 ? pageW - 15 : pageW / 2, i === 0 ? 'left' : i === facts.length - 1 ? 'right' : 'center'));
 
-  // 2. Customer / supplier: only what is filled in
-  const party = (title: string, x: number, width: number, name: string, rows: [string, string][]) => {
+  // 2. Who it is for and who made it: only what is filled in
+  const party = (title: string, x: number, rows: string[]) => {
     let py = SHEET + 11;
-    write(title, x, py, { weight: 'semibold', size: 7.5, color: MUTED });
-    py += 5.5;
-    if (name) {
-      write(name, x, py, { weight: 'bold', size: 11 });
-      py += 5.6;
-    }
-    doc.setFontSize(9);
-    for (const [label, value] of rows.filter(([, v]) => v)) {
-      const line = label ? `${label}: ${value}` : value;
-      doc.setFont(...fontFor('regular', line));
-      for (const part of doc.splitTextToSize(line, width) as string[]) {
-        write(part, x, py, { size: 9 });
-        py += 4.7;
-      }
+    write(title, x, py, { weight: 'semibold', size: z(9) });
+    py += z(5.2);
+    for (const row of rows.filter(Boolean)) {
+      write(row, x, py, { size: z(9) });
+      py += z(4.6);
     }
     return py;
   };
-  const yc = party(PDF.customer, L, COL2 - L - 8, m.customer.name, [
-    [PDF.identificationNo, m.customer.identificationNo], [PDF.vatNo, m.customer.vatNumber],
-    [PDF.contactPerson, m.customer.contactPerson], ...m.customer.addressLines.map((a): [string, string] => ['', a]),
-  ]);
-  const ys = party(PDF.supplier, COL2, R - COL2, m.supplier.name, [
-    [PDF.identificationNo, m.supplier.identificationNo], [PDF.vatNo, m.supplier.vatNumber], ['', m.supplier.address],
-    [PDF.contactPerson, m.contact.name], [PDF.phone, m.contact.phone], [PDF.email, m.contact.email],
-  ]);
+  const yc = party(PDF.customer, L, [m.customer.name, m.customer.contactPerson, m.customer.addressLines.join(', ')]);
+  const ys = party(PDF.supplier, COL2, [m.supplier.name, m.contact.name, [m.contact.phone, m.contact.email].filter(Boolean).join(' · ')]);
 
   // 3. No price lines, totals or bank details on the offer – prices are in the sales prices table.
   const cellFont = (text: string, weight: Weight) => {
     const [font, fontStyle] = fontFor(weight, text);
     return { font, fontStyle: fontStyle as 'normal' | 'bold' };
   };
-  let y = Math.max(yc, ys) + 6;
+  let y = Math.max(yc, ys) + z(9);
+
+  // Payment terms and the thanks stand at the foot of the page, above the strip; the body ends above them
+  doc.setFont(...fontFor('regular', m.paymentTerms));
+  doc.setFontSize(z(9));
+  const payment = m.paymentTerms ? doc.splitTextToSize(m.paymentTerms, COL2 - L - 8) as string[] : [];
+  doc.setFontSize(z(8.5));
+  const thanks = doc.splitTextToSize(PDF.thanks, R - COL2) as string[];
+  const closeH = Math.max(payment.length ? z(6) + payment.length * z(4.4) : 0, thanks.length * z(4.2));
+  const closeTop = 277 - 7 - closeH;
+  const bottomLimit = closeTop - 8;
 
   const ensureSpace = (needed: number) => {
     if (y + needed > bottomLimit) {
@@ -375,130 +374,156 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
     }
   };
 
-  // 4. Product, amount per serving, sales prices, excl. VAT note, payment terms, standard terms
-  const textLines = (lines: string[], size = 9.5, color = TEXT) => {
+  // 4. Product row, composition, then the prices and what they cover as a block of their own
+  const textLines = (lines: string[], base = 9.5, color = TEXT) => {
+    const size = z(base);
     doc.setFontSize(size);
     for (const line of lines) {
       doc.setFont(...fontFor('regular', line));
       for (const part of doc.splitTextToSize(line, R - L) as string[]) {
-        ensureSpace(6);
+        ensureSpace(size * 0.53);
         write(part, L, y, { size, color });
         y += size * 0.53;
       }
     }
   };
   const heading = (title: string) => {
-    write(title, L, y, { weight: 'semibold', size: 10.5 });
-    y += 2.5;
+    write(title, L, y, { weight: 'semibold', size: z(10.5) });
+    y += z(2.5);
   };
   const block = (title: string, lines: string[], size = 9.5, color = TEXT) => {
     if (!lines.length) return;
-    ensureSpace(14);
+    ensureSpace(z(14));
     heading(title);
-    y += 3;
+    y += z(3);
     textLines(lines, size, color);
-    y += 5;
+    y += z(5);
   };
-  const underline = (cell: { x: number; y: number; width: number; height: number }, color = LINE) => {
-    doc.setDrawColor(...color);
+  const underline = (cell: { x: number; y: number; width: number; height: number }) => {
+    doc.setDrawColor(...LINE);
     doc.setLineWidth(0.25);
     doc.line(cell.x, cell.y + cell.height, cell.x + cell.width, cell.y + cell.height);
   };
-  // Product name with the packaging lines under it.
-  ensureSpace(18);
-  write(m.productName, L, y, { weight: 'bold', size: 15 });
-  y += 6.5;
-  textLines(m.packaging, 9.5, MUTED);
-  y += 6;
+  // The product row, under a dark rule
+  ensureSpace(z(22));
+  const packX = L + (R - L) * 0.5;
+  write(PDF.product, L, y, { weight: 'semibold', size: z(9) });
+  write(PDF.pack, packX, y, { weight: 'semibold', size: z(9), align: 'center' });
+  write(PDF.format, R, y, { weight: 'semibold', size: z(9), align: 'right' });
+  y += z(2.5);
+  doc.setDrawColor(...NAVY);
+  doc.setLineWidth(0.3);
+  doc.line(L, y, R, y);
+  y += z(6);
+  doc.setFont(...fontFor('regular', m.productName));
+  doc.setFontSize(z(9.5));
+  const nameLines = doc.splitTextToSize(m.productName, (R - L) * 0.36) as string[];
+  nameLines.forEach((line, i) => write(line, L, y + i * z(4.4), { size: z(9.5) }));
+  write(m.pack, packX, y, { size: z(9.5), align: 'center' });
+  write(m.format, R, y, { size: z(9.5), align: 'right' });
+  y += (nameLines.length - 1) * z(4.4);
+  if (m.productCode) {
+    y += z(4);
+    write(m.productCode, L, y, { size: z(7.5), color: MUTED });
+  }
+  y += z(3.5);
+  doc.setDrawColor(...LINE);
+  doc.setLineWidth(0.15);
+  doc.line(L, y, R, y);
+  y += z(7);
 
   if (m.doseRows.length) {
-    ensureSpace(24);
-    heading(fmt(PDF.amountPerDose, { portion: m.dosePortion }));
+    // One clean list; from seven ingredients three columns, row by row
+    const threeColumns = m.doseRows.length > 6;
+    const nameW = (R - L - 10) / 3 - 16;
+    ensureSpace(z(16));
+    write(fmt(PDF.amountPerDose, { portion: m.dosePortion }), L, y, { weight: 'semibold', size: z(8.5) });
+    y += z(2);
     autoTable(doc, {
       startY: y,
-      margin: { left: L, right: pageW - R, top: 15, bottom: 20 },
+      margin: { left: L, right: pageW - R, top: 15, bottom: pageH - bottomLimit },
       theme: 'plain',
-      // Two columns of ingredients keep the offer on one page
-      body: Array.from({ length: Math.ceil(m.doseRows.length / 2) }, (_, i) => {
-        const half = Math.ceil(m.doseRows.length / 2);
-        const a = m.doseRows[i];
-        const b = m.doseRows[i + half];
-        return [a.name, a.amount, '', b?.name ?? '', b?.amount ?? ''];
-      }),
-      styles: { font: 'Poppins', fontSize: 8.5, textColor: TEXT, cellPadding: { top: 1.1, bottom: 1.1, left: 0, right: 0 }, overflow: 'linebreak' },
-      columnStyles: { 0: { cellWidth: 56 }, 1: { cellWidth: 19, halign: 'right' }, 2: { cellWidth: 10 }, 3: { cellWidth: 56 }, 4: { cellWidth: 19, halign: 'right' } },
+      body: threeColumns
+        ? Array.from({ length: Math.ceil(m.doseRows.length / 3) }, (_, i) => {
+            const [a, b, c] = m.doseRows.slice(i * 3, i * 3 + 3);
+            return [a.name, a.amount, '', b?.name ?? '', b?.amount ?? '', '', c?.name ?? '', c?.amount ?? ''];
+          })
+        : m.doseRows.map((r) => [r.name, r.amount]),
+      styles: { font: 'Poppins', fontSize: z(8), textColor: TEXT, cellPadding: { top: z(1.1), bottom: z(1.1), left: 0, right: 0 }, overflow: 'linebreak' },
+      columnStyles: threeColumns
+        ? { 0: { cellWidth: nameW }, 1: { cellWidth: 16, halign: 'right' }, 2: { cellWidth: 5 }, 3: { cellWidth: nameW }, 4: { cellWidth: 16, halign: 'right' }, 5: { cellWidth: 5 }, 6: { cellWidth: nameW }, 7: { cellWidth: 16, halign: 'right' } }
+        : { 0: { cellWidth: R - L - 25 }, 1: { cellWidth: 25, halign: 'right' } },
       didParseCell: (data) => {
         const text = data.cell.text.join(' ');
         if (CYRILLIC.test(text)) Object.assign(data.cell.styles, cellFont(text, 'regular'));
       },
-      didDrawCell: (data) => { if (data.column.index !== 2 && data.cell.text.join('')) underline(data.cell); },
+      didDrawCell: (data) => { if (data.cell.text.join('') && !(threeColumns && data.column.index % 3 === 2)) underline(data.cell); },
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + z(6);
   }
   // Notes: under the table, or with their own heading when the table is switched off.
   if (m.doseRows.length) {
     if (m.noteLines.length) {
       textLines(m.noteLines);
-      y += 5;
+      y += z(5);
     }
   } else {
     block(PDF.note, m.noteLines);
   }
-  // Sales prices, then the excl. VAT line, payment terms and standard terms at the end.
-  if (m.salesPrices) {
-    ensureSpace(30);
-    heading(PDF.salesPrices);
-    autoTable(doc, {
-      startY: y,
-      margin: { left: L, right: pageW - R, top: 15, bottom: 20 },
-      theme: 'plain',
-      head: [[PDF.units, ...m.salesPrices.map((p) => formatNumber(p.units, 0))]],
-      body: [[PDF.pricePerUnit, ...m.salesPrices.map((p) => `€${money(p.price)}`)]],
-      styles: { font: 'Poppins', fontSize: 9.5, textColor: TEXT, cellPadding: { top: 2.2, bottom: 2.2, left: 0, right: 2 }, halign: 'right' },
-      headStyles: { font: 'Poppins', fontSize: 9.5, textColor: MUTED },
-      columnStyles: { 0: { halign: 'left', cellWidth: 46 } },
-      didParseCell: (data) => {
-        if (data.section === 'head' && data.column.index === 0) data.cell.styles.halign = 'left';
-        if (data.section === 'body' && data.column.index > 0) Object.assign(data.cell.styles, { fontStyle: 'bold', fontSize: 11.5 });
-      },
-      didDrawCell: (data) => underline(data.cell, data.section === 'head' ? NAVY : LINE),
-    });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
-  }
-
-  ensureSpace(8);
-  write(PDF.pricesExclVat, L, y, { size: 8.5, color: MUTED });
-  y += 7;
-  // What the price covers, side by side
-  ensureSpace(20);
-  const half = (title: string, text: string, x: number) => {
-    write(title, x, y, { weight: 'semibold', size: 9 });
+  // Prices as cards, then what they cover and the small print; this block sits apart, half of the free room above it
+  const covers = (text: string) => {
     doc.setFont(...fontFor('regular', text));
-    doc.setFontSize(8.5);
-    (doc.splitTextToSize(text, COL2 - L - 8) as string[]).forEach((part, i) => write(part, x, y + 4.4 + i * 3.9, { size: 8.5, color: MUTED }));
+    doc.setFontSize(z(8));
+    return doc.splitTextToSize(text, COL2 - L - 8) as string[];
   };
-  half(PDF.included, PDF.includedText, L);
-  half(PDF.notIncluded, PDF.notIncludedText, COL2);
-  y += 20;
-  block(PDF.terms, [m.terms, PDF.moreTerms].filter(Boolean), 8, MUTED);
+  const includedLines = covers(PDF.includedText);
+  const notIncludedLines = covers(PDF.notIncludedText);
+  doc.setFont(...fontFor('regular', m.terms));
+  doc.setFontSize(FINE_PRINT);
+  const finePrint = doc.splitTextToSize([m.terms, PDF.moreTerms].filter(Boolean).join(' '), R - L) as string[];
+  const prices = m.salesPrices ?? [];
+  const PER_ROW = 5;
+  const cardRows = Math.ceil(prices.length / PER_ROW);
+  const cardH = z(17);
+  const pricesH = cardRows ? cardRows * (cardH + 3) + z(7) : 0;
+  const coversH = z(4.2) + Math.max(includedLines.length, notIncludedLines.length) * z(3.8) + z(4);
+  const free = bottomLimit - y - pricesH - coversH - finePrint.length * 2.9;
+  y += Math.max(z(4), free / 2);
+  ensureSpace(pricesH + coversH + finePrint.length * 2.9);
+  if (cardRows) {
+    const cardW = (R - L - 4 * (Math.max(Math.min(prices.length, PER_ROW), 3) - 1)) / Math.max(Math.min(prices.length, PER_ROW), 3);
+    prices.forEach((p, i) => {
+      const x = L + (i % PER_ROW) * (cardW + 4);
+      const top = y + Math.floor(i / PER_ROW) * (cardH + 3);
+      doc.setFillColor(...HEAD_BG);
+      doc.roundedRect(x, top, cardW, cardH, 0.8, 0.8, 'F');
+      write(fmt(PDF.fromUnits, { n: formatNumber(p.units, 0) }), x + 4, top + z(6.5), { size: z(8.5), color: MUTED });
+      write(`€${money(p.price)}`, x + 4, top + z(13), { weight: 'bold', size: z(13) });
+    });
+    y += cardRows * (cardH + 3) + z(2.5);
+    write(PDF.pricesNote, L, y, { size: z(7.5), color: MUTED });
+    y += z(7);
+  }
+  const cover = (title: string, lines: string[], x: number) => {
+    write(title, x, y, { weight: 'semibold', size: z(8) });
+    lines.forEach((part, i) => write(part, x, y + z(4.2) + i * z(3.8), { size: z(8), color: MUTED }));
+  };
+  cover(PDF.included, includedLines, L);
+  cover(PDF.notIncluded, notIncludedLines, COL2);
+  y += coversH;
+  finePrint.forEach((line) => {
+    write(line, L, y, { size: FINE_PRINT, color: MUTED });
+    y += 2.9;
+  });
 
-  // Payment terms and the thanks stand at the foot of the last page, above the strip
-  doc.setFont(...fontFor('regular', m.paymentTerms));
-  doc.setFontSize(9);
-  const payment = m.paymentTerms ? doc.splitTextToSize(m.paymentTerms, COL2 - L - 8) as string[] : [];
-  doc.setFontSize(8.5);
-  const thanks = doc.splitTextToSize(PDF.thanks, R - COL2) as string[];
-  const closeH = Math.max(payment.length ? 6 + payment.length * 4.4 : 0, thanks.length * 4.2);
-  ensureSpace(closeH + 10);
-  const closeTop = 277 - 5 - closeH;
   doc.setDrawColor(...LINE);
   doc.setLineWidth(0.15);
   doc.line(L, closeTop - 5, R, closeTop - 5);
   if (payment.length) {
-    write(PDF.paymentTerms, L, closeTop, { weight: 'semibold', size: 9 });
-    payment.forEach((line, i) => write(line, L, closeTop + 5 + i * 4.4, { size: 9 }));
+    write(PDF.paymentTerms, L, closeTop, { weight: 'semibold', size: z(9) });
+    payment.forEach((line, i) => write(line, L, closeTop + z(5) + i * z(4.4), { size: z(9) }));
   }
-  thanks.forEach((line, i) => write(line, COL2, closeTop + i * 4.2, { size: 8.5, color: MUTED }));
+  thanks.forEach((line, i) => write(line, COL2, closeTop + i * z(4.2), { size: z(8.5), color: MUTED }));
 
   // 5. Footer strip on every page
   const pages = doc.getNumberOfPages();
@@ -512,7 +537,7 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
     write(fmt(PDF.page, { n: i, m: pages }), R, 281.6, { size: 7, color: MUTED, align: 'right' });
   }
 
-  return doc;
+  return { doc, fits: pages === 1 };
 }
 
 // ---------------------------------------------------------------------------

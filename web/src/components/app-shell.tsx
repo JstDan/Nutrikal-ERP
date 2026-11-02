@@ -30,10 +30,11 @@ export async function AppShell({ children }: { children: ReactNode }) {
         {
           items: [
             { href: "/factory", label: t.nav.today },
-            { href: "/chat", label: t.nav.chat, badge: unread },
+            { href: "/factory/calendar", label: t.calendar.short },
             { href: "/factory/orders", label: t.nav.productionOrders },
             { href: "/factory/stock", label: t.nav.stock },
             { href: "/factory/deliveries", label: t.nav.incoming },
+            { href: "/chat", label: t.nav.clientMessages, badge: unread },
             { href: "/notifications", label: t.nav.notifications },
           ],
         },
@@ -47,26 +48,32 @@ export async function AppShell({ children }: { children: ReactNode }) {
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/offers", label: t.nav.offers, also: ["/calculator"] }] : []),
             { href: "/orders", label: t.nav.orders },
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/invoices", label: t.nav.invoices }] : []),
-          ],
-        },
-        {
-          title: t.nav.tools,
-          items: [
-            ...((user.role === "admin" || user.role === "sales") && !user.readOnly ? [{ href: "/assistant", label: t.nav.assistant }] : []),
-            { href: "/chat", label: t.nav.chat, badge: unread },
-            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/client-messages", label: t.portal.staff.inbox.title, badge: clientUnread }] : []),
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/catalog", label: t.nav.catalog }] : []),
           ],
         },
         {
-          title: t.nav.operations,
+          title: t.nav.communication,
           items: [
-            { href: "/inventory", label: t.nav.inventory },
+            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/client-messages", label: t.nav.clientMessages, badge: clientUnread }] : []),
+            { href: "/chat", label: t.nav.internalChat, badge: unread },
+            ...((user.role === "admin" || user.role === "sales") && !user.readOnly ? [{ href: "/assistant", label: t.nav.assistant }] : []),
+          ],
+        },
+        {
+          title: t.nav.production,
+          items: [
+            ...(user.role === "admin" || user.role === "sales" ? [{ href: "/production/calendar", label: t.calendar.short }] : []),
+            { href: "/production", label: t.nav.batches },
             { href: "/formulas", label: t.nav.formulas },
-            { href: "/deliveries", label: t.nav.deliveries },
-            { href: "/production", label: t.nav.production },
-            ...(user.role === "admin" ? [{ href: "/quality", label: t.nav.qualityTrace, also: ["/traceability"] }] : []),
+            ...(user.role === "admin" ? [{ href: "/quality", label: t.nav.quality, also: ["/traceability"] }] : []),
             ...(user.role === "sales" ? [{ href: "/traceability", label: t.nav.traceability }] : []),
+          ],
+        },
+        {
+          title: t.nav.warehouse,
+          items: [
+            { href: "/inventory", label: t.nav.stock },
+            { href: "/deliveries", label: t.nav.deliveries },
           ],
         },
         ...(user.access === "bookkeeper"

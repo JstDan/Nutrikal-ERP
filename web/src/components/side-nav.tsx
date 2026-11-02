@@ -11,13 +11,16 @@ export function SideNav({ groups, label }: { groups: NavGroup[]; label: string }
   const path = usePathname();
   // "/" and "/factory" are home pages: active only on themselves, not on their sub-pages
   const under = (href: string) => path === href || path.startsWith(href + "/");
-  const isActive = (href: string, also: string[] = []) => (href === "/" || href === "/factory" ? path === href : under(href) || also.some(under));
+  // A sub-page with its own item lights only that item, not its parent too
+  const hrefs = groups.flatMap((g) => g.items.map((i) => i.href ?? ""));
+  const closer = (href: string) => hrefs.some((h) => h.length > href.length && h.startsWith(href + "/") && under(h));
+  const isActive = (href: string, also: string[] = []) => (href === "/" || href === "/factory" ? path === href : (under(href) && !closer(href)) || also.some(under));
 
   return (
-    <nav aria-label={label} className="flex flex-col gap-6 lg:gap-2.5">
+    <nav aria-label={label} className="flex flex-col gap-5 lg:gap-2">
       {groups.map((g, i) => (
         <div key={i} className="flex flex-col gap-0.5">
-          {g.title && <div className="px-2 pb-2 text-[11px] font-semibold tracking-[2px] uppercase text-side-muted">{g.title}</div>}
+          {g.title && <div className="px-2 pb-1 text-[11px] font-semibold tracking-[2px] uppercase text-side-muted">{g.title}</div>}
           {g.items.map((it) =>
             it.href ? (
               <Link

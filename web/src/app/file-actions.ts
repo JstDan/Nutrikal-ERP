@@ -72,7 +72,7 @@ export async function replyToClient(_: ActionState, fd: FormData): Promise<Actio
     }
   }
   revalidatePath("/", "layout");
-  return { ok: true, message: t.common.saved };
+  return { ok: true };
 }
 
 export async function setClientThread(fd: FormData) {

@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
-import { portalPost } from "@/app/portal/actions";
+import type { ActionState } from "@/app/actions";
 
 export type ChatLine = { id: string; mine: boolean; who: string; initials: string; time: string; body: string; day: string | null };
-const POLL_MS = 20000;
+const POLL_MS = 15000;
 
-/** A conversation in the panel: newest at the bottom, Enter sends, new answers arrive by themselves. */
-export function PortalChat({ orderId, lines, empty, placeholder, send }: { orderId: string | null; lines: ChatLine[]; empty: string; placeholder: string; send: string }) {
+/** A conversation, for the client and the team: newest at the bottom, Enter sends, new messages arrive by themselves. */
+export function ChatPane({ action, fields, lines, empty, placeholder, send, tall = false }: {
+  action: (state: ActionState, fd: FormData) => Promise<ActionState>; fields: ReactNode; lines: ChatLine[]; empty: string; placeholder: string; send: string; tall?: boolean;
+}) {
   const router = useRouter();
-  const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight; }, [lines.length]);
   useEffect(() => {
@@ -20,8 +21,8 @@ export function PortalChat({ orderId, lines, empty, placeholder, send }: { order
   }, [router]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <div ref={box} className="p-chat">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      <div ref={box} className={`p-chat ${tall ? "p-chat-tall" : ""}`}>
         {lines.length === 0 && <p className="m-auto text-sm text-ink-2">{empty}</p>}
         {lines.map((m) => (
           <div key={m.id} className="flex min-w-0 flex-col gap-2">
@@ -35,15 +36,26 @@ export function PortalChat({ orderId, lines, empty, placeholder, send }: { order
             </div>
           </div>
         ))}
-        <div ref={end} />
       </div>
-      <ActionForm action={portalPost} submitLabel={send}>
-        {orderId && <input type="hidden" name="order_id" value={orderId} />}
+      <ActionForm action={action} submitLabel={send}>
+        {fields}
         <label className="field"><span className="sr-only">{placeholder}</span>
           <textarea name="body" required maxLength={4000} rows={2} placeholder={placeholder} className="input w-full resize-y"
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
         </label>
       </ActionForm>
     </div>
+  );
+}
+
+/** Saves as soon as another person is picked. */
+export function SubmitOnChange({ name, value, label, options }: { name: string; value: string; label: string; options: { value: string; text: string }[] }) {
+  return (
+    <label className="flex min-w-0 items-center gap-2 text-xs text-ink-2">
+      <span>{label}</span>
+      <select name={name} defaultValue={value} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="input !min-h-9 !w-auto !py-1 text-sm">
+        {options.map((o) => <option key={o.value} value={o.value}>{o.text}</option>)}
+      </select>
+    </label>
   );
 }

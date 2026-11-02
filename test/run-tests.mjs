@@ -3110,5 +3110,92 @@ await ok('a client sees nothing of the queue or the threads directly', async () 
   eq((await as('clientA', 'select 1 from client_status_mail')).length, 0, 'queue');
 });
 
+console.log('\nScrap and losses');
+await ok('material above plan is counted by reason', async () => {
+  await db.exec('reset role');
+  const item = (await db.query(`select id from items where is_active limit 1`)).rows[0].id;
+  const fv = (await db.query(`select id from formula_versions limit 1`)).rows[0].id;
+  await db.query(`alter table manufacturing_orders disable trigger user`);
+  const mk = async (code, reason, used) => {
+    const id = (await db.query(`insert into manufacturing_orders (code, formula_version_id, quantity, status, produced_on) values ($1, $2, 10, 'completed', current_date) returning id`, [code, fv])).rows[0].id;
+    await db.query(`insert into mo_material_usage (mo_id, item_id, reserved, used, reason) values ($1, $2, 10, $3, $4)`, [id, item, used, reason]);
+  };
+  await mk('MO-L1', 'scrap', 12); await mk('MO-L2', 'scrap', 11); await mk('MO-L3', 'Счупена машина', 13); await mk('MO-L4', null, 10);
+  await db.query(`alter table manufacturing_orders enable trigger user`);
+  const r = await as('admin', `select reason, batches, quantity from mo_loss_report(current_date - 1, current_date)`);
+  const scrap = r.find((x) => x.reason === 'scrap');
+  eq(scrap.batches, 2, 'scrap batches'); eq(Number(scrap.quantity), 3, 'scrap qty');
+  eq(Number(r.find((x) => x.reason === 'other').quantity), 3, 'free text is other');
+  eq(r.length, 2, 'nothing above plan stays out');
+});
+await fails('Sales has no loss report', () => as('sales', 'select * from mo_loss_report(current_date, current_date)'), '');
+await fails('the partner has no loss report', () => as('production', 'select * from mo_loss_report(current_date, current_date)'), '');
+await fails('a client has no loss report', () => as('clientA', 'select * from mo_loss_report(current_date, current_date)'), '');
+
+console.log('\nProduction calendar');
+await db.exec('reset role');
+await db.query(`alter table sales_orders disable trigger user`);
+const calOrder = (await db.query(`insert into sales_orders (code, client_id, status, currency, requested_date) values ('CAL-1', $1, 'confirmed', 'EUR', current_date + 5) returning id`, [coA])).rows[0].id;
+await db.query(`alter table sales_orders enable trigger user`);
+await db.query(`alter table sales_order_lines disable trigger user`);
+await db.exec('reset role');
+const calProject = (await one('sales', `insert into projects (client_id, name, product_format) values ($1, 'Календар', 'capsule') returning id`, [coA])).id;
+await db.exec('reset role');
+const calLine = (await db.query(`insert into sales_order_lines (order_id, kind, description, quantity, unit_price) values ($1, 'service', 'Партида', 1, 1) returning id`, [calOrder])).rows[0].id;
+await db.query(`alter table sales_order_lines enable trigger user`);
+await db.query(`alter table manufacturing_orders disable trigger user`);
+const calFv = (await db.query(`select id from formula_versions limit 1`)).rows[0].id;
+const calMo = (await db.query(`insert into manufacturing_orders (code, formula_version_id, project_id, sales_order_line_id, quantity, status, planned_date)
+  values ('MO-CAL', $1, $2, $3, 100, 'scheduled', current_date + 3) returning id`, [calFv, calProject, calLine])).rows[0].id;
+await db.query(`alter table manufacturing_orders enable trigger user`);
+const calRange = [new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10)];
+await ok('the partner sees a scheduled batch without client or order', async () => {
+  const r = await as('production', `select * from production_calendar($1, $2) where code = 'MO-CAL'`, calRange);
+  eq(r.length, 1, 'seen'); eq(r[0].project_code != null, true, 'code');
+  const raw = JSON.stringify(r);
+  if (raw.includes('Портал А') || Object.keys(r[0]).some((k) => /client|order|requested|price/.test(k))) throw new Error('client data leaked');
+});
+await ok('the team sees the client and a date past the requested one', async () => {
+  await as('admin', 'select mo_reschedule($1, current_date + 8)', [calMo]);
+  const r = (await as('sales', `select * from staff_calendar($1, $2) where code = 'MO-CAL'`, calRange))[0];
+  eq(r.client, 'Портал А', 'client'); eq(r.past_requested, true, 'past'); eq(r.late, false, 'not late');
+});
+await fails('the partner has no team calendar', () => as('production', 'select * from staff_calendar($1, $2)', calRange), '');
+await fails('a client has no calendar', () => as('clientA', 'select * from production_calendar($1, $2)', calRange), '');
+await fails('Sales does not move a batch', () => as('sales', 'select mo_reschedule($1, current_date + 1)', [calMo]), '');
+await fails('the partner does not move a batch', () => as('production', 'select mo_reschedule($1, current_date + 1)', [calMo]), '');
+await ok('moving tells the partner and needs a new answer', async () => {
+  eq((await as('production', `select id from notifications where kind = 'mo_date_changed'`)).length > 0, true, 'told');
+  await as('production', `select mo_date_answer($1, null, 'Добре')`, [calMo]);
+  eq((await one('sales', `select date_state from staff_calendar($1, $2) where code = 'MO-CAL'`, calRange)).date_state, 'confirmed', 'confirmed');
+  await as('admin', 'select mo_reschedule($1, current_date + 4)', [calMo]);
+  eq((await one('sales', `select date_state from staff_calendar($1, $2) where code = 'MO-CAL'`, calRange)).date_state, 'pending', 'asked again');
+});
+await ok('a proposed date goes through Admin', async () => {
+  await as('production', `select mo_date_answer($1, current_date + 10, 'Няма капацитет')`, [calMo]);
+  const r = await one('sales', `select date_state, proposed_date, date_note, on_date from staff_calendar($1, $2) where code = 'MO-CAL'`, calRange);
+  eq(r.date_state, 'proposed', 'proposed'); eq(r.date_note, 'Няма капацитет', 'note');
+  eq((await as('admin', `select id from notifications where kind = 'mo_date_answer'`)).length > 0, true, 'told');
+  await as('admin', 'select mo_date_decide($1, true)', [calMo]);
+  const a = await one('sales', `select date_state, proposed_date, on_date from staff_calendar($1, $2) where code = 'MO-CAL'`, calRange);
+  eq(a.date_state, 'confirmed', 'accepted'); eq(a.proposed_date, null, 'cleared');
+});
+await fails('the partner does not accept its own date', () => as('production', 'select mo_date_decide($1, true)', [calMo]), '');
+await ok('a client sees two weeks once confirmed, never a date', async () => {
+  const w = (await one('clientA', 'select portal_order_window($1) as w', [calOrder])).w;
+  eq(typeof w.from, 'number', 'week'); eq(Object.keys(w).sort().join(), 'from,to', 'only weeks');
+  eq((await one('clientB', 'select portal_order_window($1) as w', [calOrder])).w, null, 'other client');
+  await as('admin', 'select mo_reschedule($1, current_date + 12)', [calMo]);
+  eq((await one('clientA', 'select portal_order_window($1) as w', [calOrder])).w, null, 'not confirmed, nothing shown');
+  if (JSON.stringify((await one('clientA', 'select portal_order($1) as d', [calOrder])).d).includes('planned')) throw new Error('date leaked');
+});
+await fails('a closed batch does not move', async () => {
+  await db.exec('reset role');
+  await db.query(`alter table manufacturing_orders disable trigger user`);
+  await db.query(`update manufacturing_orders set status = 'completed' where id = $1`, [calMo]);
+  await db.query(`alter table manufacturing_orders enable trigger user`);
+  await as('admin', 'select mo_reschedule($1, current_date + 1)', [calMo]);
+}, 'closed');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

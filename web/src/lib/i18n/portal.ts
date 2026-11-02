@@ -32,6 +32,7 @@ const de: PortalText = {
   nav: { home: "Übersicht", orders: "Bestellungen", documents: "Dokumente", invoices: "Rechnungen", support: "Support", account: "Konto" },
   home: { openBalance: "Offener Betrag", viewAll: "Alle ansehen", activeOrders: "Aktive Bestellungen", noOrders: "Noch keine Bestellungen.", unread: "{n} neu", recentDocuments: "Neueste Dokumente" },
   order: {
+    window: "Voraussichtlich fertig: Woche {from}–{to}",
     due: "Noch zu zahlen (inkl. MwSt.)",
     proforma: "Proforma-Rechnung", finalProforma: "Endgültige Proforma-Rechnung", deliveryNote: "Lieferschein",
     ref: "Ihre Referenz: {ref}", value: "Bestellwert (ohne MwSt.)", requested: "Wunschtermin", progress: "Fortschritt", products: "Produkte",
@@ -82,6 +83,7 @@ const fr: PortalText = {
   nav: { home: "Aperçu", orders: "Commandes", documents: "Documents", invoices: "Factures", support: "Assistance", account: "Compte" },
   home: { openBalance: "Montant dû", viewAll: "Tout voir", activeOrders: "Commandes en cours", noOrders: "Aucune commande pour le moment.", unread: "{n} nouveau(x)", recentDocuments: "Derniers documents" },
   order: {
+    window: "Prêt prévu : semaine {from}–{to}",
     due: "Reste à payer (TTC)",
     proforma: "Facture proforma", finalProforma: "Facture proforma finale", deliveryNote: "Bon de livraison",
     ref: "Votre référence : {ref}", value: "Valeur de la commande (HT)", requested: "Date souhaitée", progress: "Avancement", products: "Produits",
@@ -132,6 +134,7 @@ const it: PortalText = {
   nav: { home: "Panoramica", orders: "Ordini", documents: "Documenti", invoices: "Fatture", support: "Assistenza", account: "Account" },
   home: { openBalance: "Importo da pagare", viewAll: "Vedi tutti", activeOrders: "Ordini attivi", noOrders: "Ancora nessun ordine.", unread: "{n} nuovi", recentDocuments: "Ultimi documenti" },
   order: {
+    window: "Pronto previsto: settimana {from}–{to}",
     due: "Ancora da pagare (IVA inclusa)",
     proforma: "Fattura proforma", finalProforma: "Fattura proforma finale", deliveryNote: "Documento di trasporto",
     ref: "Il tuo riferimento: {ref}", value: "Valore dell'ordine (IVA esclusa)", requested: "Data richiesta", progress: "Avanzamento", products: "Prodotti",
@@ -182,6 +185,7 @@ const ro: PortalText = {
   nav: { home: "Prezentare", orders: "Comenzi", documents: "Documente", invoices: "Facturi", support: "Asistență", account: "Cont" },
   home: { openBalance: "Sumă de plată", viewAll: "Vezi tot", activeOrders: "Comenzi active", noOrders: "Încă nu există comenzi.", unread: "{n} noi", recentDocuments: "Ultimele documente" },
   order: {
+    window: "Gata estimat: săptămâna {from}–{to}",
     due: "Rămas de plată (cu TVA)",
     proforma: "Factură proformă", finalProforma: "Factură proformă finală", deliveryNote: "Aviz de livrare",
     ref: "Referința dvs.: {ref}", value: "Valoarea comenzii (fără TVA)", requested: "Data solicitată", progress: "Progres", products: "Produse",
@@ -232,6 +236,7 @@ const el: PortalText = {
   nav: { home: "Επισκόπηση", orders: "Παραγγελίες", documents: "Έγγραφα", invoices: "Τιμολόγια", support: "Υποστήριξη", account: "Λογαριασμός" },
   home: { openBalance: "Ποσό προς πληρωμή", viewAll: "Προβολή όλων", activeOrders: "Ενεργές παραγγελίες", noOrders: "Δεν υπάρχουν ακόμη παραγγελίες.", unread: "{n} νέα", recentDocuments: "Τελευταία έγγραφα" },
   order: {
+    window: "Εκτιμώμενη ετοιμότητα: εβδομάδα {from}–{to}",
     due: "Υπόλοιπο πληρωμής (με ΦΠΑ)",
     proforma: "Προτιμολόγιο", finalProforma: "Τελικό προτιμολόγιο", deliveryNote: "Δελτίο αποστολής",
     ref: "Η αναφορά σας: {ref}", value: "Αξία παραγγελίας (χωρίς ΦΠΑ)", requested: "Επιθυμητή ημερομηνία", progress: "Πρόοδος", products: "Προϊόντα",

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { PortalChat, type ChatLine } from "@/components/portal-chat";
+import { ChatPane, type ChatLine } from "@/components/portal-chat";
+import { portalPost } from "@/app/portal/actions";
 import { Empty } from "@/components/ui";
 import { fmt, formatDate, formatPrice, type AnyLocale } from "@/lib/i18n";
 import type { PortalDict } from "@/lib/i18n/portal";
@@ -41,7 +42,7 @@ export function PortalThread({ orderId, rows, locale, t }: { orderId: string | n
       time: m.created_at.slice(11, 16), body: m.body, day: same ? null : day,
     };
   });
-  return <PortalChat orderId={orderId} lines={lines} empty={S.empty} placeholder={S.placeholder} send={S.send} />;
+  return <ChatPane action={portalPost} fields={orderId ? <input type="hidden" name="order_id" value={orderId} /> : null} lines={lines} empty={S.empty} placeholder={S.placeholder} send={S.send} />;
 }
 
 function FileMark() {

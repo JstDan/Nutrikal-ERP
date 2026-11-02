@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice, formatQty } from "@/lib/i18n";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
+import { moveMoDate } from "@/app/calendar-actions";
 import { moTone } from "@/lib/status";
 import { SearchSelect } from "@/components/search-select";
 import {
@@ -207,7 +208,7 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
                   <div className="min-w-0">
                     <div className="font-semibold break-words">{nm(u)}</div>
                     <div className="text-xs text-ink-2">{u.sku}</div>
-                    {u.reason && <div className="text-xs break-words text-ink-2 xl:hidden">{u.reason}</div>}
+                    {u.reason && <div className="text-xs break-words text-ink-2 xl:hidden">{t.factory.order.reasons[u.reason as "scrap"] ?? u.reason}</div>}
                   </div>
                   <span className="hide-sm">{formatQty(locale, u.reserved, u.base_unit)}</span>
                   <span className="hide-sm">{formatQty(locale, u.used, u.base_unit)}</span>
@@ -216,7 +217,7 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
                       {Number(u.diff) > 0 ? "+" : ""}{formatQty(locale, u.diff, u.base_unit)}{u.diff_pct != null ? ` · ${Number(u.diff_pct) > 0 ? "+" : ""}${formatNumber(locale, u.diff_pct, 1)} %` : ""}
                     </Chip>
                   </span>
-                  <span className="hidden min-w-0 break-words xl:block">{u.reason ?? "—"}</span>
+                  <span className="hidden min-w-0 break-words xl:block">{(u.reason && t.factory.order.reasons[u.reason as "scrap"]) ?? u.reason ?? "—"}</span>
                   <span className="hide-sm text-right font-semibold">{u.diff_value != null ? formatPrice(locale, u.diff_value) : "—"}</span>
                 </div>
               ))}
@@ -291,12 +292,20 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
             {open && (
               <Card title={d.plan} id="plan-h">
                 {!canPlan && <p className="m-0 text-sm text-ink-2">{d.salesOnly}</p>}
-                {canPlan && (mo.status === "simulation" || mo.status === "scheduled") && (
+                {canPlan && mo.status === "simulation" && (
                   <ActionForm action={scheduleMo} submitLabel={d.schedule} resetOnSuccess={false}>
                     {hidden(mo.id)}
                     <p className="m-0 text-[13px] text-ink-2">{d.scheduleNote}</p>
                     <label className="field"><span>{d.planDate} *</span>
                       <input name="planned_date" type="date" required defaultValue={mo.planned_date ?? ""} className="input" />
+                    </label>
+                  </ActionForm>
+                )}
+                {canPlan && ["scheduled", "released", "in_production"].includes(mo.status) && (
+                  <ActionForm action={moveMoDate} submitLabel={t.calendar.moveDate} resetOnSuccess={false}>
+                    <input type="hidden" name="mo_id" value={mo.id} />
+                    <label className="field"><span>{d.planDate} *</span>
+                      <input name="date" type="date" required defaultValue={mo.planned_date ?? ""} className="input" />
                     </label>
                   </ActionForm>
                 )}

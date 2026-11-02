@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { reserveOfferNo, saveOffer, syncIfStale } from "@/app/calculator/actions";
+import { offerExists, reserveOfferNo, saveOffer, syncIfStale } from "@/app/calculator/actions";
 import { calcInputFromForm, calculate } from "@/lib/calculator/calc";
 import type { CrmClient } from "@/lib/calculator/db";
 import { BASELINE_KEY, createEmptyForm, DRAFT_KEY, duplicateForm, normalizeForm } from "@/lib/calculator/form";
@@ -38,6 +38,15 @@ export function CalculatorApp(props: Props) {
       <Calculator {...props} />
     </CalcTextProvider>
   );
+}
+
+/** A draft can outlive its offer (deleted in the meantime): the work is kept as a new offer with a new number. */
+async function withoutDeletedOffer(f: OfferForm): Promise<OfferForm> {
+  if (!f.id) return f;
+  const found = await offerExists(f.id);
+  if (!found.ok || found.data) return f;
+  const no = await reserveOfferNo();
+  return { ...f, id: null, offer: { ...f.offer, offerNo: no.ok ? no.data : "" } };
 }
 
 function Calculator({ materials, catalog, settings, clients, initial, tabs }: Props) {
@@ -101,7 +110,7 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
       }
       const draft = readStorage<OfferForm>(DRAFT_KEY);
       if (draft) {
-        loadForm(draft);
+        loadForm(await withoutDeletedOffer(draft));
         setBaseline(readStorage<string>(BASELINE_KEY));
       } else await newOffer();
     })();
@@ -153,7 +162,7 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
     if (!form || !result || !valid) return revealErrors();
     setBusy(true);
     try {
-      let current = form;
+      let current = await withoutDeletedOffer(form);
       if (!current.offer.offerNo.trim()) {
         const no = await reserveOfferNo();
         if (!no.ok) throw new Error(no.error);

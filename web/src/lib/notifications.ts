@@ -33,6 +33,12 @@ export function notificationText(n: NotificationRow, t: Dict, locale: Locale): s
       return fmt(K.task_mention, { by: s("by"), order: s("order"), task: locale === "en" && p.task_en ? s("task_en") : s("task") });
     case "chat_mention":
       return fmt(p.channel ? K.chat_mention : K.chat_mentionDirect, { by: s("by"), channel: s("channel") });
+    case "mo_date_changed":
+      return fmt(K.mo_date_changed, { code: s("code"), date: formatDate(locale, s("date")) });
+    case "mo_date_answer":
+      return p.proposed ? fmt(K.mo_date_proposed, { code: s("code"), date: formatDate(locale, s("proposed")) }) : fmt(K.mo_date_confirmed, { code: s("code") });
+    case "mo_date_decided":
+      return fmt(p.accepted ? K.mo_date_accepted : K.mo_date_declined, { code: s("code") });
     case "client_message":
       return fmt(K.client_message, { client: s("client"), code: s("code") || "—" });
     case "catalog_enquiry":
