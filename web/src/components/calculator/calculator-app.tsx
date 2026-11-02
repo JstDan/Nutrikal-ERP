@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { offerExists, reserveOfferNo, saveOffer, syncIfStale } from "@/app/calculator/actions";
+import { offerState, reserveOfferNo, saveOffer, syncIfStale } from "@/app/calculator/actions";
 import { calcInputFromForm, calculate } from "@/lib/calculator/calc";
 import type { CrmClient } from "@/lib/calculator/db";
 import { BASELINE_KEY, createEmptyForm, DRAFT_KEY, duplicateForm, normalizeForm } from "@/lib/calculator/form";
@@ -10,7 +10,7 @@ import { toOfferInput } from "@/lib/calculator/offerRecord";
 import { readStorage, removeStorage, writeStorage } from "@/lib/calculator/storage";
 import type { CatalogProduct, OfferForm, OfferRecord, RawMaterial, Settings } from "@/lib/calculator/types";
 import { fieldId, firstError, validateOffer, type FieldKey } from "@/lib/calculator/validation";
-import type { Locale } from "@/lib/i18n";
+import { fmt, type Locale } from "@/lib/i18n";
 import { PageHeader } from "@/components/ui";
 import { CatalogProductSection, FormulaModeSwitch } from "./catalog-section";
 import { ClientSection, ContactSection, ProductTypeSection, type SectionProps } from "./client-sections";
@@ -40,13 +40,19 @@ export function CalculatorApp(props: Props) {
   );
 }
 
-/** A draft can outlive its offer (deleted in the meantime): the work is kept as a new offer with a new number. */
-async function withoutDeletedOffer(f: OfferForm): Promise<OfferForm> {
-  if (!f.id) return f;
-  const found = await offerExists(f.id);
-  if (!found.ok || found.data) return f;
+/**
+ * A form can point at an offer that can no longer be saved: deleted in the meantime, or in an order.
+ * The work is kept as a new offer with a new number; `locked` names the offer that is in an order.
+ */
+async function asNewWhenNotEditable(f: OfferForm): Promise<{ form: OfferForm; locked: string | null }> {
+  if (!f.id) return { form: f, locked: null };
+  const state = await offerState(f.id);
+  if (!state.ok || state.data === "ok") return { form: f, locked: null };
   const no = await reserveOfferNo();
-  return { ...f, id: null, offer: { ...f.offer, offerNo: no.ok ? no.data : "" } };
+  const offerNo = no.ok ? no.data : "";
+  return state.data === "locked"
+    ? { form: duplicateForm(f, offerNo), locked: f.offer.offerNo }
+    : { form: { ...f, id: null, offer: { ...f.offer, offerNo } }, locked: null };
 }
 
 function Calculator({ materials, catalog, settings, clients, initial, tabs }: Props) {
@@ -99,7 +105,9 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
       if (initial) {
         const o = initial.offer;
         if (initial.mode === "open") {
-          loadForm({ ...o.data, id: o.id, offer: { ...o.data.offer, offerNo: o.offer_no } }, true);
+          const opened = await asNewWhenNotEditable({ ...o.data, id: o.id, offer: { ...o.data.offer, offerNo: o.offer_no } });
+          loadForm(opened.form, true);
+          if (opened.locked) show("success", fmt(t.results.lockedAsNew, { no: opened.locked }));
         } else {
           const res = await reserveOfferNo();
           if (!res.ok) setNumberError(res.error);
@@ -110,11 +118,13 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
       }
       const draft = readStorage<OfferForm>(DRAFT_KEY);
       if (draft) {
-        loadForm(await withoutDeletedOffer(draft));
+        const kept = await asNewWhenNotEditable(draft);
+        loadForm(kept.form);
         setBaseline(readStorage<string>(BASELINE_KEY));
+        if (kept.locked) show("success", fmt(t.results.lockedAsNew, { no: kept.locked }));
       } else await newOffer();
     })();
-  }, [initial, loadForm, newOffer, settings]);
+  }, [initial, loadForm, newOffer, settings, show, t]);
 
   // Daily 17:00 sync missed (e.g. server was off): sync the price list and the catalog in the background, then reload them.
   useEffect(() => {
@@ -162,7 +172,15 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
     if (!form || !result || !valid) return revealErrors();
     setBusy(true);
     try {
-      let current = await withoutDeletedOffer(form);
+      const checked = await asNewWhenNotEditable(form);
+      if (checked.locked) {
+        // An offer in an order stays as it is: the form becomes a new offer, saved with the next press
+        loadForm(checked.form);
+        show("success", fmt(t.results.lockedAsNew, { no: checked.locked }));
+        setBusy(false);
+        return;
+      }
+      let current = checked.form;
       if (!current.offer.offerNo.trim()) {
         const no = await reserveOfferNo();
         if (!no.ok) throw new Error(no.error);

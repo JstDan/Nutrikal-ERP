@@ -26,8 +26,18 @@ export async function reserveOfferNo(): Promise<CalcResult<string>> {
   return run(async (uid) => (await q<{ no: string }>(uid, "select calc_next_offer_no() as no"))[0].no);
 }
 
-export async function offerExists(id: string): Promise<CalcResult<boolean>> {
-  return run(async (uid) => (await q<{ id: string }>(uid, "select id from calc_offers where id = $1", [id])).length > 0);
+/** Whether a saved offer can still be changed: gone, or locked because it is in an order that is not cancelled. */
+export async function offerState(id: string): Promise<CalcResult<"ok" | "missing" | "locked">> {
+  return run(async (uid) => {
+    const [row] = await q<{ locked: boolean }>(
+      uid,
+      `select exists (select 1 from sales_order_lines l join sales_orders so on so.id = l.order_id
+                       where l.calc_offer_id = o.id and so.status <> 'cancelled') as locked
+         from calc_offers o where o.id = $1`,
+      [id],
+    );
+    return !row ? "missing" : row.locked ? "locked" : "ok";
+  });
 }
 
 export async function saveOffer(input: OfferInput): Promise<CalcResult<OfferRecord>> {

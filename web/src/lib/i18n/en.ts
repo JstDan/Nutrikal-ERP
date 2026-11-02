@@ -2029,6 +2029,7 @@ export const en = {
       pdfLanguage: "The PDF offer is in English.",
       fixErrors: "Complete the required fields before creating the offer.",
       saveFailed: "Could not save the offer",
+      lockedAsNew: "Offer {no} is in an order and can no longer be changed, so this is now a new offer with its own number.",
       pdfFailed: "Could not generate the PDF",
       pcs: "pcs",
     },
