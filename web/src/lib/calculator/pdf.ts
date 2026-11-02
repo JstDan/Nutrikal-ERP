@@ -28,20 +28,18 @@ const PDF = {
   email: 'Email',
   address: 'Address',
   amountPerDose: 'Composition per serving ({portion})',
-  included: 'Included',
+  included: 'PRICE INCLUDES',
   thanks: 'Thank you for considering Nutrikal. We look forward to building your brand together.',
   validUntil: 'Valid until',
-  includedText: 'Manufacturing in a GMP and HACCP certified facility, container with lid, label printing and application.',
-  notIncluded: 'Not included',
-  notIncludedText: 'Label design, batch testing and COA, shipping and customs, VAT.',
-  moreTerms: 'Lead time usually 6-10 weeks once order, deposit and artwork are confirmed. Compliance in the destination market is the client’s responsibility unless agreed otherwise in writing. Some raw materials have their own minimums, which may affect price and timing.',
+  includedItems: ['GMP and HACCP certified manufacturing', 'Container with lid', 'Label printing and application'],
+  notIncluded: 'NOT INCLUDED',
+  notIncludedItems: ['Label design', 'Batch testing and COA', 'Shipping and customs', 'VAT'],
+  moreTerms: 'Lead time usually 6-10 weeks after order, deposit and artwork are confirmed. Compliance in the destination market is the client’s responsibility. Some raw materials have their own minimums, which may affect price and timing.',
   ingredient: 'Ingredient',
   amountPerDoseColumn: 'Amount',
   note: 'Note',
   paymentTerms: 'Payment terms',
-  terms: 'Disclaimer',
-  pricesExclVat: 'All prices are excl. VAT.',
-  salesPrices: 'Sales prices',
+  salesPrices: 'Sales prices (EUR, EXW, excl. VAT)',
   units: 'Quantity (units)',
   pricePerUnit: 'Price per unit (EUR)',
   page: 'Page {n} of {m}',
@@ -260,6 +258,7 @@ export function offerFileName(form: Pick<OfferForm, 'offer' | 'invoice' | 'recei
   return `Offer_${no}_${who}.pdf`;
 }
 
+const FINE_PRINT = 6.5;
 const imageFormat = (img: PdfImage) => (img.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG');
 
 /** An offer always stands on one page: the body shrinks step by step until it fits. */
@@ -367,9 +366,11 @@ function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, s
     [PDF.identificationNo, m.customer.identificationNo], [PDF.vatNo, m.customer.vatNumber],
     [PDF.contactPerson, m.customer.contactPerson], ...m.customer.addressLines.map((a): [string, string] => ['', a]),
   ]);
+  // Address and e-mail stand in the dark top and the identification number in the foot strip: not repeated here
+  const notInHead = (value: string) => (m.headerContact.some((line) => line.includes(value)) ? '' : value);
   const ys = party(PDF.supplier, COL2, R - COL2, m.supplier.name, [
-    [PDF.identificationNo, m.supplier.identificationNo], [PDF.vatNo, m.supplier.vatNumber], ['', m.supplier.address],
-    [PDF.contactPerson, m.contact.name], [PDF.phone, m.contact.phone], [PDF.email, m.contact.email],
+    [PDF.vatNo, m.supplier.vatNumber], ['', notInHead(m.supplier.address)],
+    [PDF.contactPerson, m.contact.name], [PDF.phone, m.contact.phone], [PDF.email, notInHead(m.contact.email)],
   ]);
 
   // 3. No price lines, totals or bank details on the offer – prices are in the sales prices table.
@@ -377,7 +378,7 @@ function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, s
     const [font, fontStyle] = fontFor(weight, text);
     return { font, fontStyle: fontStyle as 'normal' | 'bold' };
   };
-  let y = Math.max(yc, ys) + z(6);
+  let y = Math.max(yc, ys) + z(11);
 
   // Payment terms and the thanks stand at the foot of the page, above the strip; the body ends above them
   doc.setFont(...fontFor('regular', m.paymentTerms));
@@ -385,8 +386,12 @@ function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, s
   const payment = m.paymentTerms ? doc.splitTextToSize(m.paymentTerms, COL2 - L - 8) as string[] : [];
   doc.setFontSize(z(8.5));
   const thanks = doc.splitTextToSize(PDF.thanks, R - COL2) as string[];
-  const closeH = Math.max(payment.length ? z(6) + payment.length * z(4.4) : 0, thanks.length * z(4.2));
-  const closeTop = 277 - 5 - closeH;
+  // The small print closes the page, always at the same small size
+  doc.setFont(...fontFor('regular', m.terms));
+  doc.setFontSize(FINE_PRINT);
+  const finePrint = doc.splitTextToSize([m.terms, PDF.moreTerms].filter(Boolean).join(' '), R - L) as string[];
+  const closeH = Math.max(payment.length ? z(6) + payment.length * z(4.4) : 0, thanks.length * z(4.2)) + 3 + finePrint.length * 2.9;
+  const closeTop = 277 - 4 - closeH;
   const bottomLimit = closeTop - 8;
 
   const ensureSpace = (needed: number) => {
@@ -430,32 +435,37 @@ function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, s
   ensureSpace(z(18));
   write(m.productName, L, y, { weight: 'bold', size: z(15) });
   y += z(6.5);
-  textLines(m.packaging, 9.5, MUTED);
+  textLines([m.packaging.join(' · ')], 9.5, MUTED);
   y += z(6);
 
   if (m.doseRows.length) {
+    const twoColumns = m.doseRows.length > 8;
     ensureSpace(z(24));
     heading(fmt(PDF.amountPerDose, { portion: m.dosePortion }));
     autoTable(doc, {
       startY: y,
       margin: { left: L, right: pageW - R, top: 15, bottom: pageH - bottomLimit },
       theme: 'plain',
-      // Two columns of ingredients keep the offer on one page
-      body: Array.from({ length: Math.ceil(m.doseRows.length / 2) }, (_, i) => {
-        const half = Math.ceil(m.doseRows.length / 2);
-        const a = m.doseRows[i];
-        const b = m.doseRows[i + half];
-        return [a.name, a.amount, '', b?.name ?? '', b?.amount ?? ''];
-      }),
+      // One clean list; two columns only when a long formula would not leave room
+      body: twoColumns
+        ? Array.from({ length: Math.ceil(m.doseRows.length / 2) }, (_, i) => {
+            const half = Math.ceil(m.doseRows.length / 2);
+            const a = m.doseRows[i];
+            const b = m.doseRows[i + half];
+            return [a.name, a.amount, '', b?.name ?? '', b?.amount ?? ''];
+          })
+        : m.doseRows.map((r) => [r.name, r.amount]),
       styles: { font: 'Poppins', fontSize: z(8.5), textColor: TEXT, cellPadding: { top: z(1.1), bottom: z(1.1), left: 0, right: 0 }, overflow: 'linebreak' },
-      columnStyles: { 0: { cellWidth: 56 }, 1: { cellWidth: 19, halign: 'right' }, 2: { cellWidth: 10 }, 3: { cellWidth: 56 }, 4: { cellWidth: 19, halign: 'right' } },
+      columnStyles: twoColumns
+        ? { 0: { cellWidth: 56 }, 1: { cellWidth: 19, halign: 'right' }, 2: { cellWidth: 10 }, 3: { cellWidth: 56 }, 4: { cellWidth: 19, halign: 'right' } }
+        : { 0: { cellWidth: R - L - 25 }, 1: { cellWidth: 25, halign: 'right' } },
       didParseCell: (data) => {
         const text = data.cell.text.join(' ');
         if (CYRILLIC.test(text)) Object.assign(data.cell.styles, cellFont(text, 'regular'));
       },
-      didDrawCell: (data) => { if (data.column.index !== 2 && data.cell.text.join('')) underline(data.cell); },
+      didDrawCell: (data) => { if ((!twoColumns || data.column.index !== 2) && data.cell.text.join('')) underline(data.cell); },
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + z(7);
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + z(12);
   }
   // Notes: under the table, or with their own heading when the table is switched off.
   if (m.doseRows.length) {
@@ -485,25 +495,36 @@ function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, s
       },
       didDrawCell: (data) => underline(data.cell, data.section === 'head' ? NAVY : LINE),
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + z(5);
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + z(8);
   }
 
-  ensureSpace(z(8));
-  write(PDF.pricesExclVat, L, y, { size: z(8.5), color: MUTED });
-  y += z(7);
   // What the price covers, side by side
-  const half = (title: string, text: string, x: number) => {
-    write(title, x, y, { weight: 'semibold', size: z(9) });
-    doc.setFont(...fontFor('regular', text));
-    doc.setFontSize(z(8.5));
-    const parts = doc.splitTextToSize(text, COL2 - L - 8) as string[];
-    parts.forEach((part, i) => write(part, x, y + z(4.4) + i * z(3.9), { size: z(8.5), color: MUTED }));
-    return parts.length;
+  // What the price covers: two quiet panels with a short list each
+  const panelW = (R - L - 6) / 2;
+  const rows = Math.max(PDF.includedItems.length, PDF.notIncludedItems.length);
+  const panelH = z(11) + rows * z(4.8);
+  ensureSpace(panelH);
+  const panel = (title: string, items: string[], x: number, included: boolean) => {
+    doc.setFillColor(...HEAD_BG);
+    doc.roundedRect(x, y, panelW, panelH, 1, 1, 'F');
+    write(title, x + 5, y + z(6.5), { weight: 'semibold', size: z(7.5), color: MUTED });
+    items.forEach((item, i) => {
+      const rowY = y + z(11.5) + i * z(4.8);
+      doc.setLineWidth(0.4);
+      if (included) {
+        doc.setDrawColor(90, 160, 50);
+        doc.line(x + 5, rowY - z(1), x + 5 + z(1), rowY);
+        doc.line(x + 5 + z(1), rowY, x + 5 + z(2.8), rowY - z(2));
+      } else {
+        doc.setDrawColor(...MUTED);
+        doc.line(x + 5, rowY - z(0.9), x + 5 + z(2.5), rowY - z(0.9));
+      }
+      write(item, x + 10, rowY, { size: z(8.5) });
+    });
   };
-  ensureSpace(z(20));
-  const halfLines = Math.max(half(PDF.included, PDF.includedText, L), half(PDF.notIncluded, PDF.notIncludedText, COL2));
-  y += z(4.4) + halfLines * z(3.9) + z(4);
-  block(PDF.terms, [m.terms, PDF.moreTerms].filter(Boolean), 8, MUTED);
+  panel(PDF.included, PDF.includedItems, L, true);
+  panel(PDF.notIncluded, PDF.notIncludedItems, L + panelW + 6, false);
+  y += panelH + z(4);
 
   doc.setDrawColor(...LINE);
   doc.setLineWidth(0.15);
@@ -513,6 +534,7 @@ function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, s
     payment.forEach((line, i) => write(line, L, closeTop + z(5) + i * z(4.4), { size: z(9) }));
   }
   thanks.forEach((line, i) => write(line, COL2, closeTop + i * z(4.2), { size: z(8.5), color: MUTED }));
+  finePrint.forEach((line, i) => write(line, L, 277 - 4 - (finePrint.length - 1 - i) * 2.9, { size: FINE_PRINT, color: MUTED }));
 
   // 5. Footer strip on every page
   const pages = doc.getNumberOfPages();
