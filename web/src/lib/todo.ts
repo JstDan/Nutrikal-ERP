@@ -20,8 +20,7 @@ export async function loadTodo(tx: Tx, role: string, locale: Locale): Promise<To
                  from order_tasks t join order_task_boards b on b.id = t.board_id join sales_orders so on so.id = b.sales_order_id
                 where t.assignee_id = auth.uid() and t.status <> 'done' and so.status not in ('cancelled', 'closed')
                 order by so.code`, [locale], (id) => { const [task, order] = id.split("|"); return `/orders/${order}?task=${task}`; }],
-    ["mail", `select w.client_id::text as id, coalesce(w.subject, '—') as title, w.client as sub, count(*) over ()::int as total
-                from emails_waiting_reply w order by w.sent_at`, [], (id) => `/clients/${id}`],
+    // Clients waiting for an answer by mail: asked through the AI assistant only (owner, Nov 2026)
     ["offers", `select id, offer_no as title, client as sub, count(*) over ()::int as total from offers_waiting order by created_at`,
       [], (id) => `/offers/calc/${id}`],
     ["reorder", `select client_id as id, client as title, expected_on::text as sub, count(*) over ()::int as total from clients_reorder_due order by expected_on`,
