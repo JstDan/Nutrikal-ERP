@@ -3526,6 +3526,42 @@ await fails('corrections: an order sent to production is no longer corrected', a
   const line = (await one('sales', 'select id from sales_order_lines where order_id = $1', [cor.p])).id;
   await as('sales', `select correct_order_line($1, 200, 2.9, 'too late')`, [line]);
 }, 'not yet sent to production');
+// "Correct the order" (the order form filled in) runs several corrections in one transaction
+const corForm = {};
+await ok('correct the order: offer added at another level, the first one taken out, a service, VAT and the reference at once', async () => {
+  const client = (await one('sales', `insert into clients (legal_name, country_code) values ('Form Fix Ltd', 'BG') returning id`)).id;
+  const offer = async (no) => (await one('sales',
+    `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, data, results)
+     values ($1, 'Buyer', '', $2, $1 || ' product', '{"numberOfUnits": "1000"}'::jsonb, '{"unitPrice": 4}'::jsonb) returning id`, [no, client])).id;
+  corForm.a = await offer('NK-FORM-1'); corForm.b = await offer('NK-FORM-2');
+  corForm.order = (await one('sales', 'select create_order_from_calc_offers($1, $2) as id', [client, [corForm.a]])).id;
+  const lineA = (await one('sales', 'select id from sales_order_lines where order_id = $1', [corForm.order])).id;
+  await as('sales', `do $$ declare v uuid; begin
+      v := correct_order_add_offer('${corForm.order}', '${corForm.b}', 'Client adds a product');
+      perform correct_order_line(v, 2000, 3.8, 'Client adds a product');
+      perform correct_order_add_service('${corForm.order}', 'Label design', 1, 150, 'Client adds a product');
+      perform correct_order_remove_line('${lineA}', 'Client adds a product');
+      perform correct_order_terms('${corForm.order}', 0, (select balance_terms from sales_orders where id = '${corForm.order}'),
+                                  (select balance_net_days from sales_orders where id = '${corForm.order}'), 'Client adds a product');
+      update sales_orders set customer_ref = 'PO-55' where id = '${corForm.order}';
+    end $$`);
+  eq((await corLines(corForm.order)).map((l) => `${l.kind}:${l.quantity}x${l.price}`).join(), 'calc_offer:2000x3.8,service:1x150', 'lines');
+  const o = await one('sales', 'select vat_pct::float as vat, customer_ref from sales_orders where id = $1', [corForm.order]);
+  eq(`${o.vat}:${o.customer_ref}`, '0:PO-55', 'VAT and reference');
+  eq((await one('admin', `select count(*)::int as n from order_corrections where order_id = $1 and reason = 'Client adds a product'`, [corForm.order])).n, 5, 'five corrections, one reason');
+  eq((await one('sales', 'select count(*)::int as n from sales_order_lines where calc_offer_id = $1', [corForm.a])).n, 0, 'the first offer is free again');
+});
+await ok('correct the order: one step refused, nothing is saved', async () => {
+  let refused = '';
+  try {
+    await as('sales', `do $$ begin
+        perform correct_order_add_service('${corForm.order}', 'Extra samples', 2, 20, 'More');
+        perform correct_order_add_offer('${corForm.order}', '${corForm.b}', 'More');
+      end $$`);
+  } catch (e) { refused = e.message; }
+  eq(/already in an order/.test(refused), true, 'refused');
+  eq((await corLines(corForm.order)).length, 2, 'the service was not added either');
+});
 
 console.log('\nMaterial shortage: one rule everywhere');
 // missing = max(0, needed - reserved for the batch - free - requested - ordered)

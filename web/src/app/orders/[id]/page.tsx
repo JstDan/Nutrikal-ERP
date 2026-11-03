@@ -253,9 +253,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             <span>{t.orders.products}: {products.length}{c ? ` · ${money(total)}` : ""}</span>
           </span>
         }
-        actions={canEdit && ["draft", "unpaid"].includes(o.status)
-          ? <Link href={`/orders/${o.id}/proforma`} className="btn btn-outline">{d.exportProforma}</Link>
-          : undefined}
+        actions={(correctable || (canEdit && ["draft", "unpaid"].includes(o.status))) ? (
+          <span className="flex flex-wrap gap-2">
+            {correctable && <Link href={`/orders/new?edit=${o.id}`} className="btn btn-primary">{d.editOrder}</Link>}
+            {canEdit && ["draft", "unpaid"].includes(o.status) && <Link href={`/orders/${o.id}/proforma`} className="btn btn-outline">{d.exportProforma}</Link>}
+          </span>
+        ) : undefined}
       />
 
       <section aria-label={o.code} className="card grid grid-cols-2 gap-x-6 gap-y-3 p-5 sm:grid-cols-3 sm:p-6 xl:grid-cols-6">

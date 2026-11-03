@@ -671,6 +671,116 @@ export async function correctOrderClient(_: ActionState, fd: FormData): Promise<
     [str(fd, "order_id"), str(fd, "client_id"), str(fd, "currency"), str(fd, "reason")]);
 }
 
+/**
+ * "Correct the order": the new-order form filled in with the order (owner, Nov 2026). What differs from the
+ * order becomes corrections with the one reason, in one transaction (all or nothing): offers added first, then
+ * quantities and prices, services, removed lines, VAT, and the client's reference, wished date and notes.
+ * The database checks each step (correct_order_*: only until the order is sent to production).
+ */
+export async function correctOrderFromForm(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const n = t.orders.new;
+  const orderId = str(fd, "order_id");
+  const reason = str(fd, "reason");
+  if (!orderId) return { error: n.nothingChanged };
+  if (!reason) return { error: n.reasonMissing };
+  const picked = [...new Set(fd.getAll("offer_id").filter((x): x is string => typeof x === "string" && x !== ""))];
+  let services: { line_id: string | null; description: string; quantity: number; unit_price: number }[];
+  try {
+    services = JSON.parse(str(fd, "services") ?? "[]");
+  } catch {
+    return { error: n.serviceInvalid };
+  }
+  if (!Array.isArray(services) || services.some((s) => !s.description?.trim() || !(s.quantity > 0) || !(s.unit_price >= 0))) {
+    return { error: n.serviceInvalid };
+  }
+  type L = { id: string; kind: string; calc_offer_id: string | null; description: string | null; quantity: number; unit_price: number };
+  try {
+    const changes = await withUser(user.id, async (tx) => {
+      let count = 0;
+      const so = (await tx.query<{ vat_pct: number | null; balance_terms: string; balance_net_days: number | null; customer_ref: string | null;
+                                   requested_date: string | null; notes: string | null }>(
+        `select vat_pct::float as vat_pct, balance_terms::text, balance_net_days, customer_ref, requested_date::text, notes
+           from sales_orders where id = $1`, [orderId])).rows[0];
+      if (!so) throw new Error(n.nothingChanged);
+      const lines = (await tx.query<L>(
+        `select id, kind::text, calc_offer_id, description, quantity, unit_price::float as unit_price
+           from sales_order_lines where order_id = $1`, [orderId])).rows;
+      const saved = picked.length
+        ? (await tx.query<{ id: string; data: OfferForm; results: CalcResult }>(
+            "select id, data, results from calc_offers where id = any($1::uuid[])", [picked])).rows
+        : [];
+      const same = (a: number, b: number) => Math.abs(a - b) < 0.00005;
+      // quantity and price per chosen offer: its line as it is, unless another level of the offer is chosen
+      const target = (offerId: string, line: L | undefined) => {
+        const units = Number(str(fd, `level_${offerId}`)) || line?.quantity || 0;
+        if (line && units === line.quantity) return { units, price: line.unit_price };
+        const o = saved.find((x) => x.id === offerId);
+        const level = o ? offerPriceOptions(o.data, { ...o.results, complete: true }).find((l) => l.units === units) : undefined;
+        if (!level) throw new Error(n.levelMissing);
+        return { units: level.units, price: level.price };
+      };
+      // 1. offers added (at their quantity and price, then corrected to the chosen level)
+      for (const offerId of picked.filter((id) => !lines.some((l) => l.calc_offer_id === id))) {
+        const want = target(offerId, undefined);
+        const [{ id }] = (await tx.query<{ id: string }>("select correct_order_add_offer($1, $2, $3) as id", [orderId, offerId, reason])).rows;
+        const [added] = (await tx.query<{ quantity: number; unit_price: number }>(
+          "select quantity, unit_price::float as unit_price from sales_order_lines where id = $1", [id])).rows;
+        if (added.quantity !== want.units || !same(added.unit_price, want.price)) {
+          await tx.query("select correct_order_line($1, $2, $3, $4)", [id, want.units, want.price, reason]);
+        }
+        count++;
+      }
+      // 2. offers kept: another quantity and price
+      for (const line of lines.filter((l) => l.calc_offer_id && picked.includes(l.calc_offer_id))) {
+        const want = target(line.calc_offer_id!, line);
+        if (want.units !== line.quantity || !same(want.price, line.unit_price)) {
+          await tx.query("select correct_order_line($1, $2, $3, $4)", [line.id, want.units, want.price, reason]);
+          count++;
+        }
+      }
+      // 3. services: changed, new (a new name is a new line)
+      const keptServices = new Set<string>();
+      for (const s of services) {
+        const line = s.line_id ? lines.find((l) => l.id === s.line_id && l.kind === "service") : undefined;
+        if (line && (line.description ?? "").trim() === s.description.trim()) {
+          keptServices.add(line.id);
+          if (line.quantity !== s.quantity || !same(line.unit_price, s.unit_price)) {
+            await tx.query("select correct_order_line($1, $2, $3, $4)", [line.id, s.quantity, s.unit_price, reason]);
+            count++;
+          }
+        } else {
+          await tx.query("select correct_order_add_service($1, $2, $3, $4, $5)", [orderId, s.description.trim(), s.quantity, s.unit_price, reason]);
+          count++;
+        }
+      }
+      // 4. lines taken out: offers unticked, services removed or renamed
+      for (const line of lines.filter((l) => (l.calc_offer_id && !picked.includes(l.calc_offer_id)) || (l.kind === "service" && !keptServices.has(l.id)))) {
+        await tx.query("select correct_order_remove_line($1, $2)", [line.id, reason]);
+        count++;
+      }
+      // 5. VAT (the terms of the balance stay)
+      const vat = num(fd, "vat_pct");
+      if (vat != null && (so.vat_pct == null || !same(vat, so.vat_pct))) {
+        await tx.query("select correct_order_terms($1, $2, $3::balance_terms, $4, $5)", [orderId, vat, so.balance_terms, so.balance_net_days, reason]);
+        count++;
+      }
+      // 6. the client's reference, wished date and notes
+      const ref = str(fd, "customer_ref"), date = str(fd, "requested_date"), notes = str(fd, "notes");
+      if (ref !== so.customer_ref || date !== so.requested_date || notes !== so.notes) {
+        await tx.query("update sales_orders set customer_ref = $2, requested_date = $3::date, notes = $4 where id = $1", [orderId, ref, date, notes]);
+        count++;
+      }
+      return count;
+    });
+    if (changes === 0) return { error: n.nothingChanged };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/", "layout");
+  redirect(`/orders/${orderId}`);
+}
+
 export async function saveOrder(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   try {
