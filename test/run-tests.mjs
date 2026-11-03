@@ -3563,6 +3563,18 @@ await ok('correct the order: one step refused, nothing is saved', async () => {
   eq((await corLines(corForm.order)).length, 2, 'the service was not added either');
 });
 
+console.log('\nPackaging per pack: a powder gets only scoops and desiccants');
+await ok('powder: scoops and desiccants only; capsules: everything', async () => {
+  const fits = async (name, bg, sku, fmt) =>
+    (await as('admin', 'select packaging_fits_format($1, $2, $3, $4) as ok', [name, bg, sku, fmt]))[0].ok;
+  eq(await fits('Capsule size 00', 'Капсула размер 00', 'PK-CAPS-00', 'powder'), false, 'capsule shell');
+  eq(await fits('Plastic jar', 'Пластмасово бурканче', 'PK-JAR-PL', 'powder'), false, 'capsule jar');
+  eq(await fits('Measuring scoop 5 g', null, 'PK-SC-5', 'powder'), true, 'scoop');
+  eq(await fits('Мерителна лъжичка', 'Мерителна лъжичка', 'PK-X', 'powder'), true, 'scoop in Bulgarian');
+  eq(await fits('Desiccant 1 g', 'Дисикант 1 g', 'PK-DES', 'powder'), true, 'desiccant');
+  eq(await fits('Capsule size 00', null, 'PK-CAPS-00', 'capsule'), true, 'capsule recipe sees all');
+});
+
 console.log('\nMaterial shortage: one rule everywhere');
 // missing = max(0, needed - reserved for the batch - free - requested - ordered)
 const sh = {};

@@ -126,7 +126,9 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
       `select fp.id, i.sku, i.name, i.name_bg, fp.qty_per_pack::text from formula_packaging fp join items i on i.id = fp.item_id
         where fp.version_id = $1 order by i.name`, [current.id])).rows;
     const packOptions = (await tx.query<{ id: string; sku: string; name: string; name_bg: string | null }>(
-      "select id, sku, name, name_bg from items where is_active and type = 'packaging' order by name")).rows;
+      `select id, sku, name, name_bg from items
+          where is_active and type = 'packaging' and packaging_fits_format(name, name_bg, sku, $1)
+          order by name`, [formula.product_format])).rows;
     return { formula, versions, current, lines, pending, offer, packs, stock, checks, nutrients, claims, claimOptions, items, packaging, packOptions };
   });
   if (!data) notFound();
