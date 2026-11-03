@@ -9,7 +9,7 @@ import type { Dict } from "@/lib/i18n/en";
 type Tier = { min_qty: number; unit_price: number };
 type Product = {
   code: string; name: string; name_en?: string; name_bg: string | null; description: string | null; description_bg: string | null;
-  category_id: string | null; extra_category_ids?: string[]; format: string | null; min_qty: number; image: string | null; pack: string | null; pack_bg: string | null;
+  category_id: string | null; extra_category_ids?: string[]; format: string | null; min_qty: number; image: string | null; names?: Partial<Record<string, string>>; pack: string | null; pack_bg: string | null;
   serving_size: number | null; serving_unit: string | null; servings_per_pack: number | null;
   tiers: Tier[]; ingredients: { name: string; name_bg: string | null; amount: number | string; unit: string | null }[]; claims: { en: string; bg: string | null }[];
 };

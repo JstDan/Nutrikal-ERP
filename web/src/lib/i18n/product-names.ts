@@ -1,4 +1,6 @@
 // Catalog product names by language; English stays in the database.
+// Admin can change any of them on the product (catalog_products.names), which wins over this file.
+export const CATALOG_NAME_LANGS = ["bg", "de", "fr", "it", "ro", "el"] as const;
 export const PRODUCT_NAMES: Record<string, Record<"bg" | "de" | "fr" | "it" | "ro" | "el", string>> = {
   "NTL-TH101": { bg: "Комплекс за подкрепа на ставите", de: "Gelenk-Unterstützungskomplex", fr: "Complexe de soutien articulaire", it: "Complesso di supporto articolare", ro: "Complex de suport pentru articulații", el: "Σύμπλεγμα υποστήριξης αρθρώσεων" },
   "NTL-TH102": { bg: "Подкрепа за кръвното налягане", de: "Unterstützung für den Blutdruck", fr: "Soutien de la pression artérielle", it: "Supporto per la pressione sanguigna", ro: "Suport pentru tensiunea arterială", el: "Υποστήριξη αρτηριακής πίεσης" },

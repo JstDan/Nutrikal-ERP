@@ -2784,6 +2784,16 @@ await ok('nobody signed in sees nothing while it is a draft', async () => {
 });
 await as('admin', 'update catalog_products set is_published = true where id = $1', [catProduct]);
 const catCode = (await one('admin', 'select code from catalog_products where id = $1', [catProduct])).code;
+await ok('Admin sets the picture and the names by language; the open catalog shows them', async () => {
+  const img = '/api/catalog-image/00000000-0000-4000-8000-000000000001/00000000-0000-4000-8000-000000000002.webp';
+  await as('admin', `update catalog_products set image = $2, names = '{"de": "Katalogprodukt"}' where id = $1`, [catProduct, img]);
+  const p = (await asAnon('select catalog_public() as d'))[0].d.products.find((x) => x.code === catCode);
+  eq(p.image, img, 'picture'); eq(p.names.de, 'Katalogprodukt', 'German name');
+  const changed = await as('sales', 'update catalog_products set image = null, names = \'{}\' where id = $1 returning id', [catProduct]);
+  eq(changed.length, 0, 'Sales changes nothing');
+  await fails('names must be an object', () => as('admin', `update catalog_products set names = '[]' where id = $1`, [catProduct]));
+  await as('admin', `update catalog_products set image = null, names = '{}' where id = $1`, [catProduct]);
+});
 await ok('a recipe of a client can be published and the client does not show', async () => {
   const client = (await one('admin', 'select id, legal_name from clients limit 1'));
   const f = (await one('sales', `insert into formulas (name, product_format, serving_size, client_id) values ('На клиент', 'powder', 5, $1) returning id`, [client.id])).id;
@@ -2803,7 +2813,7 @@ await ok('the open catalogue shows only the listed fields, no cost or overage', 
   const d = (await asAnon('select catalog_public() as d'))[0].d;
   const p = d.products.find((x) => x.code === catCode);
   eq(p.tiers.length, 2, 'tiers'); eq(p.ingredients.length, 1, 'ingredients');
-  eq(Object.keys(p).sort().join(), 'category_id,claims,code,description,description_bg,extra_category_ids,format,image,ingredients,min_qty,name,name_bg,pack,pack_bg,price_on_request,serving_size,serving_unit,servings_per_pack,tiers', 'fields');
+  eq(Object.keys(p).sort().join(), 'category_id,claims,code,description,description_bg,extra_category_ids,format,image,ingredients,min_qty,name,name_bg,names,pack,pack_bg,price_on_request,serving_size,serving_unit,servings_per_pack,tiers', 'fields');
   eq(Object.keys(p.ingredients[0]).sort().join(), 'amount,name,name_bg,unit', 'ingredient fields');
 });
 await fails('nobody signed in reads no table', () => asAnon('select * from catalog_products'), 'denied');
