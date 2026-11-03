@@ -4,8 +4,10 @@ import { asSystem } from "@/lib/db/engine";
 // by Gmail newest first, a few pages per run. GOOGLE_STUB_URL replaces Google's addresses in tests.
 
 export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
-const PAGES_PER_RUN = 3;
-const PER_PAGE = 50;
+// One run makes at most 50 requests on the Cloudflare Workers free plan (Gmail, Google and the database
+// together): one page of 25 messages, one request each. The job runs every 10 minutes.
+const PAGES_PER_RUN = 1;
+const PER_PAGE = 25;
 const MAX_BODY = 20000;
 /** Gmail limits the cost of requests per minute: one message at a time, with a pause. */
 const PAUSE_MS = 500;

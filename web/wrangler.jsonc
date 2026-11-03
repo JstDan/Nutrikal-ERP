@@ -10,9 +10,10 @@
 		"directory": ".open-next/assets",
 		"binding": "ASSETS"
 	},
-	// Hourly: the price-list sync runs on the first call after 17:00 Sofia time
+	// Hourly: price-list sync (first call after 17:00 Sofia time) and status mail;
+	// every 10 minutes: Gmail (worker.ts)
 	"triggers": {
-		"crons": ["0 * * * *"]
+		"crons": ["0 * * * *", "5,15,25,35,45,55 * * * *"]
 	},
 	// Pooled connection to the Supabase database (engine.ts)
 	"hyperdrive": [
