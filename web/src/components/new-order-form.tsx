@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import type { ActionState } from "@/app/actions";
 import { fmt, formatNumber, formatPrice, type Locale } from "@/lib/i18n";
@@ -13,8 +14,17 @@ export type OrderableOffer = {
 };
 export type OrderableClient = { id: string; name: string; country: string; vat_number: string | null };
 export type ServiceOption = { description: string; price: number };
+/** An order being corrected: what it has now (offers of the client in it, its services, terms). */
+export type OrderEdit = {
+  orderId: string;
+  offers: string[];
+  services: { lineId: string; description: string; quantity: number; price: number }[];
+  /** Products not from the calculator (older ERP offers): shown, not changed here. */
+  fixed: { description: string; quantity: number }[];
+  vat: string; customerRef: string; requested: string; notes: string;
+};
 
-type Service = { key: string; description: string; quantity: string; price: string; on: boolean; custom: boolean };
+type Service = { key: string; description: string; quantity: string; price: string; on: boolean; custom: boolean; lineId?: string };
 
 const toNum = (s: string) => {
   const n = Number(s.replace(",", "."));
@@ -23,27 +33,36 @@ const toNum = (s: string) => {
 /** Bulgarian clients pay 20% VAT; EU clients with a VAT number and clients outside the EU 0%. */
 const defaultVat = (c: OrderableClient | undefined) => (!c || c.country === "BG" ? "20" : "0");
 
-/** Sales: client (with offers to order) → one or more of its offers → extra services → create the unpaid order. */
-export function NewOrderForm({ action, clients, offers, presets, initialClient, initialOffer, locale, text }: {
+/**
+ * Sales: client (with offers to order) → one or more of its offers → extra services → create the unpaid order.
+ * With edit: the same form filled in with an order, saved as corrections with one reason.
+ */
+export function NewOrderForm({ action, clients, offers, presets, initialClient, initialOffer, edit, locale, text }: {
   action: (s: ActionState, fd: FormData) => Promise<ActionState>;
   clients: OrderableClient[];
   offers: OrderableOffer[];
   presets: ServiceOption[];
   initialClient: string | null;
   initialOffer: string | null;
+  edit?: OrderEdit;
   locale: Locale;
   text: Dict["orders"]["new"];
 }) {
   const n = text;
   const [state, formAction, pending] = useActionState(action, {});
   const [clientId, setClientId] = useState<string | null>(clients.some((c) => c.id === initialClient) ? initialClient : null);
-  const [picked, setPicked] = useState<string[]>(offers.some((o) => o.id === initialOffer && o.client_id === initialClient) ? [initialOffer!] : []);
+  const [picked, setPicked] = useState<string[]>(edit ? edit.offers
+    : offers.some((o) => o.id === initialOffer && o.client_id === initialClient) ? [initialOffer!] : []);
   /** Chosen quantity per offer (the offer quantity unless another level is picked). */
   const [levels, setLevels] = useState<Record<string, number>>({});
-  const [services, setServices] = useState<Service[]>(() =>
-    presets.map((p, i) => ({ key: `p${i}`, description: p.description, quantity: "1", price: String(p.price), on: false, custom: false })));
+  const [services, setServices] = useState<Service[]>(() => [
+    // the services of the order being corrected, as they are, then the usual ones to add
+    ...(edit?.services ?? []).map((x) => ({ key: x.lineId, lineId: x.lineId, description: x.description, quantity: String(x.quantity),
+                                             price: String(x.price), on: true, custom: true })),
+    ...presets.map((p, i) => ({ key: `p${i}`, description: p.description, quantity: "1", price: String(p.price), on: false, custom: false })),
+  ]);
   const client = clients.find((c) => c.id === clientId);
-  const [vat, setVat] = useState(defaultVat(client));
+  const [vat, setVat] = useState(edit ? edit.vat : defaultVat(client));
 
   const clientOffers = useMemo(() => offers.filter((o) => o.client_id === clientId), [offers, clientId]);
   const levelOf = (o: OrderableOffer) => o.levels.find((l) => l.units === levels[o.id]) ?? { units: o.units, price: o.unit_price };
@@ -52,7 +71,7 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
   const total =
     clientOffers.filter((o) => picked.includes(o.id)).reduce((a, o) => a + levelOf(o).units * levelOf(o).price, 0) +
     chosen.reduce((a, s) => a + (toNum(s.quantity) ?? 0) * (toNum(s.price) ?? 0), 0);
-  const payload = JSON.stringify(chosen.map((s) => ({ description: s.description.trim(), quantity: toNum(s.quantity), unit_price: toNum(s.price) })));
+  const payload = JSON.stringify(chosen.map((s) => ({ line_id: s.lineId ?? null, description: s.description.trim(), quantity: toNum(s.quantity), unit_price: toNum(s.price) })));
 
   const update = (key: string, patch: Partial<Service>) => setServices((all) => all.map((s) => (s.key === key ? { ...s, ...patch } : s)));
   const pickClient = (c: OrderableClient | null) => {
@@ -66,6 +85,7 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
   return (
     <form action={formAction} className="flex flex-col gap-6">
       <input type="hidden" name="client_id" value={clientId ?? ""} />
+      {edit && <input type="hidden" name="order_id" value={edit.orderId} />}
       <input type="hidden" name="services" value={payload} />
 
       <section aria-labelledby="no-client" className="flex flex-col gap-2">
@@ -76,7 +96,9 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
               <div className="font-semibold break-words">{client.name}</div>
               <div className="text-xs text-ink-2">{[client.country, client.vat_number].filter(Boolean).join(" · ")}</div>
             </div>
-            <button type="button" className="btn btn-outline" onClick={() => pickClient(null)}>{n.changeClient}</button>
+            {edit
+              ? <p className="m-0 text-[13px] text-ink-2">{n.clientFixed}</p>
+              : <button type="button" className="btn btn-outline" onClick={() => pickClient(null)}>{n.changeClient}</button>}
           </div>
         ) : (
           <>
@@ -105,7 +127,13 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
         <>
           <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
             <legend className="mb-1 p-0 text-base font-bold">2. {n.offers} *</legend>
-            <p className="m-0 text-[13px] text-ink-2">{n.offersHint}</p>
+            <p className="m-0 text-[13px] text-ink-2">{edit ? n.editOffersHint : n.offersHint}</p>
+            {edit && edit.fixed.length > 0 && (
+              <div className="flex flex-col gap-1 rounded-sm border border-line p-3 text-sm">
+                <span className="font-semibold">{n.otherLines}</span>
+                {edit.fixed.map((x, i) => <span key={i} className="break-words">{x.description} · {formatNumber(locale, x.quantity)}</span>)}
+              </div>
+            )}
             {clientOffers.map((o) => (
               <div key={o.id} className="flex flex-col gap-2 rounded-sm border border-line p-3">
               <label className="flex min-h-11 cursor-pointer items-start gap-3">
@@ -125,6 +153,9 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
                   <span className="font-semibold tabular-nums">{money(levelOf(o).units * levelOf(o).price)}</span>
                 </span>
               </label>
+              {edit && (
+                <Link href={`/offers/calc/${o.id}`} className="ml-8 self-start text-sm text-ink">{n.openInCalc}</Link>
+              )}
               {picked.includes(o.id) && o.levels.length > 1 && (
                 <label className="field ml-8 max-w-[360px]"><span>{n.level}</span>
                   <select name={`level_${o.id}`} className="input" value={levelOf(o).units}
@@ -201,12 +232,20 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
                 <span>{n.vat}</span>
                 <input name="vat_pct" type="number" min={0} max={100} step="any" value={vat} onChange={(e) => setVat(e.target.value)} className="input" />
               </label>
-              <label className="field"><span>{n.customerRef}</span><input name="customer_ref" className="input" /></label>
-              <label className="field"><span>{n.requested}</span><input name="requested_date" type="date" className="input" /></label>
+              <label className="field"><span>{n.customerRef}</span><input name="customer_ref" defaultValue={edit?.customerRef} className="input" /></label>
+              <label className="field"><span>{n.requested}</span><input name="requested_date" type="date" defaultValue={edit?.requested} className="input" /></label>
             </div>
             <p className="m-0 text-[13px] text-ink-2">{n.vatHint}</p>
-            <label className="field"><span>{n.notes}</span><textarea name="notes" className="input" /></label>
+            <label className="field"><span>{n.notes}</span><textarea name="notes" defaultValue={edit?.notes} className="input" /></label>
           </fieldset>
+
+          {edit && (
+            <label className="field">
+              <span>{n.reason} *</span>
+              <textarea name="reason" required aria-describedby="order-reason-msg" className="input" />
+              <span id="order-reason-msg" className="text-[13px] text-ink-2">{n.reasonHint}</span>
+            </label>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-mist pt-4">
             <div className="text-sm">{n.total}: <strong className="tabular-nums">{money(total)}</strong></div>
@@ -214,8 +253,8 @@ export function NewOrderForm({ action, clients, offers, presets, initialClient, 
               <p role="status" aria-live="polite" className="m-0 text-sm">
                 {state.error && <span className="font-semibold text-red-ink">{state.error}</span>}
               </p>
-              <button type="submit" className="btn btn-primary" disabled={pending || picked.length === 0}>
-                {pending ? "…" : n.submit}
+              <button type="submit" className="btn btn-primary" disabled={pending || (picked.length === 0 && !edit?.fixed.length)}>
+                {pending ? "…" : edit ? n.editSubmit : n.submit}
               </button>
             </div>
           </div>
