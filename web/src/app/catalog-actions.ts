@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { q, withUser } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import type { ActionState } from "@/app/actions";
+import { CATALOG_BUCKET, MAX_FILE_BYTES, newCatalogImagePath, putFile, removeFile } from "@/lib/files";
+import { CATALOG_NAME_LANGS, PRODUCT_NAMES } from "@/lib/i18n/product-names";
 
 const text = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
 const val = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -26,17 +28,76 @@ export async function createCatalogProduct(fd: FormData) {
 
 export async function saveCatalogProduct(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
+  // Names on the open catalogue: only what differs from product-names.ts is kept, so the file still fills the rest
+  const base = PRODUCT_NAMES[val(fd, "code")];
+  const names = Object.fromEntries(CATALOG_NAME_LANGS
+    .map((l) => [l, val(fd, `name_${l}`)] as const)
+    .filter(([l, v]) => v && v !== base?.[l]));
   try {
     await q(user.id,
       `update catalog_products set name = $2, name_bg = $3, description = $4, description_bg = $5, category_id = $6, sort_order = $7,
-              min_qty = $8, product_format = $9, pack = $10, pack_bg = $11, ingredients = $12::jsonb, review_status = $13, internal_notes = $14 where id = $1`,
+              min_qty = $8, product_format = $9, pack = $10, pack_bg = $11, ingredients = $12::jsonb, review_status = $13, internal_notes = $14,
+              names = $15::jsonb where id = $1`,
       [val(fd, "id"), val(fd, "name"), opt(fd, "name_bg"), opt(fd, "description"), opt(fd, "description_bg"), opt(fd, "category_id"), Number(val(fd, "sort_order")) || 0,
-       Number(val(fd, "min_qty")) || 500, opt(fd, "product_format"), opt(fd, "pack"), opt(fd, "pack_bg"), JSON.stringify(ingredientLines(val(fd, "ingredients"))), opt(fd, "review_status"), opt(fd, "internal_notes")]);
+       Number(val(fd, "min_qty")) || 500, opt(fd, "product_format"), opt(fd, "pack"), opt(fd, "pack_bg"), JSON.stringify(ingredientLines(val(fd, "ingredients"))), opt(fd, "review_status"), opt(fd, "internal_notes"),
+       JSON.stringify(names)]);
   } catch (e) {
     return { error: text(e) };
   }
   revalidatePath("/catalog", "layout");
   return { ok: true, message: t.catalog.saved };
+}
+
+const IMAGE_URL = /^\/api\/catalog-image\/([0-9a-f-]{36}\/[0-9a-f-]{36}\.[a-z]{3,4})$/;
+
+/**
+ * Admin puts a new picture on a product (owner, Nov 2026): kept in Storage, the old uploaded one is removed.
+ * Who may do it is the write rule of catalog_products: the file is removed again when the update is refused.
+ */
+export async function uploadCatalogImage(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const C = t.catalog;
+  const id = val(fd, "id");
+  const file = fd.get("image");
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !(file instanceof File) || file.size === 0) return { error: C.imageMissing };
+  if (file.size > MAX_FILE_BYTES) return { error: C.imageTooLarge };
+  const key = newCatalogImagePath(id.toLowerCase(), file.type);
+  if (!key) return { error: C.imageType };
+  let old: string | null = null;
+  try {
+    await putFile(CATALOG_BUCKET, key, Buffer.from(await file.arrayBuffer()), file.type);
+    const saved = await withUser(user.id, async (tx) => {
+      const before = (await tx.query<{ image: string | null }>("select image from catalog_products where id = $1 for update", [id])).rows[0];
+      const done = (await tx.query("update catalog_products set image = $2 where id = $1 returning id", [id, `/api/catalog-image/${key}`])).rows.length;
+      old = before?.image ?? null;
+      return done > 0;
+    });
+    if (!saved) {
+      await removeFile(CATALOG_BUCKET, key);
+      return { error: C.imageNotAllowed };
+    }
+  } catch (e) {
+    await removeFile(CATALOG_BUCKET, key).catch(() => {});
+    return { error: text(e) };
+  }
+  const oldKey = (old as string | null)?.match(IMAGE_URL)?.[1];
+  if (oldKey) await removeFile(CATALOG_BUCKET, oldKey).catch(() => {});
+  revalidatePath("/catalog", "layout");
+  return { ok: true, message: C.imageSaved };
+}
+
+/** Admin takes the picture off: the open catalogue shows the empty jar or pouch again. */
+export async function removeCatalogImage(fd: FormData) {
+  const { user } = await getSession();
+  const id = val(fd, "id");
+  const old = await withUser(user.id, async (tx) => {
+    const before = (await tx.query<{ image: string | null }>("select image from catalog_products where id = $1 for update", [id])).rows[0];
+    const done = (await tx.query("update catalog_products set image = null where id = $1 returning id", [id])).rows.length;
+    return done ? before?.image ?? null : null;
+  });
+  const oldKey = old?.match(IMAGE_URL)?.[1];
+  if (oldKey) await removeFile(CATALOG_BUCKET, oldKey).catch(() => {});
+  revalidatePath("/catalog", "layout");
 }
 
 export async function addCatalogTier(_: ActionState, fd: FormData): Promise<ActionState> {

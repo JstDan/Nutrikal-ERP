@@ -31,12 +31,11 @@ export default async function PublicCatalogPage() {
   const locale = PUBLIC_LOCALES.find((l) => l.code === lang)?.code ?? ("en" as AnyLocale);
   const [row] = await qPublic<{ data: PublicCatalog }>("select catalog_public() as data");
   const t = publicDict(locale);
-  // Names in the visitor's language; the English one stays searchable
-  const names = locale === "en" ? null : PRODUCT_NAMES;
-  const data: PublicCatalog = names ? {
+  // Names in the visitor's language (set by Admin on the product, else product-names.ts); the English one stays searchable
+  const data: PublicCatalog = locale !== "en" ? {
     ...row.data,
     products: row.data.products.map((p) => {
-      const name = names[p.code]?.[locale as "bg"];
+      const name = p.names?.[locale as "bg"]?.trim() || PRODUCT_NAMES[p.code]?.[locale as "bg"];
       return name ? { ...p, name_en: p.name, name, name_bg: name } : p;
     }),
   } : row.data;

@@ -13,6 +13,8 @@ export const DELIVERY_BUCKET = "delivery-docs";
 export const LOT_BUCKET = "lot-documents";
 export const CLIENT_BUCKET = "client-files";
 export const CHAT_BUCKET = "chat-files";
+/** Product pictures of the catalogue: {product_id}/{uuid}.{ext}, shown through /api/catalog-image. */
+export const CATALOG_BUCKET = "catalog-images";
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 /** Designs are larger; the limit of a request is 25 MB (next.config.ts). */
 export const MAX_DESIGN_BYTES = 24 * 1024 * 1024;
@@ -45,6 +47,12 @@ function fullPath(bucket: string, key: string) {
 export function newDeliveryPath(deliveryId: string, type: string): string | null {
   const ext = EXT[type];
   return ext ? `${deliveryId}/${randomUUID()}.${ext}` : null;
+}
+
+/** Path for a new picture of a catalogue product (jpeg, png or webp), or null when the type is not allowed. */
+export function newCatalogImagePath(productId: string, type: string): string | null {
+  const ext = ["image/jpeg", "image/png", "image/webp"].includes(type) ? EXT[type] : null;
+  return ext ? `${productId}/${randomUUID()}.${ext}` : null;
 }
 
 /** Path for a new file of a task; the name stays readable but safe for Storage. */

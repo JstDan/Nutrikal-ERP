@@ -5,7 +5,8 @@ import { requireRole } from "@/lib/session";
 import { ActionForm } from "@/components/action-form";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { formatMoney, formatNumber, fmt } from "@/lib/i18n";
-import { addCatalogTier, linkCatalogRecipe, publishCatalogProduct, removeCatalogTier, saveCatalogProduct, unpublishCatalogProduct } from "@/app/catalog-actions";
+import { addCatalogTier, linkCatalogRecipe, publishCatalogProduct, removeCatalogImage, removeCatalogTier, saveCatalogProduct, unpublishCatalogProduct, uploadCatalogImage } from "@/app/catalog-actions";
+import { CATALOG_NAME_LANGS, PRODUCT_NAMES } from "@/lib/i18n/product-names";
 
 type Product = {
   id: string; code: string; name: string; name_bg: string | null; description: string | null; description_bg: string | null;
@@ -13,6 +14,7 @@ type Product = {
   formula_id: string | null; formula_code: string | null; product_format: string | null; client: string | null;
   own_format: string | null; pack: string | null; pack_bg: string | null; min_qty: number; ingredients: { name: string; amount: string; spec?: string; basis?: string }[];
   review_status: string | null; internal_notes: string | null; sources: string | null; extra: string[];
+  image: string | null; names: Partial<Record<string, string>>;
 };
 type Tier = { id: string; min_qty: number; unit_price: string };
 type Category = { id: string; name: string; name_bg: string | null };
@@ -27,7 +29,7 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
     `select p.id, p.code, p.name, p.name_bg, p.description, p.description_bg, p.category_id, p.sort_order, p.is_published,
             catalog_publish_problem(p.id) as problem, f.id as formula_id, f.code as formula_code,
             coalesce(f.product_format, p.product_format) as product_format, c.legal_name as client,
-            p.product_format as own_format, p.pack, p.pack_bg, p.min_qty, p.ingredients, p.review_status, p.internal_notes, p.sources,
+            p.product_format as own_format, p.pack, p.pack_bg, p.min_qty, p.ingredients, p.review_status, p.internal_notes, p.sources, p.image, p.names,
             coalesce((select array_agg(x.name order by x.sort_order) from catalog_product_categories l join catalog_categories x on x.id = l.category_id where l.product_id = p.id), '{}') as extra
        from catalog_products p
        left join formulas f on f.id = p.formula_id
@@ -41,12 +43,17 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
         "select f.id, f.code, f.name from formulas f where f.is_active and not exists (select 1 from catalog_products x where x.formula_id = f.id) order by f.code desc")
     : [];
   const formats = Object.entries(t.enums.productFormat);
+  const displayName = locale === "bg" && p.name_bg ? p.name_bg : p.name;
+  // What the open catalog shows now per language: set on the product, else product-names.ts
+  const siteName = (l: (typeof CATALOG_NAME_LANGS)[number]) => p.names?.[l] || PRODUCT_NAMES[p.code]?.[l] || (l === "bg" ? p.name_bg ?? "" : "");
+  const picture = p.image ?? (p.product_format === "powder" ? "/catalog/site/blank-pouch.webp" : "/catalog/site/blank-bottle.webp");
+  const pictureFile = p.image ? `${p.code}.${p.image.split(".").pop()}` : undefined;
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         crumb={<><Link href="/catalog" className="text-ink-2">{C.title}</Link> / {p.code}</>}
-        title={locale === "bg" && p.name_bg ? p.name_bg : p.name}
+        title={displayName}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <Chip tone={p.is_published ? (p.problem ? "amber" : "green") : "neutral"}>{p.is_published ? (p.problem ? C.hidden : C.published) : C.draft}</Chip>
@@ -61,11 +68,23 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
             {canEdit ? (
               <ActionForm action={saveCatalogProduct} submitLabel={t.common.save} resetOnSuccess={false}>
                 <input type="hidden" name="id" value={p.id} />
+                <input type="hidden" name="code" value={p.code} />
                 <label className="field"><span>{C.nameEn} *</span><input name="name" required defaultValue={p.name} className="input" /></label>
                 <label className="field"><span>{C.nameBg}</span><input name="name_bg" defaultValue={p.name_bg ?? ""} className="input" /></label>
                 <label className="field"><span>{C.descriptionEn}</span><textarea name="description" rows={3} defaultValue={p.description ?? ""} className="input" /></label>
                 <label className="field"><span>{C.descriptionBg}</span><textarea name="description_bg" rows={3} defaultValue={p.description_bg ?? ""} className="input" /></label>
                 <p className="m-0 text-sm text-ink-2">{C.claimsNote}</p>
+                <fieldset className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+                  <legend className="mb-1 p-0 text-sm font-semibold">{C.siteNames}</legend>
+                  <p className="m-0 text-sm text-ink-2">{C.siteNamesNote}</p>
+                  <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                    {CATALOG_NAME_LANGS.map((l) => (
+                      <label key={l} className="field"><span>{C.langNames[l]}</span>
+                        <input name={`name_${l}`} lang={l} defaultValue={siteName(l)} className="input" />
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
                 <label className="field"><span>{C.category}</span>
                   <select name="category_id" defaultValue={p.category_id ?? ""} className="input">
                     <option value="">—</option>
@@ -80,8 +99,6 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
                         {formats.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                       </select>
                     </label>
-                    <label className="field"><span>{C.packEn}</span><input name="pack" defaultValue={p.pack ?? ""} className="input" /></label>
-                    <label className="field"><span>{C.packBg}</span><input name="pack_bg" defaultValue={p.pack_bg ?? ""} className="input" /></label>
                     <label className="field"><span>{C.composition}</span><textarea name="ingredients" rows={8} defaultValue={p.ingredients.map((i) => [i.name, i.amount, i.spec, i.basis].filter((x) => x != null).join(" | ")).join("\n")} className="input" /></label>
                     <p className="m-0 text-sm text-ink-2">{C.compositionNote}</p>
                   </>
@@ -89,11 +106,14 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
                 {p.formula_id && (
                   <>
                     <input type="hidden" name="product_format" value={p.own_format ?? ""} />
-                    <input type="hidden" name="pack" value={p.pack ?? ""} />
-                    <input type="hidden" name="pack_bg" value={p.pack_bg ?? ""} />
                     <input type="hidden" name="ingredients" value={p.ingredients.map((i) => [i.name, i.amount, i.spec, i.basis].filter((x) => x != null).join(" | ")).join("\n")} />
                   </>
                 )}
+                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="field"><span>{C.packEn}</span><input name="pack" defaultValue={p.pack ?? ""} className="input" /></label>
+                  <label className="field"><span>{C.packBg}</span><input name="pack_bg" defaultValue={p.pack_bg ?? ""} className="input" /></label>
+                </div>
+                {p.formula_id && <p className="m-0 text-sm text-ink-2">{C.packNote}</p>}
                 <label className="field"><span>{C.reviewLabel}</span>
                   <select name="review_status" defaultValue={p.review_status ?? ""} className="input">
                     <option value="">{C.reviewCleared}</option>
@@ -144,6 +164,32 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
         </div>
 
         <div className="flex min-w-0 flex-col gap-6">
+          <Card title={C.picture}>
+            <div className="flex min-w-0 flex-col gap-3 text-sm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={picture} alt={fmt(C.pictureOf, { name: displayName })} width={640} height={769}
+                   className="mx-auto h-64 w-auto max-w-full rounded-md border border-mist object-contain" />
+              {!p.image && <p className="m-0 text-ink-2">{C.noPicture}</p>}
+              <div className="flex flex-wrap items-center gap-2">
+                {p.image && <a href={p.image} download={pictureFile} className="btn btn-outline">{C.downloadPicture}</a>}
+                {canEdit && p.image && (
+                  <form action={removeCatalogImage}>
+                    <input type="hidden" name="id" value={p.id} />
+                    <button type="submit" className="btn btn-outline">{C.removePicture}</button>
+                  </form>
+                )}
+              </div>
+              {canEdit && (
+                <ActionForm action={uploadCatalogImage} submitLabel={C.replacePicture}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <label className="field"><span>{C.uploadPicture}</span>
+                    <input name="image" type="file" required accept="image/jpeg,image/png,image/webp" aria-describedby="picture-note" className="input" />
+                  </label>
+                  <p id="picture-note" className="m-0 text-[13px] text-ink-2">{C.pictureNote}</p>
+                </ActionForm>
+              )}
+            </div>
+          </Card>
           <Card title={C.publication}>
             <div className="flex flex-col gap-3 text-sm">
               {p.client && <p className="m-0 font-semibold">{fmt(C.clientRecipe, { client: p.client })}</p>}
