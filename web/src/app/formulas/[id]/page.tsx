@@ -30,6 +30,9 @@ type Line = {
   item_id: string; base_unit: string; available: string | null;
 };
 type Pending = { id: string; name: string; amount: string; unit: string; material_id: string | null };
+type StockRow = {
+  item_id: string; sku: string; name: string; name_bg: string | null; base_unit: string; required: string; free: string; short: string;
+};
 type Checks = {
   line_count: number; novel_not_authorised: number; novel_to_review: number; allergens: string | string[];
   is_vegan: boolean | null; is_vegetarian: boolean | null; fill_mg_per_serving: string; fill_mg_per_unit: string | null;
@@ -93,6 +96,14 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
       ? (await tx.query<{ id: string; offer_no: string; units: string | null }>(
           "select id, offer_no, data ->> 'numberOfUnits' as units from calc_offers where id = $1", [formula.calc_offer_id])).rows[0] ?? null
       : null;
+    // Stock for the offer quantity (or ?packs=): the database's one shortage rule (version_material_stock)
+    const packsParam = Number(sp.packs);
+    const offerUnits = Number(offer?.units);
+    const packs = packsParam > 0 ? Math.round(packsParam) : offerUnits > 0 ? Math.round(offerUnits) : 1000;
+    const stock = (await tx.query<StockRow>(
+      `select s.item_id, i.sku, i.name, i.name_bg, i.base_unit, s.required::text, s.free::text, s.short::text
+         from version_material_stock($1, $2) s join items i on i.id = s.item_id
+        order by s.kind <> 'ingredient', i.name`, [current.id, packs])).rows;
     const checks = (await tx.query<Checks>(
       `select line_count, novel_not_authorised, novel_to_review,
               allergens::text[] as allergens, is_vegan, is_vegetarian, fill_mg_per_serving::text, fill_mg_per_unit::text,
@@ -116,10 +127,10 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
         where fp.version_id = $1 order by i.name`, [current.id])).rows;
     const packOptions = (await tx.query<{ id: string; sku: string; name: string; name_bg: string | null }>(
       "select id, sku, name, name_bg from items where is_active and type = 'packaging' order by name")).rows;
-    return { formula, versions, current, lines, pending, offer, checks, nutrients, claims, claimOptions, items, packaging, packOptions };
+    return { formula, versions, current, lines, pending, offer, packs, stock, checks, nutrients, claims, claimOptions, items, packaging, packOptions };
   });
   if (!data) notFound();
-  const { formula: f, versions, current: v, lines, pending, offer, checks: c, nutrients, claims, claimOptions, items, packaging, packOptions } = data;
+  const { formula: f, versions, current: v, lines, pending, offer, packs, stock, checks: c, nutrients, claims, claimOptions, items, packaging, packOptions } = data;
 
   const isDraft = v.status === "draft";
   const editable = isDraft && canEdit;
@@ -143,18 +154,6 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
         ? { tone: "red", text: fmt(d.fillOverCapacity, { mg: formatMass(locale, fillPerUnit), cap: formatMass(locale, capacity) }) }
         : { tone: "neutral", text: fmt(d.fillPerUnit, { mg: formatMass(locale, fillPerUnit) }) },
     );
-  }
-  // Stock for the offer quantity (or ?packs=): needed per stock item in its unit (lines of one item add up)
-  const packsParam = Number(sp.packs);
-  const offerUnits = Number(offer?.units);
-  const packs = packsParam > 0 ? Math.round(packsParam) : offerUnits > 0 ? Math.round(offerUnits) : 1000;
-  const stock = new Map<string, { name: string; unit: string; needed: number | null; available: number }>();
-  for (const l of lines) {
-    const kg = l.kg_per_1000_packs != null ? (Number(l.kg_per_1000_packs) * packs) / 1000 : null;
-    const qty = kg == null ? null : l.base_unit === "kg" ? kg : l.base_unit === "g" ? kg * 1000 : null;
-    const row = stock.get(l.item_id);
-    if (row) row.needed = row.needed == null || qty == null ? null : row.needed + qty;
-    else stock.set(l.item_id, { name: bgName(l), unit: l.base_unit, needed: qty, available: Number(l.available ?? 0) });
   }
   const itemOptions = (["raw_material", "excipient", "semi_finished"] as const).flatMap((ty) =>
     items.filter((i) => i.type === ty).map((i) => ({
@@ -376,17 +375,17 @@ export default async function FormulaPage({ params, searchParams }: PageProps<"/
               <div className="row hide-sm border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 md:grid-cols-[minmax(0,1.6fr)_120px_120px_minmax(0,1fr)]">
                 <span>{d.item}</span><span>{d.needed}</span><span>{d.available}</span><span><span className="sr-only">{t.formulas.status}</span></span>
               </div>
-              {stock.size === 0 && pending.length === 0 && <div className="py-3"><Empty>{d.noLines}</Empty></div>}
-              {[...stock.entries()].map(([itemId, s]) => {
-                const short = s.needed != null ? s.needed - s.available : null;
+              {stock.length === 0 && pending.length === 0 && <div className="py-3"><Empty>{d.noLines}</Empty></div>}
+              {stock.map((s) => {
+                const short = Number(s.short);
                 return (
-                  <div key={itemId} className="row grid-cols-2 gap-y-1 border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[minmax(0,1.6fr)_120px_120px_minmax(0,1fr)]">
-                    <span className="col-span-2 min-w-0 font-semibold break-words md:col-span-1">{s.name}</span>
-                    <span><span className="text-ink-2 md:hidden">{d.needed}: </span>{s.needed != null ? formatQty(locale, s.needed, s.unit) : "—"}</span>
-                    <span><span className="text-ink-2 md:hidden">{d.available}: </span>{formatQty(locale, s.available, s.unit)}</span>
+                  <div key={s.item_id} className="row grid-cols-2 gap-y-1 border-b border-mist py-3 text-sm last:border-0 md:grid-cols-[minmax(0,1.6fr)_120px_120px_minmax(0,1fr)]">
+                    <span className="col-span-2 min-w-0 font-semibold break-words md:col-span-1">{bgName(s)}</span>
+                    <span><span className="text-ink-2 md:hidden">{d.needed}: </span>{formatQty(locale, s.required, s.base_unit)}</span>
+                    <span><span className="text-ink-2 md:hidden">{d.available}: </span>{formatQty(locale, s.free, s.base_unit)}</span>
                     <span className="col-span-2 md:col-span-1">
-                      {short == null ? null : short > 0
-                        ? <Chip tone="red">{fmt(d.short, { qty: formatQty(locale, short, s.unit) })}</Chip>
+                      {short > 0
+                        ? <Chip tone="red">{fmt(d.short, { qty: formatQty(locale, short, s.base_unit) })}</Chip>
                         : <Chip tone="green">{d.enough}</Chip>}
                     </span>
                   </div>
