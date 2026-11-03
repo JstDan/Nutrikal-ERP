@@ -110,8 +110,16 @@ export function CatalogContact({ text, locale }: { text: Dict["publicCatalog"]; 
 function Picture({ product, alt, size = "card" }: { product: Product; alt: string; size?: "card" | "detail" | "line" | "chat" }) {
   const box = { card: "aspect-[193/232] w-full rounded-md object-cover", detail: "mx-auto h-64 w-auto rounded-md", line: "h-[72px] w-[60px] shrink-0 rounded-sm object-cover", chat: "h-[108px] w-[90px] shrink-0 rounded-md object-cover" }[size];
   const src = product.image ?? (product.format === "powder" ? "/catalog/site/blank-pouch.webp" : "/catalog/site/blank-bottle.webp");
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={alt} loading="lazy" width={640} height={769} className={box} />;
+  // The pictures are not offered for saving (owner, Nov 2026): no right-click menu, no dragging, no long press;
+  // a clear layer lies over the picture, so the browser has no image to save from the page
+  const wrap = { card: "relative block w-full", detail: "relative mx-auto block w-fit", line: "relative block shrink-0", chat: "relative block shrink-0" }[size];
+  return (
+    <span className={`${wrap} select-none [-webkit-touch-callout:none]`} onContextMenu={(e) => e.preventDefault()} onDragStart={(e) => e.preventDefault()}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt} loading="lazy" width={640} height={769} draggable={false} className={`${box} pointer-events-none`} />
+      <span aria-hidden="true" className="absolute inset-0" />
+    </span>
+  );
 }
 function Dialog({ title, close, closeLabel, footer, children }: { title: string; close: () => void; closeLabel: string; footer?: ReactNode; children: ReactNode }) {
   return (
