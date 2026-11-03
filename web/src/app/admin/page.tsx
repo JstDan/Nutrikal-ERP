@@ -11,11 +11,11 @@ type Row = {
   id: string; code: string; status: string; produced_on: string | null; planned_date: string | null;
   project_code: string | null; order_id: string | null; order_code: string | null; client: string | null;
   product: string; product_bg: string | null; packs: number; is_actual: boolean;
-  material_cost: string; partner_cost: string; total_cost: string; cost_per_pack: string | null;
+  total_cost: string; cost_per_pack: string | null;
   estimated_lines: number; missing_prices: number; unit_price: string | null; currency: string | null;
 };
 
-const GRID = "md:grid-cols-[minmax(0,1.6fr)_80px_110px_110px] lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_80px_110px_110px_80px] xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_80px_100px_100px_110px_100px_80px]";
+const GRID = "md:grid-cols-[minmax(0,1.6fr)_80px_110px_110px] lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_80px_110px_110px_80px]";
 
 /** Admin only: money, sales, stock, purchases and production costs per batch (margin against the order's sales price). */
 export default async function AdminDashboard({ searchParams }: PageProps<"/admin">) {
@@ -27,7 +27,7 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
   const rows = await q<Row>(
     user.id,
     `select id, code, status, produced_on::text, planned_date::text, project_code, order_id, order_code, client, product, product_bg,
-            packs, is_actual, material_cost::text, partner_cost::text, total_cost::text, cost_per_pack::text,
+            packs, is_actual, total_cost::text, cost_per_pack::text,
             estimated_lines, missing_prices, unit_price::text, currency
        from admin_production_costs($1, $2, $3)`,
     [from, to, withOpen],
@@ -51,8 +51,6 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
   const tiles = [
     { label: A.batches, value: formatNumber(locale, done.length) },
     { label: A.packs, value: formatNumber(locale, packs) },
-    { label: A.materials, value: money(sum(done, (r) => Number(r.material_cost))) },
-    { label: A.partner, value: money(sum(done, (r) => Number(r.partner_cost))) },
     { label: A.total, value: money(total) },
     { label: A.avgPerPack, value: packs > 0 ? formatPrice(locale, total / packs, "EUR", 4) : "—" },
     { label: A.revenue, value: priced.length ? money(revenue) : "—" },
@@ -63,7 +61,6 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
     <div>
       <div className={`row hide-sm border-b border-mist py-2 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${GRID}`}>
         <span>{A.batch}</span><span className="hide-md">{A.client}</span><span>{t.production.quantity}</span>
-        <span className="max-xl:hidden text-right">{A.materials}</span><span className="max-xl:hidden text-right">{A.partner}</span>
         <span className="text-right">{A.total}</span><span className="text-right">{A.perPack}</span><span className="hide-md text-right">{A.marginPct}</span>
       </div>
       {xs.map((r) => {
@@ -85,8 +82,6 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
             </span>
             <span className="hide-md min-w-0 break-words">{r.client ?? "—"}</span>
             <span className="hide-sm">{formatNumber(locale, r.packs)}</span>
-            <span className="max-xl:hidden text-right">{money(r.material_cost)}</span>
-            <span className="max-xl:hidden text-right">{money(r.partner_cost)}</span>
             <span className="hide-sm text-right">{money(r.total_cost)}</span>
             <span className="text-right font-semibold">
               {r.cost_per_pack != null ? formatPrice(locale, r.cost_per_pack, "EUR", 4) : "—"}
