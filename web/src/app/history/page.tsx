@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/session";
-import { fmt } from "@/lib/i18n";
+import { fmt, formatDate } from "@/lib/i18n";
 import { Chip, Empty, PageHeader } from "@/components/ui";
 import { SettingsTabs } from "@/components/settings-tabs";
 import { historyFilter, loadHistory, PAGE_SIZE, show } from "@/lib/history";
@@ -16,7 +16,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
   const filter = { ...(f.table && { table: f.table }), ...(f.from && { from: f.from }), ...(f.to && { to: f.to }) };
   const qs = (page: number) => `/history?${new URLSearchParams({ ...filter, page: String(page) })}`;
   const when = (s: string) =>
-    new Intl.DateTimeFormat(locale === "bg" ? "bg-BG" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(s));
+    formatDate(locale, s, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const grid = "md:grid-cols-[150px_minmax(0,1fr)_minmax(0,2fr)] lg:grid-cols-[160px_130px_minmax(0,1fr)_minmax(0,2.2fr)]";
 
   return (
