@@ -873,11 +873,6 @@ export async function orderMoMaterial(_: ActionState, fd: FormData): Promise<Act
     () => t.production.detail.orderedOk);
 }
 
-export async function addProductionInvoice(_: ActionState, fd: FormData): Promise<ActionState> {
-  return moCall(fd, `insert into production_invoices (mo_id, invoice_number, invoice_date, amount) values ($1, $2, $3::date, $4)`,
-    [str(fd, "mo_id"), str(fd, "invoice_number"), str(fd, "invoice_date"), num(fd, "amount")]);
-}
-
 // ------------------------------------------------------------- purchasing
 export async function setPurchaseRequestStatus(fd: FormData) {
   const { user } = await getSession();

@@ -7,7 +7,7 @@ import { fmt, formatDate, formatNumber, formatPrice, formatQty } from "@/lib/i18
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { moTone } from "@/lib/status";
-import { addProductionInvoice, completeProduction, startProduction } from "@/app/actions";
+import { completeProduction, startProduction } from "@/app/actions";
 
 type Mo = {
   id: string; code: string; project_code: string; product: string; product_bg: string | null; product_format: string;
@@ -21,7 +21,6 @@ type Source = {
   quantity: string; unit_price: string | null; currency: string; on_date: string | null;
 };
 type Usage = { item_id: string; sku: string; name: string; name_bg: string | null; base_unit: string; reserved: string; used: string; diff: string; diff_pct: string | null; over_limit: boolean; reason: string | null };
-type Invoice = { id: string; invoice_number: string; invoice_date: string; amount: string; currency: string };
 
 /** A production order as the production facility sees it: by project code, no client, no sales prices. */
 export default async function FactoryOrderPage({ params }: PageProps<"/factory/orders/[id]">) {
@@ -57,13 +56,11 @@ export default async function FactoryOrderPage({ params }: PageProps<"/factory/o
           `select item_id, sku, name, name_bg, base_unit, reserved::text, used::text, diff::text, diff_pct::text, over_limit, reason
              from mo_usage_report($1)`, [id])).rows
       : [];
-    const invoices = (await tx.query<Invoice>(
-      "select id, invoice_number, invoice_date::text, amount::text, currency from production_invoices where mo_id = $1 order by invoice_date", [id])).rows;
     const pct = (await tx.query<{ pct: string }>("select variance_pct::text as pct from production_settings()")).rows[0]?.pct ?? "5";
-    return { mo, reqs, lots, sources, usage, invoices, pct };
+    return { mo, reqs, lots, sources, usage, pct };
   });
   if (!data) notFound();
-  const { mo, reqs, lots, sources, usage, invoices, pct } = data;
+  const { mo, reqs, lots, sources, usage, pct } = data;
 
   // Suggested use: the reserved quantity, from the first-expiring lots
   let row = 0;
@@ -229,21 +226,6 @@ export default async function FactoryOrderPage({ params }: PageProps<"/factory/o
               </div>
             </Card>
           )}
-
-          <Card title={O.invoice} id="invoice-h">
-            {invoices.map((i) => (
-              <div key={i.id} className="flex flex-wrap justify-between gap-2 text-sm">
-                <span>{i.invoice_number} · {formatDate(locale, i.invoice_date)}</span>
-                <span className="font-semibold">{formatPrice(locale, i.amount, i.currency)}</span>
-              </div>
-            ))}
-            <ActionForm action={addProductionInvoice} submitLabel={O.invoiceSubmit}>
-              <input type="hidden" name="mo_id" value={mo.id} />
-              <label className="field"><span>{O.invoiceNumber} *</span><input name="invoice_number" required className="input" /></label>
-              <label className="field"><span>{O.invoiceDate} *</span><input name="invoice_date" type="date" required className="input" /></label>
-              <label className="field"><span>{O.amount} *</span><input name="amount" type="number" min={0} step="0.01" required className="input" /></label>
-            </ActionForm>
-          </Card>
         </div>
       </div>
     </div>

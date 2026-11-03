@@ -682,16 +682,15 @@ await ok('reserved vs used: the difference value only for Admin; every admin not
 await fails('sales cannot see the usage report', () => as('sales', 'select * from mo_usage_report($1)', [mo.id]), 'not allowed');
 await fails('a completed order cannot be moved back', () =>
   as('admin', `select revert_mo_status($1, 'x')`, [mo.id]), 'cannot be moved back');
-await ok('production enters its invoice for the batch; sales cannot see it', async () => {
-  await as('production', `insert into production_invoices (mo_id, invoice_number, invoice_date, amount) values ($1, 'PF-2026-118', current_date, 1450)`, [mo.id]);
-  eq((await as('production', 'select * from production_invoices')).length, 1, 'partner sees own');
-  eq((await as('admin', 'select * from production_invoices')).length, 1, 'inventory');
-  eq((await as('sales', 'select * from production_invoices')).length, 0, 'sales');
-});
-await fails('production cannot invoice an order that was not sent to it', async () => {
+await fails('production no longer enters an invoice for the batch (owner, Nov 2026)', () =>
+  as('production', `insert into production_invoices (mo_id, invoice_number, invoice_date, amount) values ($1, 'PF-2026-118', current_date, 1450)`, [mo.id]),
+  'permission denied');
+await fails('admin neither', () =>
+  as('admin', `insert into production_invoices (mo_id, invoice_number, invoice_date, amount) values ($1, 'PF-2026-118', current_date, 1450)`, [mo.id]),
+  'permission denied');
+await ok('a second batch of the order in simulation', async () => {
   mo2 = await one('sales', 'insert into manufacturing_orders (sales_order_line_id, quantity) values ($1, 2000) returning id', [line2.id]);
-  await as('production', `insert into production_invoices (mo_id, invoice_number, invoice_date, amount) values ($1, 'X', current_date, 1)`, [mo2.id]);
-}, 'row-level security');
+});
 await ok('cancelling releases reservations and open requests', async () => {
   await as('sales', 'select create_purchase_requests($1)', [mo2.id]);
   await as('admin', 'select cancel_mo($1)', [mo2.id]);
@@ -742,14 +741,14 @@ await ok('production and sales without the price flag see no lot costs', async (
   eq((await as('production', 'select * from lot_costs')).length, 0, 'partner');
   eq((await as('sales', 'select * from lot_costs')).length, 0, 'sales');
 });
-await ok('batch cost: consumed lots at their cost + production invoice; per pack on the finished lot', async () => {
+await ok('batch cost: consumed lots at their cost (no partner invoice); per pack on the finished lot', async () => {
   const c = await one('admin', 'select * from mo_cost($1)', [mo.id]);
   eq(c.is_actual, true, 'actual');
   eq(Number(c.material_cost), 1424.25, 'materials (22.5×18.5 + 2×4 + 1.5×100 + 60000×0.01 + 1000×0.25)');
-  eq(Number(c.partner_cost), 1450, 'partner invoice'); eq(Number(c.total_cost), 2874.25, 'total');
-  eq(Number(c.cost_per_pack), 2.903283, 'per pack (990 made)');
+  eq('partner_cost' in c, false, 'no partner cost'); eq(Number(c.total_cost), 1424.25, 'total');
+  eq(Number(c.cost_per_pack), 1.438636, 'per pack (990 made)');
   const fg = await one('admin', 'select lc.unit_cost, lc.source from manufacturing_orders m join lot_costs lc on lc.lot_id = m.finished_lot_id where m.id = $1', [mo.id]);
-  eq(Number(fg.unit_cost), 2.903283, 'finished lot cost'); eq(fg.source, 'production', 'source');
+  eq(Number(fg.unit_cost), 1.438636, 'finished lot cost'); eq(fg.source, 'production', 'source');
   eq((await as('admin', 'select * from mo_costs($1)', [mo.id])).length, 5, 'one line per consumed lot');
 });
 await fails('production cannot see batch costs', () => as('production', 'select * from mo_cost($1)', [mo.id]), 'not allowed');
@@ -771,7 +770,7 @@ await ok('admin dashboard: completed batches in the period with actual cost, ope
   const rows = await as('admin', `select * from admin_production_costs('2000-01-01', '2100-01-01')`);
   const done = rows.find((r) => r.id === mo.id);
   eq(done?.is_actual, true, 'completed batch listed');
-  eq(Number(done.total_cost), 2874.25, 'total'); eq(Number(done.cost_per_pack), 2.9033, 'per pack');
+  eq(Number(done.total_cost), 1424.25, 'total'); eq(Number(done.cost_per_pack), 1.4386, 'per pack');
   eq(rows.every((r) => r.status !== 'cancelled' && r.status !== 'simulation'), true, 'no cancelled or simulations');
   eq((await as('admin', `select * from admin_production_costs('2000-01-01', '2000-01-02', false)`)).length, 0, 'empty period');
 });
