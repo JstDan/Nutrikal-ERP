@@ -68,7 +68,9 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
         where mp.mo_id = $1 order by i.name`, [id])).rows;
     const packOptions = mo.status === "simulation"
       ? (await tx.query<{ id: string; sku: string; name: string; name_bg: string | null }>(
-          "select id, sku, name, name_bg from items where is_active and type = 'packaging' order by name")).rows
+          `select id, sku, name, name_bg from items
+          where is_active and type = 'packaging' and packaging_fits_format(name, name_bg, sku, $1)
+          order by name`, [mo.product_format])).rows
       : [];
     const projects = mo.status === "simulation"
       ? (await tx.query<{ id: string; code: string; name: string }>(

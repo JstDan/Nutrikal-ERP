@@ -53,7 +53,9 @@ export default async function OfferPage({ params, searchParams }: PageProps<"/of
       `select op.id, i.sku, i.name, i.name_bg, op.qty_per_pack::text
          from offer_packaging op join items i on i.id = op.item_id where op.offer_id = $1 order by i.name`, [id])).rows;
     const packOptions = (await tx.query<{ id: string; sku: string; name: string; name_bg: string | null }>(
-      "select id, sku, name, name_bg from items where is_active and type = 'packaging' order by name")).rows;
+      `select id, sku, name, name_bg from items
+          where is_active and type = 'packaging' and packaging_fits_format(name, name_bg, sku, $1)
+          order by name`, [offer.product_format])).rows;
     const canSeeCosts = (await tx.query<{ ok: boolean }>("select can_see_purchase_prices() as ok")).rows[0]?.ok ?? false;
     const breakdownQty = tiers.find((x) => x.quantity === Number(sp.tier))?.quantity ?? tiers[0]?.quantity;
     const breakdown = canSeeCosts && breakdownQty
