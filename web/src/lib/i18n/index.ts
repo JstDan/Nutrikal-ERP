@@ -57,7 +57,7 @@ export function formatPrice(l: AnyLocale, n: number | string | null | undefined,
   return new Intl.NumberFormat(intlLocale(l), { style: "currency", currency, minimumFractionDigits: frac, maximumFractionDigits: frac }).format(Number(n ?? 0));
 }
 
-export function formatDate(l: AnyLocale, d: string | Date | null | undefined, opts: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short", year: "numeric" }): string {
+export function formatDate(l: AnyLocale, d: string | Date | null | undefined, opts: Intl.DateTimeFormatOptions = { day: "2-digit", month: "2-digit", year: "numeric" }): string {
   if (!d) return "—";
   // Postgres text timestamps look like "2026-10-16 11:00:00.12+00"
   const date =
@@ -65,5 +65,14 @@ export function formatDate(l: AnyLocale, d: string | Date | null | undefined, op
       ? new Date(d.length === 10 ? d + "T00:00:00" : d.replace(" ", "T").replace(/([+-]\d\d)$/, "$1:00"))
       : d;
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat(intlLocale(l), { timeZone: "Europe/Sofia", ...opts }).format(date);
+  // A month or year alone (calendar headings) keeps its words
+  if (!opts.day) return new Intl.DateTimeFormat(intlLocale(l), { timeZone: "Europe/Sofia", ...opts }).format(date);
+  // Every date is day/month/year, e.g. 03/11/2026, in every language (owner, Nov 2026); a time is added as 14:05
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Sofia", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(date).map((x) => [x.type, x.value]));
+  let out = `${p.day}/${p.month}/${p.year}`;
+  if (opts.hour) out += ` ${p.hour}:${p.minute}`;
+  if (opts.weekday) out = `${new Intl.DateTimeFormat(intlLocale(l), { timeZone: "Europe/Sofia", weekday: opts.weekday }).format(date)}, ${out}`;
+  return out;
 }
