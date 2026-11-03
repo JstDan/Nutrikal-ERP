@@ -116,13 +116,27 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
         window.history.replaceState(null, "", "/calculator");
         return;
       }
+      // The stored form comes back only with unsaved work in it (a page refresh); a created, opened or
+      // untouched offer is not carried over, so the calculator starts empty (owner, Nov 2026)
       const draft = readStorage<OfferForm>(DRAFT_KEY);
-      if (draft) {
+      const base = readStorage<string>(BASELINE_KEY);
+      const unsaved = (() => {
+        if (!draft || !base) return false;
+        try {
+          return JSON.stringify(normalizeForm(draft, settings)) !== JSON.stringify(normalizeForm(JSON.parse(base) as OfferForm, settings));
+        } catch {
+          return false;
+        }
+      })();
+      if (draft && unsaved) {
         const kept = await asNewWhenNotEditable(draft);
         loadForm(kept.form);
-        setBaseline(readStorage<string>(BASELINE_KEY));
+        setBaseline(base);
         if (kept.locked) show("success", fmt(t.results.lockedAsNew, { no: kept.locked }));
-      } else await newOffer();
+      } else {
+        removeStorage(BASELINE_KEY);
+        await newOffer();
+      }
     })();
   }, [initial, loadForm, newOffer, settings, show, t]);
 
