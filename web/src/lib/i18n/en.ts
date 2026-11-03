@@ -2658,7 +2658,7 @@ export const en = {
     },
     mail: {
       title: "Shared mailbox",
-      note: "Connected once, read only. Mail to and from known clients is kept and shown on the client; other mail is skipped. Admin and Sales see it, Production does not. Press Connect and sign in with the shared mailbox.",
+      note: "Connected once, read only. Mail to and from known clients is kept, other mail is skipped. The mail is read only through the AI assistant: ask it (Admin and Sales; Production has no access). Press Connect and sign in with the shared mailbox.",
       connect: "Connect Gmail",
       connected: "The mailbox is connected. Press Sync now to bring the mail.",
       notConfigured: "Gmail is not set up yet (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GMAIL_TOKEN_KEY).",
