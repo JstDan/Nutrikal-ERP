@@ -3528,5 +3528,82 @@ await fails('corrections: an order sent to production is no longer corrected', a
   await as('sales', `select correct_order_line($1, 200, 2.9, 'too late')`, [line]);
 }, 'not yet sent to production');
 
+console.log('\nMaterial shortage: one rule everywhere');
+// missing = max(0, needed - reserved for the batch - free - requested - ordered)
+const sh = {};
+const near = (a, b, what) => eq(Math.abs(Number(a) - Number(b)) < 0.0002, true, `${what}: ${a} vs ${b}`);
+const shReq = async () => Object.fromEntries((await as('admin', 'select * from mo_material_requirements($1)', [sh.mo])).map(r => [r.sku, r]));
+await ok('shortage: a batch of five materials, needs read from the recipe', async () => {
+  sh.items = {};
+  for (const [sku, type] of [['SH-A', 'raw_material'], ['SH-B', 'raw_material'], ['SH-C', 'excipient'], ['SH-D', 'raw_material'], ['SH-E', 'raw_material']]) {
+    sh.items[sku] = (await one('admin', `insert into items (sku, type, name, base_unit, novel_food_status, shelf_life_months)
+                                         values ($1, $2, $1, 'kg', 'not_novel', 24) returning id`, [sku, type])).id;
+  }
+  const p = await one('sales', `insert into projects (client_id, name) values ($1, 'Shortage test') returning id`, [client2.id]);
+  const f = await one('sales', `insert into formulas (name, product_format, serving_size, servings_per_pack) values ('Shortage test', 'capsule', 1, 30) returning id`);
+  sh.v = (await one('sales', 'select id from formula_versions where formula_id = $1', [f.id])).id;
+  for (const [i, sku] of Object.keys(sh.items).entries()) {
+    await as('sales', 'insert into formula_lines (version_id, item_id, amount) values ($1, $2, $3)', [sh.v, sh.items[sku], 100 * (i + 1)]);
+  }
+  await as('admin', 'select approve_formula_version($1)', [sh.v]);
+  sh.mo = (await one('sales', 'insert into manufacturing_orders (formula_version_id, project_id, quantity) values ($1, $2, 1000) returning id', [sh.v, p.id])).id;
+  const r = await shReq();
+  sh.need = Object.fromEntries(Object.keys(sh.items).map(k => [k, Number(r[k].required)]));
+  eq(Object.values(sh.need).every(n => n > 0), true, 'every material is needed');
+  // A: twice the need free; B: half; C: nothing; D: nothing, a quarter requested and a quarter ordered; E: 30 % free
+  await recv(sh.items['SH-A'], sh.need['SH-A'] * 2, 'NK-WH');
+  await recv(sh.items['SH-B'], sh.need['SH-B'] / 2, 'NK-WH');
+  await recv(sh.items['SH-E'], sh.need['SH-E'] * 0.3, 'NK-WH');
+  await as('sales', 'insert into purchase_requests (item_id, quantity, manufacturing_order_id) values ($1, $2, $3)', [sh.items['SH-D'], sh.need['SH-D'] / 4, sh.mo]);
+  const ordered = await one('sales', 'insert into purchase_requests (item_id, quantity, manufacturing_order_id) values ($1, $2, $3) returning id', [sh.items['SH-D'], sh.need['SH-D'] / 4, sh.mo]);
+  await as('admin', 'select create_expected_delivery(null, null, null, current_date + 7, null, null, $1, $2)', [L['NK-WH'], ordered.id]);
+});
+await ok('shortage: free stock covers it fully, nothing is missing although nothing is reserved', async () => {
+  const r = (await shReq())['SH-A'];
+  eq(Number(r.reserved), 0, 'nothing reserved'); eq(Number(r.short), 0, 'nothing missing');
+});
+await ok('shortage: free stock covers part of it, the rest is missing', async () =>
+  near((await shReq())['SH-B'].short, sh.need['SH-B'] / 2, 'half missing'));
+await ok('shortage: nothing free, everything is missing', async () =>
+  near((await shReq())['SH-C'].short, sh.need['SH-C'], 'all missing'));
+await ok('shortage: what is requested or ordered is not missing; an ordered request counts once', async () => {
+  const r = (await shReq())['SH-D'];
+  near(r.requested, sh.need['SH-D'] / 4, 'requested (open only)'); near(r.ordered, sh.need['SH-D'] / 4, 'ordered');
+  near(r.short, sh.need['SH-D'] / 2, 'half missing');
+});
+await ok('shortage: the recipe block "Stock for N packs" uses the same rule (no batch, nothing reserved)', async () => {
+  const v = Object.fromEntries((await as('sales', 'select * from version_material_stock($1, 1000)', [sh.v])).map(x => [x.item_id, x]));
+  near(v[sh.items['SH-A']].short, 0, 'A'); near(v[sh.items['SH-B']].short, sh.need['SH-B'] / 2, 'B');
+  near(v[sh.items['SH-C']].required, sh.need['SH-C'], 'same need as the batch');
+  eq((await as('production', 'select * from version_material_stock($1, 1000)', [sh.v])).length, 0, 'production sees nothing');
+});
+await ok('shortage: "Reserve free stock" reserves min(need, free); part reserved, the rest is missing', async () => {
+  await as('sales', 'select reserve_mo_materials($1)', [sh.mo]);
+  const r = await shReq();
+  near(r['SH-A'].reserved, sh.need['SH-A'], 'A: the need, not all the free stock'); near(r['SH-A'].short, 0, 'A missing');
+  near(r['SH-B'].reserved, sh.need['SH-B'] / 2, 'B reserved'); near(r['SH-B'].short, sh.need['SH-B'] / 2, 'B still missing');
+  near(r['SH-E'].reserved, sh.need['SH-E'] * 0.3, 'E reserved'); near(r['SH-E'].short, sh.need['SH-E'] * 0.7, 'E missing');
+});
+await ok('shortage: "Request what is missing" requests only the real shortage, never twice', async () => {
+  eq((await one('sales', 'select create_purchase_requests($1) as n', [sh.mo])).n, 4, 'B, C, D and E');
+  const q = Object.fromEntries((await as('admin', `select i.sku, sum(pr.quantity) as q from purchase_requests pr join items i on i.id = pr.item_id
+      where pr.manufacturing_order_id = $1 and pr.status = 'open' group by i.sku`, [sh.mo])).map(x => [x.sku, Number(x.q)]));
+  eq(q['SH-A'], undefined, 'A not requested');
+  near(q['SH-B'], sh.need['SH-B'] / 2, 'B'); near(q['SH-C'], sh.need['SH-C'], 'C');
+  near(q['SH-D'], sh.need['SH-D'] * 0.75, 'D: the earlier open quarter plus the missing half');
+  near(q['SH-E'], sh.need['SH-E'] * 0.7, 'E');
+  eq((await one('sales', 'select create_purchase_requests($1) as n', [sh.mo])).n, 0, 'nothing twice');
+  eq(Object.values(await shReq()).every(r => Number(r.short) === 0), true, 'nothing missing any more');
+});
+await ok('shortage: Доставки counts a request only up to the real shortage of its batch', async () => {
+  const extra = await one('sales', 'insert into purchase_requests (item_id, quantity, manufacturing_order_id) values ($1, 5, $2) returning id', [sh.items['SH-A'], sh.mo]);
+  eq((await as('admin', 'select * from purchase_shortages where purchase_request_id = $1', [extra.id])).length, 0, 'A is covered: not listed');
+  const c = await as('admin', `select s.quantity from purchase_shortages s join purchase_requests pr on pr.id = s.purchase_request_id
+                                where pr.manufacturing_order_id = $1 and s.item_id = $2`, [sh.mo, sh.items['SH-C']]);
+  near(c[0].quantity, sh.need['SH-C'], 'C listed in full');
+  eq(Number((await one('admin', 'select purchase_request_still_short($1) as q', [extra.id])).q), 0, 'still short');
+  eq((await one('production', 'select purchase_request_still_short($1) as q', [extra.id])).q, null, 'production gets nothing');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

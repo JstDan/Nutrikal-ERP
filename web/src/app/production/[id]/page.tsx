@@ -22,7 +22,8 @@ type Mo = {
 };
 type Req = {
   item_id: string; sku: string; name: string; name_bg: string | null; kind: string; base_unit: string;
-  required: string; reserved: string; available: string; at_production: string; requested: string; ordered: string;
+  required: string; reserved: string; available: string | null; at_production: string; requested: string | null; ordered: string;
+  short: string | null;
 };
 type Usage = {
   item_id: string; sku: string; name: string; name_bg: string | null; base_unit: string; reserved: string; used: string;
@@ -60,7 +61,7 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
     if (!mo) return null;
     const reqs = (await tx.query<Req>(
       `select item_id, sku, name, name_bg, kind, base_unit, required::text, reserved::text, available::text, at_production::text, requested::text,
-              ordered::text
+              ordered::text, short::text
          from mo_material_requirements($1)`, [id])).rows;
     const packaging = (await tx.query<Pack>(
       `select mp.id, i.sku, i.name, i.name_bg, mp.qty_per_pack::text from mo_packaging mp join items i on i.id = mp.item_id
@@ -97,7 +98,11 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
   const { mo, reqs, packaging, packOptions, projects, usage, sources, tolerance, orderForm } = data;
 
   const open = ["simulation", "scheduled", "released"].includes(mo.status);
-  const missingAny = reqs.some((r) => Number(r.reserved) < Number(r.required));
+  // What is missing comes from the database (mo_material_requirements.short, one rule everywhere);
+  // Production gets no shortage and sees what is still to reserve
+  const shortOf = (r: Req) => (r.short != null ? Number(r.short) : Math.max(0, Number(r.required) - Number(r.reserved)));
+  const shortAny = reqs.some((r) => shortOf(r) > 0);
+  const reservable = reqs.some((r) => Number(r.reserved) < Number(r.required) && Number(r.available ?? 0) > 0);
   const reqGrid = "md:grid-cols-[minmax(0,1.4fr)_105px_105px_105px_150px] xl:grid-cols-[minmax(0,1.4fr)_repeat(6,minmax(0,1fr))_140px]";
   const notAtProduction = reqs.filter((r) => Number(r.at_production) < Number(r.required)).length;
   const qtyOf = (itemId: string, n: string | null) => {
@@ -139,7 +144,9 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
               <span>{d.atProduction}</span><span><span className="sr-only">{P.status}</span></span>
             </div>
             {reqs.map((r) => {
-              const missing = Number(r.required) - Number(r.reserved);
+              const missing = shortOf(r);
+              const reserved = Number(r.reserved) >= Number(r.required);
+              const inStock = Number(r.required) - Number(r.reserved) - Number(r.available ?? 0) <= 0;
               return (
                 <div key={r.item_id} className={`row grid-cols-[minmax(0,1fr)_auto] border-b border-mist py-3 text-sm last:border-0 ${reqGrid}`}>
                   <div className="min-w-0">
@@ -154,7 +161,9 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
                   <span className="hide-sm">{formatQty(locale, r.at_production, r.base_unit)}</span>
                   {mo.status === "completed" || mo.status === "cancelled" ? <span /> : missing > 0
                     ? <Chip tone="red">{fmt(d.missing, { qty: formatQty(locale, missing, r.base_unit) })}</Chip>
-                    : <Chip tone="green">{d.covered}</Chip>}
+                    : reserved ? <Chip tone="green">{d.covered}</Chip>
+                    : inStock || r.short == null ? <Chip tone="green">{d.inStock}</Chip>
+                    : <Chip tone="amber">{d.incomingCovers}</Chip>}
                 </div>
               );
             })}
@@ -167,10 +176,10 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
           )}
           {open && (
             <div className="flex flex-wrap gap-3">
-              {missingAny && (
+              {reservable && (
                 <ActionForm action={reserveMo} submitLabel={d.reserve} resetOnSuccess={false}>{hidden(mo.id)}</ActionForm>
               )}
-              {missingAny && (
+              {shortAny && (
                 <ActionForm action={requestPurchases} submitLabel={d.requestPurchase} resetOnSuccess={false}>{hidden(mo.id)}</ActionForm>
               )}
             </div>
@@ -260,7 +269,7 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
                     <label className="field sm:col-span-2"><span>{d.material} *</span>
                       <SearchSelect name="item_id" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
                         options={reqs.map((r) => {
-                          const short = Number(r.required) - Number(r.reserved) - Number(r.ordered);
+                          const short = shortOf(r);
                           return { value: r.item_id, label: `${nm(r)} · ${r.sku}`, keywords: `${r.name} ${r.name_bg ?? ""}`,
                                    hint: short > 0 ? fmt(d.missing, { qty: formatQty(locale, short, r.base_unit) }) : undefined };
                         })} />

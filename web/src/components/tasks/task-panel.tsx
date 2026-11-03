@@ -538,6 +538,7 @@ function Materials({ orderId, data, T, locale }: { orderId: string; data: BoardD
         <span className="min-w-0 font-semibold break-words">{name(l)} <span className="text-xs font-normal text-ink-2">{l.sku} · {(M.kind as Record<string, string>)[l.kind] ?? l.kind}</span></span>
         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${l.status === "ok" ? "bg-green-tint text-green-ink" : l.status === "short_incoming" ? "bg-amber-tint text-amber-ink" : "bg-red-tint text-red-ink"}`}>
           {M.status[l.status]}
+          {l.status === "short_no_order" && Number(l.short) > 0 && <> · {fmt(M.missingQty, { qty: formatQty(locale, l.short, l.unit) })}</>}
         </span>
       </span>
       <span className="text-xs text-ink-2">

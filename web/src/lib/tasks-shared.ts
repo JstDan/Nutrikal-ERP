@@ -29,7 +29,7 @@ export type TaskActivity = { id: string; task_id: string; actor_id: string | nul
 export type BoardUser = { id: string; full_name: string; role: string };
 export type MaterialLine = {
   item_id: string; sku: string; name: string; name_bg: string | null; kind: string; unit: string; required: number; reserved: number;
-  free: number; incoming: number; incoming_on: string | null; incoming_ref: string | null; status: "ok" | "short_incoming" | "short_no_order";
+  free: number; incoming: number; incoming_on: string | null; incoming_ref: string | null; status: "ok" | "short_incoming" | "short_no_order"; short?: number;
 };
 export type MaterialCheck = {
   id: string; checked_at: string; source: string; total: number; ok: number; lines: MaterialLine[];
