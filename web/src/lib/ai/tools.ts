@@ -1,4 +1,5 @@
 import { q } from "@/lib/db/engine";
+import { searchMailbox } from "@/lib/gmail";
 import { CAPSULE_SIZE, CAPSULE_SIZES } from "@/lib/calculator/types";
 import type { ToolDefinition } from "./gateway";
 
@@ -56,6 +57,11 @@ export const AI_TOOLS: ToolDefinition[] = [
 
 /** Mail reaches the AI service only with AI_READ_MAIL=on (after the data processing agreement is signed). */
 const MAIL_TOOLS: ToolDefinition[] = [
+  tool("search_gmail",
+    "Search the whole shared Gmail mailbox right now, with Gmail search syntax: from:, to:, label:Name, is:unread, " +
+    "subject:, after:2026/10/01, has:attachment, newer_than:7d, or plain words. Newest first, up to 5 messages with " +
+    "sender, date, labels, unread and text, plus about how many match in all. Use it for any question about mail, labels or unread mail.",
+    { query: { type: "string", description: "Gmail search, e.g. 'from:info@firma.at' or 'label:Mitko is:unread'; empty for the newest mail" } }),
   tool("mail_waiting_reply", "Client mail threads whose last message came from the client, oldest first."),
   tool("search_client_mail", "Saved mail with clients (the shared Gmail box): by client name or code, an e-mail address, or words in the subject and text; newest first, up to 20. Mail is shown in the app only through you.", TERM),
 ];
@@ -142,6 +148,13 @@ export async function runTool(userId: string, conversationId: string, name: stri
     }
   }
   if (MAIL_TOOLS.some((t) => t.name === name) && process.env.AI_READ_MAIL?.trim() !== "on") return JSON.stringify({ error: "Mail is not available" });
+  if (name === "search_gmail") {
+    // The same people who may read saved client mail (Admin and Sales), checked by the database
+    const [{ ok }] = await q<{ ok: boolean }>(userId, "select has_role('admin', 'sales') as ok");
+    if (!ok) return JSON.stringify({ error: "Mail is not available to this account" });
+    const { query = "" } = JSON.parse(rawArgs || "{}") as { query?: string };
+    return JSON.stringify(await searchMailbox(String(query)));
+  }
   const query = QUERIES[name];
   if (!query) return JSON.stringify({ error: "Unknown tool" });
   try {

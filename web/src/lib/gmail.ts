@@ -99,6 +99,59 @@ export function toMail(m: Message) {
   };
 }
 
+// ---------------------------------------------------------------- live search for the assistant
+// The AI assistant searches the whole shared mailbox at the moment of a question, with Gmail's own search
+// (label:, is:unread, from:, after: …; owner, Nov 2026). Nothing is saved. Who may ask is checked by the caller
+// (Admin and Sales). Few requests per question: the token and the label names are kept for a while.
+const LIVE_MAX = 5;
+const LIVE_BODY = 1500;
+let cachedToken: { value: string; until: number } | null = null;
+let cachedLabels: { names: Record<string, string>; until: number } | null = null;
+
+async function liveAccess(): Promise<string | null> {
+  if (cachedToken && cachedToken.until > Date.now()) return cachedToken.value;
+  const [state] = await asSystem<{ token_enc: string }>("select token_enc from gmail_job_state()");
+  if (!state) return null;
+  const { access_token } = await token({ refresh_token: await decryptToken(state.token_enc), grant_type: "refresh_token" });
+  cachedToken = { value: access_token, until: Date.now() + 45 * 60_000 };
+  return access_token;
+}
+
+async function labelNames(access: string): Promise<Record<string, string>> {
+  if (cachedLabels && cachedLabels.until > Date.now()) return cachedLabels.names;
+  const r = await gmail<{ labels?: { id: string; name: string }[] }>(access, "/labels");
+  const names = Object.fromEntries((r.labels ?? []).map((l) => [l.id, l.name]));
+  cachedLabels = { names, until: Date.now() + 30 * 60_000 };
+  return names;
+}
+
+export async function searchMailbox(query: string) {
+  const access = await liveAccess();
+  if (!access) return { error: "Gmail is not connected" };
+  try {
+    const list = await gmail<{ messages?: { id: string }[]; resultSizeEstimate?: number }>(
+      access, `/messages?q=${encodeURIComponent(query.trim())}&maxResults=${LIVE_MAX}`);
+    const names = await labelNames(access);
+    const messages = [];
+    for (const { id } of list.messages ?? []) {
+      const m = await gmail<Message>(access, `/messages/${id}?format=full`);
+      const header = (name: string) => m.payload.headers?.find((h) => h.name.toLowerCase() === name)?.value ?? null;
+      messages.push({
+        from: header("from"), to: header("to"), cc: header("cc"), subject: header("subject"),
+        date: new Date(Number(m.internalDate)).toISOString(),
+        unread: !!m.labelIds?.includes("UNREAD"),
+        labels: (m.labelIds ?? []).map((l) => names[l] ?? l),
+        has_attachments: walk(m.payload).some((p) => !!p.filename),
+        text: bodyOf(m.payload).slice(0, LIVE_BODY),
+      });
+    }
+    return { query, matches_about: list.resultSizeEstimate ?? messages.length, shown: messages.length, messages };
+  } catch (e) {
+    cachedToken = null;
+    return { error: isQuota(e) ? "Gmail is busy, ask again in a minute" : e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // ---------------------------------------------------------------- the job
 type State = { email: string; token_enc: string; sync_from: string; page_token: string | null; chunk_no: number; address_key: string | null };
 
