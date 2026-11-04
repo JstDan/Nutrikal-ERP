@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { CATALOG_THEME_COOKIE } from "@/lib/theme";
 import { qPublic } from "@/lib/db/engine";
 import { aiConfigured } from "@/lib/ai/gateway";
 import type { AnyLocale } from "@/lib/i18n";
@@ -31,6 +32,7 @@ export default async function PublicCatalogPage() {
   const locale = PUBLIC_LOCALES.find((l) => l.code === lang)?.code ?? ("en" as AnyLocale);
   const [row] = await qPublic<{ data: PublicCatalog }>("select catalog_public() as data");
   const t = publicDict(locale);
+  const theme = (await cookies()).get(CATALOG_THEME_COOKIE)?.value;
   // Names in the visitor's language (set by Admin on the product, else product-names.ts); the English one stays searchable
   const data: PublicCatalog = locale !== "en" ? {
     ...row.data,
@@ -40,7 +42,7 @@ export default async function PublicCatalogPage() {
     }),
   } : row.data;
   return (
-    <CatalogBrowser ai={aiConfigured()} languages={PUBLIC_LOCALES} data={data} locale={locale} text={t.text} formats={t.formats} categories={t.categories} short={shortCategories(locale)}>
+    <CatalogBrowser theme={theme} ai={aiConfigured()} languages={PUBLIC_LOCALES} data={data} locale={locale} text={t.text} formats={t.formats} categories={t.categories} short={shortCategories(locale)}>
       <CatalogProcess text={t.text} />
       <CatalogOptions text={t.text} ingredients={row.data.ingredient_list} />
       <CatalogCompany text={t.text} locale={locale} />

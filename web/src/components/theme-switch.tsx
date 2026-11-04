@@ -10,7 +10,9 @@ function isDark() {
 }
 
 /** Light / dark switch. The choice is kept in a cookie on this device. */
-export function ThemeSwitch({ toDark, toLight, saved }: { toDark: string; toLight: string; saved?: string }) {
+export function ThemeSwitch({ toDark, toLight, saved, cookie = THEME_COOKIE, className = "rounded-sm border border-line-strong bg-white hover:bg-canvas" }: {
+  toDark: string; toLight: string; saved?: string; cookie?: string; className?: string;
+}) {
   // The saved choice is known on the server, so the right icon shows at once
   const [dark, setDark] = useState(saved === "dark");
   useEffect(() => setDark(isDark()), []);
@@ -18,7 +20,7 @@ export function ThemeSwitch({ toDark, toLight, saved }: { toDark: string; toLigh
   function toggle() {
     const next = !isDark();
     document.documentElement.dataset.theme = next ? "dark" : "light";
-    document.cookie = `${THEME_COOKIE}=${next ? "dark" : "light"}; path=/; max-age=31536000; samesite=lax`;
+    document.cookie = `${cookie}=${next ? "dark" : "light"}; path=/; max-age=31536000; samesite=lax`;
     setDark(next);
   }
 
@@ -29,7 +31,7 @@ export function ThemeSwitch({ toDark, toLight, saved }: { toDark: string; toLigh
       onClick={toggle}
       aria-label={label}
       title={label}
-      className="grid h-[44px] w-11 shrink-0 cursor-pointer place-items-center rounded-sm border border-line-strong bg-white text-ink hover:bg-canvas"
+      className={`grid h-[44px] w-11 shrink-0 cursor-pointer place-items-center text-ink ${className}`}
     >
       {dark ? (
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
