@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { q } from "@/lib/db/engine";
 import { fmt } from "@/lib/i18n";
 import { mailConfigured, sendMail } from "@/lib/mail";
+import { GmailSendScopeError } from "@/lib/gmail";
 import { getSession } from "@/lib/session";
 import type { ActionState } from "@/app/actions";
 
@@ -69,7 +70,7 @@ export async function sendDocument(fd: FormData): Promise<ActionState> {
   const to = str(fd, "to");
   const cc = str(fd, "cc");
   const fileName = (str(fd, "file_name") ?? "document.pdf").replace(/[\\/:*?"<>|\r\n]+/g, "_");
-  if (!mailConfigured()) return { error: S.notConfigured };
+  if (!(await mailConfigured())) return { error: S.notConfigured };
   // A PDF file starts with %PDF-
   if (!pdf || !pdf.startsWith("JVBERi0") || pdf.length > MAX_PDF_BASE64 || !text || !subject || !to) return { error: S.failed };
   let id: string;
@@ -85,7 +86,7 @@ export async function sendDocument(fd: FormData): Promise<ActionState> {
   } catch (e) {
     await q(user.id, "select finish_document_send($1, $2)", [id, errorText(e)]);
     revalidatePath("/", "layout");
-    return { error: S.failed };
+    return { error: e instanceof GmailSendScopeError ? S.reconnect : S.failed };
   }
   await q(user.id, "select finish_document_send($1)", [id]);
   revalidatePath("/", "layout");

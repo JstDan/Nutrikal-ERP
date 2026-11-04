@@ -7,7 +7,7 @@ import { SettingsTabs } from "@/components/settings-tabs";
 import { disconnectGmail, syncGmailNow } from "@/app/mail-actions";
 import { gmailConfigured } from "@/lib/gmail";
 
-/** The shared mailbox: connected once, read only. */
+/** The shared mailbox: connected once; client mail is read from it and documents are sent from it. */
 export default async function MailSettingsPage({ searchParams }: PageProps<"/settings/mail">) {
   const { user, locale, t } = await requireRole("admin");
   const S = t.adminSettings;
@@ -36,8 +36,10 @@ export default async function MailSettingsPage({ searchParams }: PageProps<"/set
             {g.last_error && <p role="alert" className="m-0 text-sm font-semibold text-red-ink">{fmt(M.lastError, { error: g.last_error })}</p>}
             <div className="flex flex-wrap items-start gap-3">
               <ActionForm action={syncGmailNow} submitLabel={M.syncNow} resetOnSuccess={false}>{null}</ActionForm>
+              {gmailConfigured() && <a href="/api/google/start" className="btn btn-outline">{M.reconnect}</a>}
               <ActionForm action={disconnectGmail} submitLabel={M.disconnect} resetOnSuccess={false}>{null}</ActionForm>
             </div>
+            <p className="m-0 text-xs text-ink-2">{M.reconnectNote}</p>
             <p className="m-0 text-xs text-ink-2">{M.disconnectNote}</p>
           </>
         ) : (

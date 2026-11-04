@@ -62,7 +62,7 @@ export async function replyToClient(_: ActionState, fd: FormData): Promise<Actio
   } catch (e) {
     return { error: e instanceof Error ? e.message.split("\n")[0] : String(e) };
   }
-  if (mailConfigured()) {
+  if (await mailConfigured()) {
     const people = await q<{ email: string; locale: string | null }>(user.id,
       `select u.email, c.preferred_locale::text as locale from client_user_list($1) u, clients c where c.id = $1 and u.is_active`, [client]);
     for (const p of people) {

@@ -1,5 +1,5 @@
 import { q } from "@/lib/db/engine";
-import { mailConfigured } from "@/lib/mail";
+import { mailRoute } from "@/lib/mail";
 import { fmt, getDict } from "@/lib/i18n";
 import type { SendInfo, SendKind } from "@/components/send-document";
 
@@ -28,8 +28,9 @@ export async function loadSendInfo(userId: string, userName: string, kind: SendK
     : null;
   const M = getDict(o.lang).send.mail;
   const values = { title: o.title, no: o.no, lower: o.title.toLocaleLowerCase(o.lang), name: userName };
+  const route = await mailRoute();
   return {
-    kind, refId, history, configured: mailConfigured(), to: o.to ?? client ?? direct ?? "",
+    kind, refId, history, configured: route !== null, via: route && route !== "resend" ? route.gmail : null, to: o.to ?? client ?? direct ?? "",
     subject: fmt(M.subject, values), body: fmt(M.body, values),
   };
 }
