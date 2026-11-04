@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Wordmark } from "@/components/logo";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { CATALOG_THEME_COOKIE } from "@/lib/theme";
 import { CatalogContactButton } from "@/components/catalog-chat";
 import { fmt, formatMoney, formatNumber, type AnyLocale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
@@ -137,8 +139,8 @@ function Dialog({ title, close, closeLabel, footer, children }: { title: string;
 }
 
 /** The open catalogue: browse, filter, a basket, and one enquiry in two steps. */
-export function CatalogBrowser({ ai, languages, data, locale, text, formats, categories, short, children }: {
-  ai: boolean; languages: { code: string; label: string }[]; data: PublicCatalog; locale: AnyLocale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; categories: Record<string, string>; short: Record<string, string>; children: ReactNode;
+export function CatalogBrowser({ ai, languages, data, locale, text, formats, categories, short, theme, children }: {
+  theme?: string; ai: boolean; languages: { code: string; label: string }[]; data: PublicCatalog; locale: AnyLocale; text: Dict["publicCatalog"]; formats: Dict["enums"]["productFormat"]; categories: Record<string, string>; short: Record<string, string>; children: ReactNode;
 }) {
   const T = text;
   const money = (n: number) => formatMoney(locale, n, "EUR", 2);
@@ -302,6 +304,7 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
                 {languages.map((l) => <option key={l.code} value={l.code} lang={l.code} aria-label={l.label}>{l.code.toUpperCase()}</option>)}
               </select>
             </label>
+            <ThemeSwitch toDark={T.toDark} toLight={T.toLight} saved={theme} cookie={CATALOG_THEME_COOKIE} className="rounded-full hover:bg-canvas" />
             <button type="button" onClick={openBasket} className="btn btn-primary !px-3 sm:!px-5">{fmt(T.basketCount, { n: lines.length })}</button>
           </div>
         </div>

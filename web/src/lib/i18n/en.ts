@@ -2336,6 +2336,8 @@ export const en = {
     chatContinue: "Continue with Nutri AI",
     chatTeaser: "Have a question? We’re here to help.",
     language: "Language",
+    toDark: "Dark theme",
+    toLight: "Light theme",
     chatTitle: "Nutri AI",
     chatAsk: "Ask Nutri AI",
     chatNotice: "You are chatting with an AI assistant. Answers are guidance only; prices and terms are confirmed in an offer. This conversation is saved so our team can help you, and on this device for 30 days so you can continue later.",
