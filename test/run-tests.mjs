@@ -883,6 +883,31 @@ await fails('a hand-added raw material needs a price above 0', () =>
   as('sales', `select calc_add_raw_material('Something', 0)`), 'price per kg above 0');
 await fails('production cannot add raw materials', () =>
   as('production', `select calc_add_raw_material('Other', 5)`), 'not allowed');
+await ok('sales changes the name and price of a raw material, then deletes it', async () => {
+  const { id } = await one('sales', `select calc_add_raw_material('Edit Me', 3) as id`);
+  await as('sales', `select calc_update_raw_material($1, '  Edited   Name ', 4.56789)`, [id]);
+  const m = await one('admin', `select name, price_eur_per_kg from calc_raw_materials where id = $1`, [id]);
+  eq(m.name, 'Edited Name', 'name tidied');
+  eq(Number(m.price_eur_per_kg), 4.5679, 'price');
+  await as('sales', `select calc_delete_raw_material($1)`, [id]);
+  eq((await as('admin', `select id from calc_raw_materials where id = $1`, [id])).length, 0, 'deleted');
+});
+await fails('a raw material cannot be renamed to a name already in the price list', async () => {
+  const { id } = await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`);
+  await as('admin', `select calc_update_raw_material($1, 'saffron extract', 5)`, [id]);
+}, 'already in the price list');
+await fails('an edited raw material needs a price above 0', async () => {
+  const { id } = await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`);
+  await as('sales', `select calc_update_raw_material($1, 'Zinc Glycinate', 0)`, [id]);
+}, 'price per kg above 0');
+await fails('production cannot change raw materials', async () => {
+  const { id } = await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`);
+  await as('production', `select calc_update_raw_material($1, 'X', 5)`, [id]);
+}, 'not allowed');
+await fails('production cannot delete raw materials', async () => {
+  const { id } = await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`);
+  await as('production', `select calc_delete_raw_material($1)`, [id]);
+}, 'not allowed');
 await ok('the sheet sync never removes a hand-added material; the sheet takes it over when it lists it', async () => {
   await one('sales', `select calc_add_raw_material('Manual Only', 9) as id`);
   await as('sales', `select calc_record_sync('manual', $1::jsonb, '{}')`,

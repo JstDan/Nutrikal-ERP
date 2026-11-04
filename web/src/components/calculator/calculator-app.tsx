@@ -140,7 +140,7 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
     })();
   }, [initial, loadForm, newOffer, settings, show, t]);
 
-  // Daily 17:00 sync missed (e.g. server was off): sync the price list and the catalog in the background, then reload them.
+  // Daily 17:00 sync missed (e.g. server was off): sync the catalog in the background, then reload them.
   useEffect(() => {
     void syncIfStale().then((res) => {
       if (res.ok && res.data) router.refresh();

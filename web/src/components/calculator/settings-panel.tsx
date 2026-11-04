@@ -3,7 +3,6 @@
 import { useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { saveSettings } from "@/app/calculator/actions";
-import { extractSheetId } from "@/lib/calculator/materialImport";
 import { parseNum } from "@/lib/calculator/numbers";
 import { PRODUCT_TYPES, type ProductType, type Settings } from "@/lib/calculator/types";
 import { Field, Notice, NumberField, RemoveButton, Section, SubHeading, inputClass, useCalcText } from "./kit";
@@ -69,9 +68,8 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
     powder: parseNum(draft.fixed_costs.powder),
     markup: parseNum(draft.default_markup),
   };
-  const sheetIdOk = !!extractSheetId(draft.google_sheet_url);
   const presetsOk = draft.service_presets.every((p) => p.description.trim() && (parseNum(p.price) ?? -1) >= 0);
-  const valid = Object.values(numbers).every((n) => n !== null && n >= 0) && sheetIdOk && presetsOk;
+  const valid = Object.values(numbers).every((n) => n !== null && n >= 0) && presetsOk;
 
   const pickLogo = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -230,17 +228,6 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
       </div>
 
       <div className="flex flex-col gap-4 border-t border-mist pt-5">
-        <Field label={t.sync.sheetUrl} htmlFor="sheet-url" error={sheetIdOk ? undefined : t.sync.sheetUrlInvalid} hint={draft.google_sheet_from_env ? t.sync.sheetUrlFromEnv : t.sync.sheetUrlHint}>
-          <input
-            id="sheet-url"
-            readOnly={draft.google_sheet_from_env}
-            value={draft.google_sheet_url}
-            onChange={(e) => set({ google_sheet_url: e.target.value })}
-            aria-describedby="sheet-url-msg"
-            aria-invalid={!sheetIdOk || undefined}
-            className={inputClass(!sheetIdOk)}
-          />
-        </Field>
         <Field label={s.terms} htmlFor="terms-text">
           <textarea id="terms-text" rows={4} value={draft.terms_text} onChange={(e) => set({ terms_text: e.target.value })} className="input" />
         </Field>

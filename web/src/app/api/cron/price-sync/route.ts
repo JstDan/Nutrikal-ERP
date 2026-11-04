@@ -1,12 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 import { DEFAULT_LOCALE, getDict } from "@/lib/i18n";
-import { catalogSyncDue, runCatalogSync, runSync, syncDue } from "@/lib/calculator/sync";
+import { catalogSyncDue, runCatalogSync } from "@/lib/calculator/sync";
 import { asSystem } from "@/lib/db/engine";
 
-// Daily price-list and catalog sync (each on its own). Call it at least
-// hourly (Cloudflare cron trigger, Supabase pg_cron, any scheduler) with
-// "Authorization: Bearer <CRON_SECRET>"; each syncs only once a day, on
-// the first call after 17:00 Sofia time. Add ?force=1 to sync now.
+// Daily catalog sync. Call it at least hourly (Cloudflare cron trigger,
+// Supabase pg_cron, any scheduler) with "Authorization: Bearer <CRON_SECRET>";
+// it syncs only once a day, on the first call after 17:00 Sofia time. Add
+// ?force=1 to sync now. The price list of raw materials is no longer synced:
+// it is kept by hand under Offers > Raw materials (owner, Nov 2026).
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET ?? "";
   const given = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
@@ -18,11 +19,10 @@ export async function GET(req: Request) {
 
   const force = new URL(req.url).searchParams.get("force") === "1";
   const s = getDict(DEFAULT_LOCALE).calc.sync;
-  const prices = force || (await syncDue(null)) ? await runSync(null, "scheduled", s) : null;
   const catalog = force || (await catalogSyncDue(null)) ? await runCatalogSync(null, "scheduled", s) : null;
-  const failed = prices?.status === "error" || catalog?.status === "error";
+  const failed = catalog?.status === "error";
   return Response.json(
-    { synced: !!(prices || catalog) && !failed, prices: prices ?? "not due", catalog: catalog ?? "not due" },
+    { synced: !!catalog && !failed, catalog: catalog ?? "not due" },
     { status: failed ? 502 : 200 },
   );
 }
