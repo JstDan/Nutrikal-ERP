@@ -1,9 +1,10 @@
 import { asSystem } from "@/lib/db/engine";
 
-// The shared mailbox, read only. Connected once by Admin; the job brings new mail, oldest pages first served
-// by Gmail newest first, a few pages per run. GOOGLE_STUB_URL replaces Google's addresses in tests.
+// The shared mailbox. Connected once by Admin; the job brings new mail, oldest pages first served by Gmail
+// newest first, a few pages per run; documents are sent from it (below). GOOGLE_STUB_URL replaces Google's
+// addresses in tests.
 
-export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
 // One run makes at most 50 requests on the Cloudflare Workers free plan (Gmail, Google and the database
 // together): one page of 25 messages, one request each. The job runs every 10 minutes.
 const PAGES_PER_RUN = 1;
@@ -152,8 +153,90 @@ export async function searchMailbox(query: string) {
   }
 }
 
+// ---------------------------------------------------------------- sending from the shared mailbox
+// Documents and client notices leave from the shared mailbox (owner, Nov 2026): they show under Sent and
+// replies come back there. It needs the gmail.send permission: a mailbox connected before that asks for
+// reconnecting under Settings > Mail.
+
+/** The shared mailbox, when it is connected (null otherwise). */
+let cachedMailbox: { value: string | null; until: number } | null = null;
+export async function connectedMailbox(): Promise<string | null> {
+  if (!gmailConfigured()) return null;
+  // Kept a minute: a run that sends several mails stays under the Workers request limit
+  if (cachedMailbox && cachedMailbox.until > Date.now()) return cachedMailbox.value;
+  const [state] = await asSystem<{ email: string }>("select email from gmail_job_state()");
+  cachedMailbox = { value: state?.email ?? null, until: Date.now() + 60_000 };
+  return cachedMailbox.value;
+}
+
+export class GmailSendScopeError extends Error {}
+
+/** RFC 2047 for headers that are not plain ASCII (Bulgarian subjects and names). */
+const header = (v: string) => (/^[\x20-\x7e]*$/.test(v) ? v : `=?UTF-8?B?${Buffer.from(v, "utf8").toString("base64")}?=`);
+const lines76 = (b64: string) => b64.replace(/.{1,76}/g, "$&\r\n");
+const oneLine = (v: string) => v.replace(/[\r\n]+/g, " ").trim();
+
+export function mimeMessage(m: {
+  from: string; to: string; cc: string | null; replyTo: string | null; subject: string; text: string;
+  attachment?: { filename: string; base64: string };
+}): string {
+  const head = [
+    `From: ${header("Nutrikal")} <${m.from}>`,
+    `To: ${oneLine(m.to)}`,
+    ...(m.cc ? [`Cc: ${oneLine(m.cc)}`] : []),
+    ...(m.replyTo ? [`Reply-To: ${oneLine(m.replyTo)}`] : []),
+    `Subject: ${header(oneLine(m.subject))}`,
+    "MIME-Version: 1.0",
+  ];
+  const text = ["Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", lines76(Buffer.from(m.text, "utf8").toString("base64"))];
+  if (!m.attachment) return [...head, ...text].join("\r\n");
+  const boundary = `nk_${crypto.randomUUID()}`;
+  const name = oneLine(m.attachment.filename).replace(/"/g, "");
+  const ascii = name.replace(/[^\x20-\x7e]/g, "_");
+  return [
+    ...head,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    ...text,
+    `--${boundary}`,
+    `Content-Type: application/pdf; name="${ascii}"`,
+    "Content-Transfer-Encoding: base64",
+    `Content-Disposition: attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    "",
+    lines76(m.attachment.base64.replace(/\s+/g, "")),
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
+}
+
+/** Sends one e-mail from the shared mailbox (Gmail API, media upload up to 35 MB). */
+export async function sendViaGmail(m: Omit<Parameters<typeof mimeMessage>[0], "from">): Promise<void> {
+  const from = await connectedMailbox();
+  if (!from) throw new Error("Gmail is not connected");
+  const raw = mimeMessage({ ...m, from });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const access = await liveAccess();
+    if (!access) throw new Error("Gmail is not connected");
+    const res = await fetch(url("https://gmail.googleapis.com", "/upload/gmail/v1/users/me/messages/send?uploadType=media"), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${access}`, "Content-Type": "message/rfc822" },
+      body: raw,
+    });
+    if (res.ok) return;
+    const detail = ((await res.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message ?? "";
+    // A token kept from before a reconnect may lack the new permission: once more with a fresh one
+    cachedToken = null;
+    if (res.status === 403 && /insufficient/i.test(detail)) {
+      if (attempt === 0) continue;
+      throw new GmailSendScopeError(`Gmail 403: ${detail}`);
+    }
+    throw new Error(`Gmail ${res.status}: ${detail}`);
+  }
+}
+
 // ---------------------------------------------------------------- the job
-type State = { email: string; token_enc: string; sync_from: string; page_token: string | null; chunk_no: number; address_key: string | null };
+type State ={ email: string; token_enc: string; sync_from: string; page_token: string | null; chunk_no: number; address_key: string | null };
 
 /** The list of client addresses is searched in groups. Mail from anyone else is not read at all. */
 const TERMS_PER_SEARCH = 25;

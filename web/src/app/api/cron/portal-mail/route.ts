@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const given = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   const a = Buffer.from(given), b = Buffer.from(secret);
   if (!secret || a.length !== b.length || !timingSafeEqual(a, b)) return new Response("Unauthorized", { status: 401 });
-  if (!mailConfigured()) return Response.json({ sent: 0, skipped: "mail not configured" });
+  if (!(await mailConfigured())) return Response.json({ sent: 0, skipped: "mail not configured" });
 
   const url = `https://${process.env.PORTAL_HOST?.trim() || "portal.nutrikal.com"}`;
   const jobs = await asSystem<Job>("select id, status, code, email, locale from client_status_jobs()");

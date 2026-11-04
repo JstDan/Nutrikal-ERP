@@ -10,6 +10,8 @@ import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 export type SendKind = "calc_offer" | "proforma" | "invoice" | "delivery_note";
 export type SendInfo = {
   kind: SendKind; refId: string; to: string; subject: string; body: string; configured: boolean;
+  /** The shared Gmail mailbox it leaves from, or null (Resend). */
+  via: string | null;
   history: { id: string; recipient: string; status: "sending" | "sent" | "failed"; error: string | null; created_at: string; sender: string | null }[];
 };
 
@@ -62,7 +64,7 @@ export function SendDocument({ info, model, makePdf, text, locale, title }: {
           </div>
           <label className="field"><span>{S.subject} *</span><input name="subject" required defaultValue={info.subject} className="input" /></label>
           <label className="field"><span>{S.body} *</span><textarea name="body" required rows={7} defaultValue={info.body} className="input" /></label>
-          <p className="m-0 text-xs text-ink-2">{S.attached}</p>
+          <p className="m-0 text-xs text-ink-2">{info.via ? fmt(S.attachedVia, { mailbox: info.via }) : S.attached}</p>
           <div className="flex flex-wrap items-center gap-3">
             <button type="submit" className="btn btn-primary" disabled={pending || !info.configured}>{pending ? "…" : S.send}</button>
             <p role="status" aria-live="polite" className="m-0 text-sm">
