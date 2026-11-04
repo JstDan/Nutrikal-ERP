@@ -2136,7 +2136,6 @@ export const en = {
     materials: {
       title: "Raw materials",
       search: "Search raw materials",
-      showInactive: "Show removed",
       name: "Name",
       price: "Price €/kg (DDP)",
       note: "Regulatory note",
