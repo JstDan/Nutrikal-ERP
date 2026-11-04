@@ -39,7 +39,6 @@ function MaterialSearch({ materials, inFormula, onPick, id = "material-search", 
           <span className="min-w-0 flex-1 break-words">
             {m.name}
             {inFormula.has(m.id) && <span className="ml-2 text-xs font-semibold text-amber-ink">({t.formula.duplicate})</span>}
-            {m.manual && <span className="block text-xs font-semibold text-amber-ink">{t.formula.manualChip}</span>}
           </span>
           {m.regulatory_note && <span title={t.formula.regulatory} aria-label={t.formula.regulatory} className="text-amber">⚠</span>}
           <span className="shrink-0 text-ink-2 tabular-nums">{eur(m.price_eur_per_kg)}/kg</span>
@@ -167,7 +166,6 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
                       {check && <Chip tone="amber">{t.formula.checkMatch}</Chip>}
                       {dup && <Chip tone="amber">{t.formula.duplicate}</Chip>}
                       {removed && <Chip tone="red">{t.formula.removedFromList}</Chip>}
-                      {manual && <Chip tone="amber">{t.formula.manualChip}</Chip>}
                     </div>
                   )}
                   {check && row.catalogName && (

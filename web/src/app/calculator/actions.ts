@@ -5,8 +5,8 @@ import { q, withUser } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import { toOffer } from "@/lib/calculator/db";
 import { extractSheetId } from "@/lib/calculator/materialImport";
-import { catalogSyncDue, runCatalogSync, runSync, syncDue } from "@/lib/calculator/sync";
-import type { CatalogSyncRun, OfferInput, OfferRecord, RawMaterial, Settings, SyncRun } from "@/lib/calculator/types";
+import { catalogSyncDue, runCatalogSync } from "@/lib/calculator/sync";
+import type { CatalogSyncRun, OfferInput, OfferRecord, RawMaterial, Settings } from "@/lib/calculator/types";
 
 export type CalcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -138,24 +138,35 @@ export async function addRawMaterial(name: string, price: number): Promise<CalcR
   return res;
 }
 
-// ----------------------------------------------- Google Sheet price sync
-export async function syncPriceList(): Promise<CalcResult<SyncRun>> {
-  const { t } = await getSession();
-  const res = await run((uid) => runSync(uid, "manual", t.calc.sync));
-  revalidatePath("/calculator", "layout");
+/** Admin, sales: change the name and the price per kg of a raw material (saved offers keep their own copy). */
+export async function updateRawMaterial(id: string, name: string, price: number): Promise<CalcResult<boolean>> {
+  const res = await run(async (uid) => {
+    await q(uid, "select calc_update_raw_material($1, $2, $3)", [id, name, price]);
+    return true;
+  });
+  if (res.ok) revalidatePath("/calculator", "layout");
+  return res;
+}
+
+/** Admin, sales: delete a raw material from the price list (saved offers keep their own copy). */
+export async function deleteRawMaterial(id: string): Promise<CalcResult<boolean>> {
+  const res = await run(async (uid) => {
+    await q(uid, "select calc_delete_raw_material($1)", [id]);
+    return true;
+  });
+  if (res.ok) revalidatePath("/calculator", "layout");
   return res;
 }
 
 /**
- * Called when the calculator opens: catches up the price list and the catalog when their daily
- * 17:00 sync has not run yet (retried hourly after a failure). True when either synced successfully.
+ * Called when the calculator opens: catches up the catalog when its daily 17:00 sync has not run
+ * yet (retried hourly after a failure). The price list is no longer synced (owner, Nov 2026).
  */
 export async function syncIfStale(): Promise<CalcResult<boolean>> {
   const { t } = await getSession();
   const res = await run(async (uid) => {
-    const prices = (await syncDue(uid)) ? await runSync(uid, "auto", t.calc.sync) : null;
     const catalog = (await catalogSyncDue(uid)) ? await runCatalogSync(uid, "auto", t.calc.sync) : null;
-    return prices?.status === "success" || catalog?.status === "success";
+    return catalog?.status === "success";
   });
   if (res.ok && res.data) revalidatePath("/calculator", "layout");
   return res;
