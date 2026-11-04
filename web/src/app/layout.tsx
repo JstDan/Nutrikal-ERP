@@ -17,7 +17,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const session = open ? null : await getOptionalSession();
   const locale = open ? (h.get("x-nk-locale") ?? "en") : await getLocale();
   const saved = (await cookies()).get(THEME_COOKIE)?.value;
-  const theme = saved === "dark" || saved === "light" ? saved : undefined;
+  // The open catalogue is always light: it has no switch, and dark system settings do not change it (owner, Nov 2026)
+  const theme = open ? "light" : saved === "dark" || saved === "light" ? saved : undefined;
   return (
     // Browser extensions add attributes to <html> before React loads; ignore those (this element only)
     <html lang={locale} data-theme={theme} suppressHydrationWarning>
