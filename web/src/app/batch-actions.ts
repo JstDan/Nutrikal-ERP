@@ -58,7 +58,7 @@ export async function attachCoa(_: ActionState, fd: FormData): Promise<ActionSta
 
 // --------------------------------------------------------------- dispatch
 export async function dispatchOrder(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { user } = await getSession();
+  const { user, t } = await getSession();
   const order = str(fd, "order_id");
   // One row per batch: use_<n> = "lot_id|location_id", qty_<n> = quantity
   const lines: { lot_id: string; location_id: string; quantity: number }[] = [];
@@ -75,7 +75,9 @@ export async function dispatchOrder(_: ActionState, fd: FormData): Promise<Actio
       [order, str(fd, "dispatched_on"), JSON.stringify(lines), str(fd, "carrier"), str(fd, "tracking"), str(fd, "notes"), fd.get("override") === "on"]);
     id = r.id;
   } catch (e) {
-    return { error: errorText(e) };
+    // No batch chosen: usually none is released yet, so say where that is done
+    const msg = errorText(e);
+    return { error: msg === "Enter the batches to dispatch" ? t.dispatch.noBatches : msg };
   }
   revalidatePath("/", "layout");
   redirect(`/orders/${order}/delivery/${id}`);
