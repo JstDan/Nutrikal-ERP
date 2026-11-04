@@ -146,6 +146,23 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     : `${c.deposit_amount != null ? fmt(H.advancePaidAmount, { amount: money(c.deposit_amount) }) : fmt(H.advancePaid, { pct: formatNumber(locale, depPct) })} · ${c.balance_received_on ? H.balancePaid : H.balanceDue}`;
   const invoiceOf = (p: OrderInvoice["purpose"]) => invoices.find((x) => x.purpose === p);
   const F = t.orders.final;
+  // Documents of the order (owner, Nov 2026): its offers, the proformas and the invoices, each opened from here
+  const invoiceDoc = (p: OrderInvoice["purpose"], label: string) => {
+    const x = invoiceOf(p);
+    return { key: p, label, href: x ? `/invoices/${x.id}` : null, note: x ? (x.status === "draft" ? F.docDraft : x.number ?? "") : F.docNone };
+  };
+  const offerDocs = [...new Map(products.filter((l) => l.calc_offer_id || l.offer_id).map((l) => [l.calc_offer_id ?? l.offer_id!, l.calc_offer_id
+    ? { key: l.calc_offer_id, label: fmt(F.docOffer, { no: l.calc_offer_no ?? "" }), href: `/offers/calc/${l.calc_offer_id}`, note: "" }
+    : { key: l.offer_id!, label: F.docOfferOld, href: `/offers/${l.offer_id}`, note: "" }])).values()];
+  const docs: { key: string; label: string; href: string | null; note: string }[] = [
+    ...offerDocs,
+    { key: "proforma", label: twoPayments ? F.docAdvanceProforma : F.docProforma, href: `/orders/${o.id}/proforma`, note: "" },
+    ...(twoPayments
+      ? [invoiceDoc("advance", F.docAdvanceInvoice),
+         { key: "final-proforma", label: F.docFinalProforma, href: final?.done ? `/orders/${o.id}/proforma?final=1` : null, note: final?.done ? "" : F.docFinalPending },
+         invoiceDoc("final", F.docFinalInvoice)]
+      : [invoiceDoc("full", F.docInvoice)]),
+  ];
   // The advance received (VAT included), else its % of the order as ordered
   const advancePaid = c?.deposit_amount != null ? Number(c.deposit_amount) : Math.round(gross * depPct) / 100;
   const finalIssued = invoices.some((x) => (x.purpose === "final" || x.purpose === "full") && x.status === "issued");
@@ -407,34 +424,50 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         <Fold title={T.title}><Empty>{isAdmin ? T.legacyAdmin : T.legacySales}</Empty></Fold>
       )}
 
-      {c && final && paid && o.status !== "cancelled" && (
+      {c && canEdit && o.status !== "cancelled" && (
         <Fold title={F.title}>
-          <p className="m-0 text-sm text-ink-2">{final.done ? F.done : F.pending}</p>
-          {final.done && products.map((l) => {
-            const x = final.lines.find((y) => y.line_id === l.id);
-            return x ? (
-              <div key={l.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
-                <span className="min-w-0 break-words">{productName(l)}</span>
-                <span className="font-semibold">{fmt(F.orderedProduced, { ordered: formatNumber(locale, x.ordered), produced: formatNumber(locale, x.quantity) })}</span>
+          <p className="m-0 text-sm text-ink-2">{F.docsNote}</p>
+          <div className="flex min-w-0 flex-col">
+            {docs.map((x) => (
+              <div key={x.key} className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 border-b border-mist py-1 text-sm last:border-0">
+                {x.href
+                  ? <Link href={x.href} className="min-w-0 font-semibold break-words text-ink">{x.label}</Link>
+                  : <span className="min-w-0 break-words text-ink-2">{x.label}</span>}
+                {x.note && <span className="text-ink-2">{x.note}</span>}
               </div>
-            ) : null;
-          })}
-          {!finalIssued && (
-            <ActionForm action={setOrderTransport} submitLabel={t.common.save} resetOnSuccess={false}>
-              <input type="hidden" name="order_id" value={o.id} />
-              <label className="field"><span>{F.transport}</span>
-                <input name="transport" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={c.transport_amount ?? ""} className="input" />
-              </label>
-              <p className="m-0 text-xs text-ink-2">{F.transportNote}</p>
-            </ActionForm>
-          )}
-          {finalIssued && <Fact label={F.transport}>{c.transport_amount ? money(c.transport_amount) : "—"}</Fact>}
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 xl:grid-cols-1">
-            <Fact label={F.total}>{money(final.totals?.gross ?? 0)}</Fact>
-            {twoPayments && <Fact label={F.advance}>{money(advancePaid)}</Fact>}
-            {twoPayments && <Fact label={F.due}><strong>{money(Math.max(0, Number(final.totals?.gross ?? 0) - advancePaid))}</strong></Fact>}
+            ))}
           </div>
-          {final.done && twoPayments && <Link href={`/orders/${o.id}/proforma?final=1`} className="btn btn-primary self-start">{F.open}</Link>}
+          {final && paid && (
+            <>
+              <p className="m-0 mt-2 text-sm font-semibold">{F.finalTitle}</p>
+              <p className="m-0 text-sm text-ink-2">{final.done ? F.done : F.pending}</p>
+
+            {final.done && products.map((l) => {
+              const x = final.lines.find((y) => y.line_id === l.id);
+              return x ? (
+                <div key={l.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
+                  <span className="min-w-0 break-words">{productName(l)}</span>
+                  <span className="font-semibold">{fmt(F.orderedProduced, { ordered: formatNumber(locale, x.ordered), produced: formatNumber(locale, x.quantity) })}</span>
+                </div>
+              ) : null;
+            })}
+            {!finalIssued && (
+              <ActionForm action={setOrderTransport} submitLabel={t.common.save} resetOnSuccess={false}>
+                <input type="hidden" name="order_id" value={o.id} />
+                <label className="field"><span>{F.transport}</span>
+                  <input name="transport" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={c.transport_amount ?? ""} className="input" />
+                </label>
+                <p className="m-0 text-xs text-ink-2">{F.transportNote}</p>
+              </ActionForm>
+            )}
+            {finalIssued && <Fact label={F.transport}>{c.transport_amount ? money(c.transport_amount) : "—"}</Fact>}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 xl:grid-cols-1">
+              <Fact label={F.total}>{money(final.totals?.gross ?? 0)}</Fact>
+              {twoPayments && <Fact label={F.advance}>{money(advancePaid)}</Fact>}
+              {twoPayments && <Fact label={F.due}><strong>{money(Math.max(0, Number(final.totals?.gross ?? 0) - advancePaid))}</strong></Fact>}
+            </div>
+            </>
+          )}
         </Fold>
       )}
 
