@@ -1598,6 +1598,15 @@ await fails('the advance is entered as an amount', () =>
   as('admin', `select confirm_order_payment($1, 'advance')`, [tkA]), 'Enter the advance received');
 await fails('the advance is less than the order total with VAT (1350 + 20 % = 1620)', () =>
   as('admin', `select confirm_order_payment($1, 'advance', 1620)`, [tkA]), 'less than the order total');
+await ok('a proforma downloaded before the board waits; production sees none', async () => {
+  const p = `${tkA}/00000000-0000-4000-8000-0000000000a1/00000000-0000-4000-8000-0000000000a2-Proforma-X.pdf`;
+  eq((await one('sales', `select order_proforma_task($1, 'advance') as t`, [tkA])).t, null, 'no task yet');
+  eq((await one('sales', `select keep_order_proforma($1, 'advance', $2, 'Proforma-X.pdf', 1000) as old`, [tkA, p])).old.length, 0, 'nothing replaced');
+  eq((await as('sales', 'select kind from order_proforma_pending where order_id = $1', [tkA])).length, 1, 'waiting');
+  eq((await as('production', 'select * from order_proforma_pending')).length, 0, 'production');
+});
+await fails('production cannot keep a proforma', () =>
+  as('production', `select keep_order_proforma($1, 'advance', $2, 'P.pdf', 10)`, [tkA, `${tkA}/00000000-0000-4000-8000-0000000000a1/00000000-0000-4000-8000-0000000000a3-P.pdf`]), 'not allowed');
 await ok('admin confirms an advance of 810 received (VAT included): the board is made in the same step, "Аванс 810,00 €" is done', async () => {
   boardA = (await one('admin', `select confirm_order_payment($1, 'advance', 810) as id`, [tkA])).id;
   const o = await one('admin', 'select status, deposit_pct::int as pct, deposit_amount::float as amount, deposit_received_on, balance_received_on from sales_orders where id = $1', [tkA]);
@@ -1616,6 +1625,25 @@ await ok('admin confirms an advance of 810 received (VAT included): the board is
   eq(pay.map(x => x.template_key).join(','), 'payment_first,invoice_advance,proforma_final,payment_final,invoice_final', 'proforma before the final payment');
   eq((await tk(tkA, 'proforma_final')).title, 'Проформа за финално плащане', 'proforma title');
 });
+await ok('once the board is there, a proforma goes to Payment (advance) or Proforma for the final payment, the latest replaces the earlier', async () => {
+  const first = await tk(tkA, 'payment_first'), fin = await tk(tkA, 'proforma_final');
+  eq((await one('sales', `select order_proforma_task($1, 'advance') as t`, [tkA])).t, first.id, 'advance task');
+  eq((await one('sales', `select order_proforma_task($1, 'final') as t`, [tkA])).t, fin.id, 'final task');
+  const path = (task, n) => `${tkA}/${task}/00000000-0000-4000-8000-00000000000${n}-Proforma-X.pdf`;
+  const old = (await one('sales', `select keep_order_proforma($1, 'advance', $2, 'Proforma-X.pdf', 1200) as old`, [tkA, path(first.id, 5)])).old;
+  eq(old.length, 1, 'the waiting copy is handed back for removal');
+  eq((await as('sales', 'select 1 from order_proforma_pending where order_id = $1', [tkA])).length, 0, 'no longer waiting');
+  const again = (await one('admin', `select keep_order_proforma($1, 'advance', $2, 'Proforma-X.pdf', 1300) as old`, [tkA, path(first.id, 6)])).old;
+  eq(again[0], path(first.id, 5), 'earlier copy replaced');
+  const files = await as('sales', 'select name, size from order_task_files where task_id = $1 and deleted_at is null', [first.id]);
+  eq(files.length, 1, 'one file'); eq(Number(files[0].size), 1300, 'the latest');
+  await as('sales', `select keep_order_proforma($1, 'final', $2, 'Proforma-final-X.pdf', 900)`, [tkA, `${tkA}/${fin.id}/00000000-0000-4000-8000-000000000007-Proforma-final-X.pdf`]);
+  eq((await as('sales', 'select 1 from order_task_files where task_id = $1 and deleted_at is null', [fin.id])).length, 1, 'final proforma on its task');
+});
+await fails('a proforma path of another task is refused', async () => {
+  const first = await tk(tkA, 'payment_first');
+  await as('sales', `select keep_order_proforma($1, 'final', $2, 'P.pdf', 10)`, [tkA, `${tkA}/${first.id}/00000000-0000-4000-8000-000000000008-P.pdf`]);
+}, 'Invalid file path');
 await ok('confirming again never makes a second board', async () => {
   eq((await one('admin', `select confirm_order_payment($1, 'full') as id`, [tkA])).id, boardA, 'same board');
   eq((await as('admin', 'select id from order_task_boards where sales_order_id = $1', [tkA])).length, 1, 'one board');
