@@ -2596,6 +2596,7 @@ export const en = {
     open: "Open",
   },
   dispatch: {
+    noBatches: "Release the finished goods so they can be dispatched: Quality -> order number -> Release",
     title: "Dispatch",
     note: "Choose how much of each batch leaves. Stock goes down and a delivery note is made.",
     date: "Dispatch date",
