@@ -38,6 +38,7 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [sending, setSending] = useState(false);
   const { toast, show, clear } = useToast();
   const o = t.offers;
   const c = t.client;
@@ -102,6 +103,9 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
         )}
         <Link href={`/calculator?copy=${x.id}`} className="btn btn-outline">{o.duplicate}</Link>
         <Link href={`/calculator?open=${x.id}`} className="btn btn-outline">{o.edit}</Link>
+        <button type="button" onClick={() => setSending((v) => !v)} aria-expanded={sending} aria-controls="offer-send" className="btn btn-outline">
+          {sendText.title}
+        </button>
         <button type="button" onClick={pdf} disabled={busy} className="btn btn-primary">
           {busy ? "…" : t.results.downloadPdf}
         </button>
@@ -113,8 +117,11 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
           <button type="button" onClick={remove} className="btn border-red-ink! bg-red-ink! text-white!">{t.delete}</button>
         </div>
       )}
-      <SendDocument info={send} text={sendText} locale={locale}
-        makePdf={async () => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings)} />
+      {/* Opened with the button next to Download PDF */}
+      {sending && (
+        <SendDocument id="offer-send" open onToggle={setSending} info={send} text={sendText} locale={locale}
+          makePdf={async () => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings)} />
+      )}
       {reminder && (
         <SendDocument info={reminder} text={sendText} locale={locale} title={reminderTitle}
           makePdf={async () => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings)} />

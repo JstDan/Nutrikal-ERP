@@ -16,8 +16,12 @@ export type SendInfo = {
 };
 
 /** E-mails a document to the client as a PDF made in the browser, the same file as the download. */
-export function SendDocument({ info, model, makePdf, text, locale, title }: {
+export function SendDocument({ info, model, makePdf, text, locale, title, id, open, onToggle }: {
   info: SendInfo;
+  /** Opened from a button elsewhere (controlled); left out, the card opens on its own heading. */
+  id?: string;
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
   model?: ProformaPdfModel;
   makePdf?: () => Promise<{ base64: string; fileName: string }>;
   text: Dict["send"];
@@ -48,7 +52,7 @@ export function SendDocument({ info, model, makePdf, text, locale, title }: {
   });
 
   return (
-    <details className="card min-w-0 p-5 print:hidden sm:p-6">
+    <details id={id} open={open} onToggle={onToggle && ((e) => onToggle(e.currentTarget.open))} className="card min-w-0 p-5 print:hidden sm:p-6">
       <summary className="flex min-h-11 cursor-pointer items-center gap-x-3 font-bold">
         <span>{title ?? S.title}</span>
         {last && <span className="text-sm font-normal text-ink-2">{fmt(S.lastSent, { date: formatDate(locale, last.created_at.slice(0, 10)), to: last.recipient })}</span>}
