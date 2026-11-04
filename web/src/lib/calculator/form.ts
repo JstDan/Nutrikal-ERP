@@ -2,6 +2,9 @@ import { DEFAULT_COUNTRY } from './countries';
 import { isoDate } from './numbers';
 import { CAPSULE_SIZE, CAPSULE_SIZES, type OfferForm, type Settings } from './types';
 
+/** A new offer is valid for two weeks from its date (owner, Nov 2026; was 30 days). */
+export const OFFER_VALID_DAYS = 14;
+
 /** localStorage key of the unsaved calculator form (survives a page refresh). */
 export const DRAFT_KEY = 'nk.calc.draft';
 /** The draft as last opened, started or saved – tells whether the draft has unsaved changes. */
@@ -30,7 +33,7 @@ export function createEmptyForm(settings: Settings, offerNo: string): OfferForm 
     contact: { name: '', phone: '' },
     receiver: { fullName: '', address: '', city: '', zip: '', country: DEFAULT_COUNTRY, phone: '', email: '' },
     invoice: { companyName: '', identificationNo: '', registrationAddress: '', vatNumber: '' },
-    offer: { offerNo, offerDate: isoDate(0), validUntil: isoDate(30), productName: '' },
+    offer: { offerNo, offerDate: isoDate(0), validUntil: isoDate(OFFER_VALID_DAYS), productName: '' },
     productType: null,
     rows: [],
     capsulesPerDose: '1',
@@ -91,7 +94,7 @@ export function duplicateForm(form: OfferForm, offerNo: string): OfferForm {
     ...structuredClone(form),
     id: null,
     fixedCosts: null,
-    offer: { ...form.offer, offerNo, offerDate: isoDate(0), validUntil: isoDate(30) },
+    offer: { ...form.offer, offerNo, offerDate: isoDate(0), validUntil: isoDate(OFFER_VALID_DAYS) },
   };
 }
 
