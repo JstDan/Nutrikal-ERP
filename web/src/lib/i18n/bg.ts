@@ -2138,7 +2138,6 @@ export const bg: Dict = {
     materials: {
       title: "Суровини",
       search: "Търсене на суровини",
-      showInactive: "Покажи премахнатите",
       name: "Име",
       price: "Цена €/кг (DDP)",
       note: "Регулаторна бележка",

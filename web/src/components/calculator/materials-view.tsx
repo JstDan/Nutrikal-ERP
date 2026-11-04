@@ -8,7 +8,7 @@ import { matchesQuery } from "@/lib/calculator/search";
 import type { RawMaterial } from "@/lib/calculator/types";
 import { fmt, type Locale } from "@/lib/i18n";
 import { Chip, Empty } from "@/components/ui";
-import { CalcTextProvider, Field, NumberField, Toast, Toggle, useCalcText, useToast, type CalcDict } from "./kit";
+import { CalcTextProvider, Field, NumberField, Toast, useCalcText, useToast, type CalcDict } from "./kit";
 
 type Props = {
   t: CalcDict;
@@ -34,15 +34,15 @@ function Materials({ materials, isAdmin }: Props) {
   const m = t.materials;
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [showInactive, setShowInactive] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<RawMaterial | null>(null);
   const { toast, show, clear } = useToast();
 
   const filtered = useMemo(
-    () => materials.filter((x) => (showInactive || x.active) && matchesQuery(x.name, query)),
-    [materials, showInactive, query],
+    // Every material is listed; an inactive one shows its status and can be edited or deleted
+    () => materials.filter((x) => matchesQuery(x.name, query)),
+    [materials, query],
   );
 
   const saveNote = async (x: RawMaterial, note: string | null) => {
@@ -86,7 +86,6 @@ function Materials({ materials, isAdmin }: Props) {
           <label htmlFor="material-filter" className="sr-only">{m.search}</label>
           <input id="material-filter" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={m.search} className="input" />
         </div>
-        <Toggle checked={showInactive} onChange={setShowInactive}>{m.showInactive}</Toggle>
         <span className="text-sm text-ink-2">{fmt(m.count, { n: materials.filter((x) => x.active).length })}</span>
       </div>
 
