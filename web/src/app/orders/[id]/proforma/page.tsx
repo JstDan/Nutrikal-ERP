@@ -75,7 +75,7 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2 print:hidden">
-        <ProformaPdfButton model={model} label={ui.orders.proforma.download} errorText={ui.orders.proforma.downloadFailed} />
+        <ProformaPdfButton model={model} label={ui.orders.proforma.download} errorText={ui.orders.proforma.downloadFailed} keep={{ orderId: id, final }} />
         <PrintButton label={ui.orders.proforma.printNow} variant="outline" />
         <Link href={`/orders/${id}`} className="btn btn-outline">{ui.orders.proforma.back}</Link>
       </div>

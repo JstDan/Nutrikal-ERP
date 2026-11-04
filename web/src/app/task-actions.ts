@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { q, withUser } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import { fmt } from "@/lib/i18n";
-import { newTaskFilePath, putFile, removeFile } from "@/lib/files";
+import { getFile, newTaskFilePath, putFile, removeFile } from "@/lib/files";
 import { TASK_BUCKET } from "@/lib/tasks";
 import { fileExt, TASK_FILE_MAX, TASK_FILE_TYPES } from "@/lib/tasks-shared";
 import type { ActionState } from "@/app/actions";
@@ -116,6 +116,57 @@ export async function uploadTaskFile(fd: FormData): Promise<TaskResult> {
   return { ok: true };
 }
 
+// ------------------------------------------------------------ proformas
+type ProformaKind = "advance" | "final";
+
+/** Stores one proforma file and records it on its task (or as waiting); replaced copies are removed. */
+async function storeProforma(userId: string, orderId: string, kind: ProformaKind, name: string, data: Buffer) {
+  const [{ task }] = await q<{ task: string | null }>(userId, "select order_proforma_task($1, $2) as task", [orderId, kind]);
+  const key = newTaskFilePath(orderId, task ?? crypto.randomUUID(), name);
+  await putFile(TASK_BUCKET, key, data, "application/pdf");
+  try {
+    const [{ old }] = await q<{ old: string[] }>(userId, "select keep_order_proforma($1, $2, $3, $4, $5) as old", [orderId, kind, key, name, data.length]);
+    for (const p of old ?? []) await removeFile(TASK_BUCKET, p).catch(() => {});
+  } catch (e) {
+    await removeFile(TASK_BUCKET, key).catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * A proforma was downloaded (owner, Nov 2026): the same PDF goes to Tasks, Payments & invoices
+ * (the advance one to Payment, the final one to Final payment), or waits there for the board.
+ */
+export async function keepProforma(orderId: string, final: boolean, fileName: string, base64: string): Promise<TaskResult> {
+  const { user } = await getSession();
+  const order = uuid(orderId);
+  const data = Buffer.from(base64, "base64");
+  const name = fileName.replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 120);
+  if (!order || !/\.pdf$/i.test(name) || data.length === 0 || data.length > TASK_FILE_MAX || data.subarray(0, 4).toString() !== "%PDF")
+    return { error: "Invalid file" };
+  try {
+    await storeProforma(user.id, order, final ? "final" : "advance", name, data);
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath(`/orders/${order}`);
+  return { ok: true };
+}
+
+/** Right after the board is made: proformas downloaded before it move to their tasks. */
+async function movePendingProformas(userId: string, orderId: string) {
+  const rows = await q<{ kind: ProformaKind; storage_path: string; name: string }>(userId,
+    "select kind, storage_path, name from order_proforma_pending where order_id = $1", [orderId]);
+  for (const r of rows) {
+    try {
+      const data = await getFile(TASK_BUCKET, r.storage_path);
+      if (data) await storeProforma(userId, orderId, r.kind, r.name, data);
+    } catch (e) {
+      console.error("Proforma to task", e);
+    }
+  }
+}
+
 // ------------------------------------------------------------- payments
 /** Admin: the first payment (the advance received, VAT included, or 100 %) and the board from the chosen template. */
 export async function confirmFirstPayment(_: ActionState, fd: FormData): Promise<ActionState> {
@@ -128,6 +179,7 @@ export async function confirmFirstPayment(_: ActionState, fd: FormData): Promise
   } catch (e) {
     return { error: errorText(e) };
   }
+  if (orderId) await movePendingProformas(user.id, orderId);
   revalidatePath("/", "layout");
   return { ok: true, message: t.tasks.payment.confirmed };
 }

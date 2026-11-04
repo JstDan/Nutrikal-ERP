@@ -241,6 +241,13 @@ export async function downloadProformaPdf(model: ProformaPdfModel): Promise<void
   (await buildProformaPdf(model)).save(model.fileName);
 }
 
+/** Saves the PDF on the device and returns the same file (base64), to keep a copy in the order tasks. */
+export async function downloadProformaPdfKept(model: ProformaPdfModel): Promise<string> {
+  const doc = await buildProformaPdf(model);
+  doc.save(model.fileName);
+  return doc.output('datauristring').split(',')[1];
+}
+
 export async function proformaPdfBase64(model: ProformaPdfModel): Promise<{ base64: string; fileName: string }> {
   const doc = await buildProformaPdf(model);
   return { base64: doc.output('datauristring').split(',')[1], fileName: model.fileName };
