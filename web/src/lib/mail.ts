@@ -12,6 +12,8 @@ type Mail = {
   /** The signature of the sender (HTML, cleaned): the e-mail then also goes as HTML with it at the foot. */
   signature?: string | null;
   attachment?: { filename: string; base64: string };
+  /** A reply in an earlier Gmail conversation (only from the shared mailbox). */
+  thread?: { id: string; inReplyTo: string | null; references: string | null } | null;
 };
 
 /** The text and HTML of a message with its signature (none: text only). */
@@ -34,7 +36,9 @@ export async function sendMail(m: Mail): Promise<void> {
   const route = await mailRoute();
   const body = withSignature(m);
   // From the shared mailbox the replies come back to it, so no Reply-To
-  if (route && route !== "resend") return sendViaGmail({ to: m.to, cc: m.cc, replyTo: null, subject: m.subject, ...body, attachment: m.attachment });
+  if (route && route !== "resend") return sendViaGmail({ to: m.to, cc: m.cc, replyTo: null, subject: m.subject, ...body, attachment: m.attachment,
+    threadId: m.thread?.id ?? null, inReplyTo: m.thread?.inReplyTo ?? null, references: m.thread?.references ?? null,
+  });
   const res = await fetch(process.env.MAIL_API_URL?.trim() || "https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },

@@ -181,6 +181,8 @@ export function mimeMessage(m: {
   /** The same message as HTML (with the sender's signature); the plain text stays as the other part. */
   html?: string;
   attachment?: { filename: string; base64: string };
+  /** A reply in an earlier conversation: the Message-ID it answers and the chain before it. */
+  inReplyTo?: string | null; references?: string | null;
 }): string {
   const head = [
     `From: ${header("Nutrikal")} <${m.from}>`,
@@ -188,6 +190,7 @@ export function mimeMessage(m: {
     ...(m.cc ? [`Cc: ${oneLine(m.cc)}`] : []),
     ...(m.replyTo ? [`Reply-To: ${oneLine(m.replyTo)}`] : []),
     `Subject: ${header(oneLine(m.subject))}`,
+    ...(m.inReplyTo ? [`In-Reply-To: ${oneLine(m.inReplyTo)}`, `References: ${oneLine([m.references, m.inReplyTo].filter(Boolean).join(" "))}`] : []),
     "MIME-Version: 1.0",
   ];
   const part = (type: string, value: string) => [`Content-Type: ${type}; charset=UTF-8`, "Content-Transfer-Encoding: base64", "", lines76(Buffer.from(value, "utf8").toString("base64"))];
@@ -218,17 +221,26 @@ export function mimeMessage(m: {
 }
 
 /** Sends one e-mail from the shared mailbox (Gmail API, media upload up to 35 MB). */
-export async function sendViaGmail(m: Omit<Parameters<typeof mimeMessage>[0], "from">): Promise<void> {
+export async function sendViaGmail(m: Omit<Parameters<typeof mimeMessage>[0], "from"> & { threadId?: string | null }): Promise<void> {
   const from = await connectedMailbox();
   if (!from) throw new Error("Gmail is not connected");
   const raw = mimeMessage({ ...m, from });
+  // Into an earlier conversation: the thread goes along as JSON next to the message (multipart upload)
+  const b = `nk_${crypto.randomUUID()}`;
+  const upload = m.threadId
+    ? {
+        path: "multipart", type: `multipart/related; boundary="${b}"`,
+        body: [`--${b}`, "Content-Type: application/json; charset=UTF-8", "", JSON.stringify({ threadId: m.threadId }),
+          `--${b}`, "Content-Type: message/rfc822", "", raw, `--${b}--`, ""].join("\r\n"),
+      }
+    : { path: "media", type: "message/rfc822", body: raw };
   for (let attempt = 0; attempt < 2; attempt++) {
     const access = await liveAccess();
     if (!access) throw new Error("Gmail is not connected");
-    const res = await fetch(url("https://gmail.googleapis.com", "/upload/gmail/v1/users/me/messages/send?uploadType=media"), {
+    const res = await fetch(url("https://gmail.googleapis.com", `/upload/gmail/v1/users/me/messages/send?uploadType=${upload.path}`), {
       method: "POST",
-      headers: { Authorization: `Bearer ${access}`, "Content-Type": "message/rfc822" },
-      body: raw,
+      headers: { Authorization: `Bearer ${access}`, "Content-Type": upload.type },
+      body: upload.body,
     });
     if (res.ok) return;
     const detail = ((await res.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message ?? "";
@@ -241,6 +253,61 @@ export async function sendViaGmail(m: Omit<Parameters<typeof mimeMessage>[0], "f
     throw new Error(`Gmail ${res.status}: ${detail}`);
   }
 }
+
+// ---------------------------------------------------------------- conversations to reply in
+// A document can go as a reply in an earlier conversation with the client (owner, Nov 2026): the sender
+// picks one of the latest threads with the address. Only subject, date, sender and snippet are shown.
+const THREADS_MAX = 8;
+export type MailThread = { id: string; subject: string; date: string; from: string; snippet: string; count: number };
+export const isThreadId = (v: string) => /^[0-9a-f]{6,32}$/i.test(v);
+
+type ThreadMeta = { id: string; messages?: { internalDate: string; snippet?: string; payload: Part }[] };
+const headerOf = (p: Part, name: string) => p.headers?.find((h) => h.name.toLowerCase() === name)?.value ?? "";
+
+/** The latest conversations of the shared mailbox with one address, newest first. */
+export async function clientThreads(address: string): Promise<MailThread[]> {
+  const a = address.trim().toLowerCase();
+  if (!/^[^\s@"'{}()]+@[^\s@"'{}()]+\.[^\s@"'{}()]+$/.test(a)) return [];
+  const access = await liveAccess();
+  if (!access) throw new Error("Gmail is not connected");
+  try {
+    const query = `{from:${a} to:${a} cc:${a}} -in:chats -in:trash -in:spam`;
+    const list = await gmail<{ threads?: { id: string }[] }>(access, `/threads?q=${encodeURIComponent(query)}&maxResults=${THREADS_MAX}`);
+    const out: MailThread[] = [];
+    for (const { id } of list.threads ?? []) {
+      const t = await gmail<ThreadMeta>(access, `/threads/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`);
+      const msgs = t.messages ?? [];
+      if (!msgs.length) continue;
+      const last = msgs[msgs.length - 1];
+      out.push({
+        id, subject: headerOf(msgs[0].payload, "subject"), from: headerOf(last.payload, "from"),
+        date: new Date(Number(last.internalDate)).toISOString(), snippet: (last.snippet ?? "").slice(0, 160), count: msgs.length,
+      });
+    }
+    return out;
+  } catch (e) {
+    cachedToken = null;
+    throw e;
+  }
+}
+
+/** What a reply in a conversation needs: its subject with Re:, and the headers that tie it to the last message. */
+export async function replyHeaders(threadId: string): Promise<{ subject: string; inReplyTo: string | null; references: string | null }> {
+  const access = await liveAccess();
+  if (!access) throw new Error("Gmail is not connected");
+  const t = await gmail<ThreadMeta>(access,
+    `/threads/${threadId}?format=metadata&metadataHeaders=Subject&metadataHeaders=Message-ID&metadataHeaders=References`);
+  const msgs = t.messages ?? [];
+  if (!msgs.length) throw new Error("Gmail conversation not found");
+  const last = msgs[msgs.length - 1].payload;
+  return {
+    subject: replySubject(headerOf(msgs[0].payload, "subject")),
+    inReplyTo: headerOf(last, "message-id") || null,
+    references: headerOf(last, "references") || null,
+  };
+}
+
+export const replySubject = (s: string) => (/^re:/i.test(s.trim()) ? s.trim() : `Re: ${s.trim()}`);
 
 // ---------------------------------------------------------------- the job
 type State ={ email: string; token_enc: string; sync_from: string; page_token: string | null; chunk_no: number; address_key: string | null };

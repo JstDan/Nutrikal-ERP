@@ -6,8 +6,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { q } from "@/lib/db/engine";
 import { fmt } from "@/lib/i18n";
-import { mailConfigured, sendMail } from "@/lib/mail";
-import { GmailSendScopeError } from "@/lib/gmail";
+import { mailConfigured, mailRoute, sendMail } from "@/lib/mail";
+import { clientThreads, GmailSendScopeError, isThreadId, replyHeaders, type MailThread } from "@/lib/gmail";
 import { getSession } from "@/lib/session";
 import type { ActionState } from "@/app/actions";
 
@@ -60,19 +60,52 @@ export async function closeOfferFollowup(_: ActionState, fd: FormData): Promise<
   return { ok: true, message: t.common.saved };
 }
 
+/** Who sends documents (Admin and Sales, as in begin_document_send) may pick a Gmail conversation to reply in. */
+const maySend = async (userId: string) =>
+  (await q<{ ok: boolean }>(userId, "select (has_role('admin') or has_role('sales')) as ok"))[0]?.ok === true;
+
+/** The latest conversations of the shared mailbox with the address the document goes to. */
+export async function mailThreads(to: string): Promise<{ threads?: MailThread[]; error?: string }> {
+  const { user, t } = await getSession();
+  if (!(await maySend(user.id))) return { threads: [] };
+  const route = await mailRoute();
+  if (!route || route === "resend") return { threads: [] };
+  try {
+    return { threads: await clientThreads(to) };
+  } catch (e) {
+    console.error(e);
+    return { error: e instanceof GmailSendScopeError ? t.send.reconnect : t.send.threadsFailed };
+  }
+}
+
 /** The send is logged before the e-mail leaves, with its result after. */
 export async function sendDocument(fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
   const S = t.send;
   const pdf = str(fd, "pdf");
   const text = str(fd, "body");
-  const subject = str(fd, "subject");
+  let subject = str(fd, "subject");
   const to = str(fd, "to");
   const cc = str(fd, "cc");
+  const threadId = str(fd, "thread_id");
   const fileName = (str(fd, "file_name") ?? "document.pdf").replace(/[\\/:*?"<>|\r\n]+/g, "_");
   if (!(await mailConfigured())) return { error: S.notConfigured };
   // A PDF file starts with %PDF-
   if (!pdf || !pdf.startsWith("JVBERi0") || pdf.length > MAX_PDF_BASE64 || !text || !subject || !to) return { error: S.failed };
+  // A reply in a Gmail conversation keeps the subject of the conversation, else Gmail starts a new one
+  let thread: { id: string; inReplyTo: string | null; references: string | null } | null = null;
+  if (threadId) {
+    const route = await mailRoute();
+    if (!isThreadId(threadId) || !route || route === "resend" || !(await maySend(user.id))) return { error: S.threadsFailed };
+    try {
+      const r = await replyHeaders(threadId);
+      thread = { id: threadId, inReplyTo: r.inReplyTo, references: r.references };
+      subject = r.subject;
+    } catch (e) {
+      console.error(e);
+      return { error: S.threadsFailed };
+    }
+  }
   let id: string;
   try {
     id = (await q<{ id: string }>(user.id, "select begin_document_send($1, $2, $3, $4, $5) as id",
@@ -84,7 +117,7 @@ export async function sendDocument(fd: FormData): Promise<ActionState> {
     // The sender's own signature goes under the message (owner, Nov 2026)
     const [me] = await q<{ email: string | null; signature: string | null }>(user.id,
       "select p.email::text, s.html as signature from profiles p left join mail_signatures s on s.user_id = p.id where p.id = auth.uid()");
-    await sendMail({ to, cc, replyTo: me?.email ?? null, subject, text, signature: me?.signature ?? null, attachment: { filename: fileName, base64: pdf } });
+    await sendMail({ to, cc, replyTo: me?.email ?? null, subject, text, signature: me?.signature ?? null, attachment: { filename: fileName, base64: pdf }, thread });
   } catch (e) {
     await q(user.id, "select finish_document_send($1, $2)", [id, errorText(e)]);
     revalidatePath("/", "layout");

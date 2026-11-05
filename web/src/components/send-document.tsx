@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { sendDocument } from "@/app/shortcut-actions";
+import { mailThreads, sendDocument } from "@/app/shortcut-actions";
+import type { MailThread } from "@/lib/gmail";
+
+const replySubject = (s: string) => (/^re:/i.test(s.trim()) ? s.trim() : `Re: ${s.trim()}`);
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
@@ -35,6 +38,32 @@ export function SendDocument({ info, model, makePdf, text, locale, title, id, op
   const [pending, start] = useTransition();
   const [state, setState] = useState<{ ok?: boolean; error?: string; message?: string }>({});
   const last = info.history.find((h) => h.status === "sent");
+  const [subject, setSubject] = useState(info.subject);
+  // Earlier Gmail conversations with the address: the document can go as a reply in one (owner, Nov 2026)
+  const [threads, setThreads] = useState<{ for: string; list: MailThread[]; loading: boolean; error?: string }>({ for: "", list: [], loading: false });
+  const [threadId, setThreadId] = useState("");
+  const thread = threads.list.find((x) => x.id === threadId);
+  const loadThreads = (to: string) => {
+    const a = to.trim();
+    if (!info.via || a === threads.for) return;
+    setThreadId("");
+    if (!a.includes("@")) return setThreads({ for: a, list: [], loading: false });
+    setThreads({ for: a, list: [], loading: true });
+    mailThreads(a)
+      .then((r) => setThreads((s) => (s.for === a ? { for: a, list: r.threads ?? [], loading: false, error: r.error } : s)))
+      .catch(() => setThreads((s) => (s.for === a ? { for: a, list: [], loading: false, error: S.threadsFailed } : s)));
+  };
+  // Asked only when the card is open: a page with closed cards makes no Gmail requests
+  const openedOnce = useRef(false);
+  const opened = () => {
+    if (openedOnce.current) return;
+    openedOnce.current = true;
+    loadThreads(info.to);
+  };
+  useEffect(() => {
+    if (open) opened();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const submit = (fd: FormData) => start(async () => {
     setState({});
@@ -54,7 +83,7 @@ export function SendDocument({ info, model, makePdf, text, locale, title, id, op
   });
 
   return (
-    <details id={id} open={open} onToggle={onToggle && ((e) => onToggle(e.currentTarget.open))} className="card min-w-0 p-5 print:hidden sm:p-6">
+    <details id={id} open={open} onToggle={(e) => { const o = e.currentTarget.open; if (o) opened(); onToggle?.(o); }} className="card min-w-0 p-5 print:hidden sm:p-6">
       <summary className="flex min-h-11 cursor-pointer items-center gap-x-3 font-bold">
         <span>{title ?? S.title}</span>
         {last && <span className="text-sm font-normal text-ink-2">{fmt(S.lastSent, { date: formatDate(locale, last.created_at.slice(0, 10)), to: last.recipient })}</span>}
@@ -65,10 +94,30 @@ export function SendDocument({ info, model, makePdf, text, locale, title, id, op
           <input type="hidden" name="kind" value={info.kind} />
           <input type="hidden" name="ref_id" value={info.refId} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="field"><span>{S.to} *</span><input name="to" type="email" required defaultValue={info.to} className="input" /></label>
+            <label className="field"><span>{S.to} *</span><input name="to" type="email" required defaultValue={info.to} onBlur={(e) => loadThreads(e.currentTarget.value)} className="input" /></label>
             <label className="field"><span>{S.cc}</span><input name="cc" type="email" className="input" /></label>
           </div>
-          <label className="field"><span>{S.subject} *</span><input name="subject" required defaultValue={info.subject} className="input" /></label>
+          {info.via && (
+            <label className="field">
+              <span>{S.thread}</span>
+              <select name="thread_id" value={threadId} onChange={(e) => setThreadId(e.currentTarget.value)} className="input" disabled={threads.loading}>
+                <option value="">{threads.loading ? S.threadsLoading : S.newThread}</option>
+                {threads.list.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {`${x.subject || S.noSubject} · ${formatDate(locale, x.date.slice(0, 10))} · ${x.from.replace(/\s*<[^>]*>/, "") || x.from}${x.count > 1 ? ` (${x.count})` : ""}`}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-normal text-ink-2">
+                {threads.error ?? (thread ? S.threadNote : !threads.loading && threads.for.includes("@") && threads.list.length === 0 ? S.noThreads : S.threadHint)}
+              </span>
+              {thread?.snippet && <span className="min-w-0 break-words text-xs font-normal text-ink-2">„{thread.snippet}“</span>}
+            </label>
+          )}
+          <label className="field"><span>{S.subject} *</span>
+            <input name="subject" required value={thread ? replySubject(thread.subject) : subject} readOnly={!!thread}
+              onChange={(e) => setSubject(e.currentTarget.value)} className="input read-only:bg-mist" />
+          </label>
           <label className="field"><span>{S.body} *</span><textarea name="body" required rows={7} defaultValue={info.body} className="input" /></label>
           <p className="m-0 text-xs text-ink-2">
             {info.signed ? S.signatureAdded : S.noSignature}{" "}
