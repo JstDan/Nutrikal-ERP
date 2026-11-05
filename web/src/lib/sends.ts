@@ -29,8 +29,10 @@ export async function loadSendInfo(userId: string, userName: string, kind: SendK
   const M = getDict(o.lang).send.mail;
   const values = { title: o.title, no: o.no, lower: o.title.toLocaleLowerCase(o.lang), name: userName };
   const route = await mailRoute();
+  // With a signature the message ends at the greeting: the name and contacts come with the signature
+  const signed = (await q<{ one: number }>(userId, "select 1 as one from mail_signatures where user_id = auth.uid()")).length > 0;
   return {
-    kind, refId, history, configured: route !== null, via: route && route !== "resend" ? route.gmail : null, to: o.to ?? client ?? direct ?? "",
-    subject: fmt(M.subject, values), body: fmt(M.body, values),
+    kind, refId, history, configured: route !== null, via: route && route !== "resend" ? route.gmail : null, signed, to: o.to ?? client ?? direct ?? "",
+    subject: fmt(M.subject, values), body: fmt(signed ? M.bodySigned : M.body, values),
   };
 }

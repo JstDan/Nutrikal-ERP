@@ -146,7 +146,12 @@ export async function AppShell({ children }: { children: ReactNode }) {
             )}
             {!local && (
               <form action={signOut} className="flex min-w-0 items-center gap-3">
-                <span className="hidden min-w-0 truncate text-xs font-semibold text-ink-2 lg:block">{developer?.name ?? user.name}</span>
+                {isProduction ? (
+                  <span className="hidden min-w-0 truncate text-xs font-semibold text-ink-2 lg:block">{developer?.name ?? user.name}</span>
+                ) : (
+                  // One's own e-mail signature is kept under one's name
+                  <a href="/signature" title={t.signature.title} className="hidden min-h-11 min-w-0 items-center truncate text-xs font-semibold text-ink-2 hover:text-ink lg:flex">{developer?.name ?? user.name}</a>
+                )}
                 <button type="submit" className="btn btn-outline">{t.topbar.signOut}</button>
               </form>
             )}

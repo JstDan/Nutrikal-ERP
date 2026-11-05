@@ -3715,5 +3715,32 @@ await ok('shortage: Доставки counts a request only up to the real shorta
   eq((await one('production', 'select purchase_request_still_short($1) as q', [extra.id])).q, null, 'production gets nothing');
 });
 
+console.log('\nE-mail signatures');
+const meId = async (who) => (await one(who, 'select auth.uid() as id')).id;
+await ok('signature: the designer saves their own; only they and Admin read it', async () => {
+  const designer = await meId('designer');
+  await as('designer', 'select mail_signature_set($1, $2)', [designer, '<p>Teo</p>']);
+  eq((await one('designer', 'select html from mail_signatures where user_id = $1', [designer])).html, '<p>Teo</p>', 'own');
+  eq((await as('admin', 'select 1 from mail_signatures where user_id = $1', [designer])).length, 1, 'admin reads');
+  eq((await as('sales', 'select 1 from mail_signatures where user_id = $1', [designer])).length, 0, 'sales does not');
+  eq((await as('production', 'select 1 from mail_signatures')).length, 0, 'production does not');
+  eq((await as('clientA', 'select 1 from mail_signatures')).length, 0, 'client does not');
+});
+await ok("signature: Admin saves anyone's; an empty one removes it", async () => {
+  const sales = await meId('sales');
+  await as('admin', 'select mail_signature_set($1, $2)', [sales, '<b>Sales</b>']);
+  eq((await one('sales', 'select html from mail_signatures where user_id = $1', [sales])).html, '<b>Sales</b>', 'set by admin');
+  await as('sales', 'select mail_signature_set($1, $2)', [sales, '  ']);
+  eq((await as('admin', 'select 1 from mail_signatures where user_id = $1', [sales])).length, 0, 'removed');
+});
+await fails("signature: sales cannot set someone else's", async () =>
+  as('sales', 'select mail_signature_set($1, $2)', [await meId('admin'), '<p>x</p>']), 'not allowed');
+await fails('signature: production cannot set one', async () =>
+  as('production', 'select mail_signature_set($1, $2)', [await meId('production'), '<p>x</p>']), 'not allowed');
+await fails('signature: a client cannot set one', async () =>
+  as('clientA', 'select mail_signature_set($1, $2)', [await meId('clientA'), '<p>x</p>']), 'not allowed');
+await fails('signature: nobody writes the table directly', async () =>
+  as('admin', `insert into mail_signatures (user_id, html) values (auth.uid(), 'x')`), 'permission denied');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

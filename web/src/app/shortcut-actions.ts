@@ -81,8 +81,10 @@ export async function sendDocument(fd: FormData): Promise<ActionState> {
     return { error: errorText(e) };
   }
   try {
-    const [me] = await q<{ email: string | null }>(user.id, "select email::text from profiles where id = auth.uid()");
-    await sendMail({ to, cc, replyTo: me?.email ?? null, subject, text, attachment: { filename: fileName, base64: pdf } });
+    // The sender's own signature goes under the message (owner, Nov 2026)
+    const [me] = await q<{ email: string | null; signature: string | null }>(user.id,
+      "select p.email::text, s.html as signature from profiles p left join mail_signatures s on s.user_id = p.id where p.id = auth.uid()");
+    await sendMail({ to, cc, replyTo: me?.email ?? null, subject, text, signature: me?.signature ?? null, attachment: { filename: fileName, base64: pdf } });
   } catch (e) {
     await q(user.id, "select finish_document_send($1, $2)", [id, errorText(e)]);
     revalidatePath("/", "layout");

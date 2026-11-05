@@ -178,6 +178,8 @@ const oneLine = (v: string) => v.replace(/[\r\n]+/g, " ").trim();
 
 export function mimeMessage(m: {
   from: string; to: string; cc: string | null; replyTo: string | null; subject: string; text: string;
+  /** The same message as HTML (with the sender's signature); the plain text stays as the other part. */
+  html?: string;
   attachment?: { filename: string; base64: string };
 }): string {
   const head = [
@@ -188,7 +190,12 @@ export function mimeMessage(m: {
     `Subject: ${header(oneLine(m.subject))}`,
     "MIME-Version: 1.0",
   ];
-  const text = ["Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", lines76(Buffer.from(m.text, "utf8").toString("base64"))];
+  const part = (type: string, value: string) => [`Content-Type: ${type}; charset=UTF-8`, "Content-Transfer-Encoding: base64", "", lines76(Buffer.from(value, "utf8").toString("base64"))];
+  let text = part("text/plain", m.text);
+  if (m.html) {
+    const alt = `nk_${crypto.randomUUID()}`;
+    text = [`Content-Type: multipart/alternative; boundary="${alt}"`, "", `--${alt}`, ...text, `--${alt}`, ...part("text/html", m.html), `--${alt}--`, ""];
+  }
   if (!m.attachment) return [...head, ...text].join("\r\n");
   const boundary = `nk_${crypto.randomUUID()}`;
   const name = oneLine(m.attachment.filename).replace(/"/g, "");

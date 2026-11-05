@@ -5,16 +5,22 @@ import { Card, Chip, PageHeader } from "@/components/ui";
 import { SettingsTabs } from "@/components/settings-tabs";
 import { createUser, resetUserPassword, saveUser } from "@/app/user-actions";
 import { supabaseConfigured } from "@/lib/supabase/server";
+import { SignatureEditor } from "@/components/signature-editor";
+import { cleanSignature } from "@/lib/signature";
+import { fmt } from "@/lib/i18n";
 
 const ROLES = ["admin", "sales", "bookkeeper", "accountant", "designer", "production"] as const;
-type Row = { id: string; full_name: string; email: string; role: string; is_active: boolean; can_see_purchase_prices: boolean };
+type Row = { id: string; full_name: string; email: string; role: string; is_active: boolean; can_see_purchase_prices: boolean; signature: string | null };
 
 /** Who works in the system. Accounts are created here, with a first password to pass on. */
 export default async function UsersPage() {
   const { user, t } = await requireRole("admin");
   const S = t.adminSettings;
   const U = S.users;
-  const rows = await q<Row>(user.id, "select id, full_name, email::text, role::text, is_active, can_see_purchase_prices from profiles where role <> 'client' order by is_active desc, lower(full_name)");
+  const rows = await q<Row>(user.id,
+    `select p.id, p.full_name, p.email::text, p.role::text, p.is_active, p.can_see_purchase_prices, s.html as signature
+       from profiles p left join mail_signatures s on s.user_id = p.id
+      where p.role <> 'client' order by p.is_active desc, lower(p.full_name)`);
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,6 +52,12 @@ export default async function UsersPage() {
                     <input type="checkbox" name="active" defaultChecked={x.is_active} className="h-5 w-5 shrink-0 accent-ink" /><span>{U.active}</span>
                   </label>
                 </ActionForm>
+                {/* Admin can fill in anyone's e-mail signature; Production sends no documents */}
+                {x.role !== "production" && (
+                  <div className="border-t border-mist pt-3">
+                    <SignatureEditor userId={x.id} initial={cleanSignature(x.signature ?? "")} text={t.signature} label={fmt(t.signature.ofUser, { name: x.full_name })} />
+                  </div>
+                )}
                 {supabaseConfigured() && (
                   <ActionForm action={resetUserPassword} submitLabel={U.resetPassword} resetOnSuccess={false}>
                     <input type="hidden" name="id" value={x.id} />
