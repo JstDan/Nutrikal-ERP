@@ -117,7 +117,8 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
     const w = 52;
     doc.addImage(brandLogo.dataUrl, 'PNG', 15, 22 - (w * brandLogo.height / brandLogo.width) / 2, w, w * brandLogo.height / brandLogo.width);
   }
-  write(m.title.toUpperCase(), pageW - 15, 25, { bold: true, size: 20, color: WHITE, align: 'right' });
+  // A long title (the final proforma) is set smaller, clear of the logo; the others stay at 20
+  write(m.title.toUpperCase(), pageW - 15, 25, { bold: true, size: m.title.length > 24 ? 14 : 20, color: WHITE, align: 'right' });
   (m.contact ?? []).forEach((line, i) => write(line, 15, 30.5 + i * 4, { size: 8, color: WHITE }));
 
   let y = SHEET + 2;
