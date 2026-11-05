@@ -3173,6 +3173,22 @@ await ok('a client reads its own proforma and delivery note, without internal no
   if (JSON.stringify(n).includes('ВЪТРЕШНО')) throw new Error('note leaked');
   eq((await one('clientB', 'select portal_delivery($1) as d', [did])).d, null, 'other client');
 });
+await ok('final proforma: the advance base comes from the advance invoice, only for the team and the own client', async () => {
+  eq((await one('admin', 'select order_advance_base($1)::text as b', [ordA])).b, null, 'no advance invoice yet');
+  await db.exec('reset role');
+  const inv = (await db.query(`insert into invoices (kind, purpose, order_id, client_id, currency, vat_pct, seller, buyer)
+    values ('invoice', 'advance', $1, $2, 'EUR', 20, '{}', '{}') returning id`, [ordA, coA])).rows[0].id;
+  await db.query(`insert into invoice_lines (invoice_id, sort_order, kind, description, quantity, unit_price, amount) values ($1, 0, 'advance', 'Аванс', 1, 1143, 1143)`, [inv]);
+  eq((await one('sales', 'select order_advance_base($1)::text as b', [ordA])).b, '1143.00', 'draft: sum of its lines');
+  eq((await one('clientA', 'select order_advance_base($1)::text as b', [ordA])).b, '1143.00', 'own client');
+  eq((await one('clientB', 'select order_advance_base($1)::text as b', [ordA])).b, null, 'other client');
+  eq((await one('production', 'select order_advance_base($1)::text as b', [ordA])).b, null, 'Production');
+  await db.exec('reset role');
+  await db.query(`update invoices set subtotal = 1142.5 where id = $1`, [inv]);
+  eq((await one('admin', 'select order_advance_base($1)::text as b', [ordA])).b, '1142.50', 'subtotal wins');
+  await db.exec('reset role');
+  await db.query(`delete from invoices where id = $1`, [inv]);
+});
 await ok('a change of status waits for the e-mail, only for an account of that client', async () => {
   await db.exec('reset role');
   await db.query(`alter table sales_orders disable trigger user`);

@@ -43,7 +43,7 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
     const rate = Number((await tx.query<{ r: string }>("select order_vat_rate($1)::text as r", [id])).rows[0]?.r ?? 20);
     if (final) {
       const pay = (await tx.query<Pay>(
-        `select transport_amount::text, deposit_amount::text, deposit_pct::text, order_production_done(id) as done
+        `select transport_amount::text, deposit_amount::text, deposit_pct::text, order_advance_base(id)::text as advance_base, order_production_done(id) as done
            from sales_orders where id = $1`, [id])).rows[0];
       if (!pay.done) return null;
       const lines = (await tx.query<Line>(

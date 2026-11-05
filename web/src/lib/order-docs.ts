@@ -9,7 +9,11 @@ type Buyer = {
 };
 export type ProformaDoc = Buyer & { code: string; currency: string; vat_pct: string | null; created_at: string; customer_ref: string | null; notes?: string | null; locale: Locale };
 export type ProformaLine = { kind: string; description: string; quantity: number; unit_price: string; offer_no: string | null; capsules: number | null; ordered?: number };
-export type ProformaPay = { transport_amount: string | null; deposit_amount: string | null; deposit_pct: string | null };
+export type ProformaPay = {
+  transport_amount: string | null; deposit_amount: string | null; deposit_pct: string | null;
+  /** The tax base of the advance invoice (order_advance_base), null when there is none yet. */
+  advance_base?: string | null;
+};
 export type DocSeller = {
   company_name: string; company_id: string; company_vat: string; company_address: string; company_email: string; company_phone: string;
   bank_name?: string; bank_iban?: string; bank_bic?: string; logo_data_url: string | null;
@@ -22,7 +26,10 @@ const chrome = (l: Locale, s: DocSeller | undefined) =>
 const address = (x: Buyer) => x.client_registration
   || [x.client_address, [x.client_postal, x.client_city].filter(Boolean).join(" "), x.client_country].filter(Boolean).join(", ");
 
-/** With pay given it is the final proforma: the units made, transport, less the advance received. */
+/**
+ * With pay given it is the final proforma: the units made, transport and, as the last line, the advance at its
+ * tax base (without VAT); the totals are counted after it (owner, Nov 2026).
+ */
 export function proformaModel(o: ProformaDoc, lines: ProformaLine[], s: DocSeller | undefined, opts: { vatPct: number; pay: ProformaPay | null; ordered: number }): ProformaPdfModel {
   const { vatPct, pay, ordered } = opts;
   const final = !!pay;
@@ -31,11 +38,11 @@ export function proformaModel(o: ProformaDoc, lines: ProformaLine[], s: DocSelle
   const money = (n: number | string) => formatPrice(l, n, o.currency);
   const describe = (x: ProformaLine) => (x.capsules ? fmt(P.withCapsules, { name: x.description, n: formatNumber(l, x.capsules) }) : x.description);
   const transport = Number(pay?.transport_amount ?? 0);
-  const subtotal = lines.reduce((a, x) => a + Math.round(Number(x.unit_price) * x.quantity * 100) / 100, 0) + transport;
+  // The base of the advance invoice; before there is one, the advance % of the order as ordered (also without VAT)
+  const advance = !pay ? 0 : pay.advance_base != null ? Number(pay.advance_base)
+    : Math.round(ordered * Number(pay.deposit_pct ?? 0)) / 100;
+  const subtotal = lines.reduce((a, x) => a + Math.round(Number(x.unit_price) * x.quantity * 100) / 100, 0) + transport - advance;
   const vat = Math.round(subtotal * vatPct) / 100;
-  // The advance received (VAT included), else its % of the order as ordered
-  const advance = !pay ? 0 : pay.deposit_amount != null ? Number(pay.deposit_amount)
-    : Math.round(ordered * (1 + vatPct / 100) * Number(pay.deposit_pct ?? 0)) / 100;
 
   return {
     fileName: final ? `Proforma-final-${o.code}.pdf` : `Proforma-${o.code}.pdf`,
@@ -65,12 +72,12 @@ export function proformaModel(o: ProformaDoc, lines: ProformaLine[], s: DocSelle
       quantity: formatNumber(l, x.quantity),
       unitPrice: money(Number(x.unit_price)),
       amount: money(Number(x.unit_price) * x.quantity),
-    })).concat(transport > 0 ? [{ description: P.transport, note: null, quantity: formatNumber(l, 1), unitPrice: money(transport), amount: money(transport) }] : []),
+    })).concat(transport > 0 ? [{ description: P.transport, note: null, quantity: formatNumber(l, 1), unitPrice: money(transport), amount: money(transport) }] : [])
+      .concat(advance > 0 ? [{ description: P.downPayment, note: null, quantity: formatNumber(l, 1), unitPrice: money(-advance), amount: money(-advance) }] : []),
     totals: [
       [P.subtotal, money(subtotal)],
       [fmt(P.vat, { pct: formatNumber(l, vatPct) }), money(vat)],
       [P.total, money(subtotal + vat)],
-      ...(final ? [[P.lessAdvance, money(-advance)], [P.due, money(Math.max(0, subtotal + vat - advance))]] as [string, string][] : []),
     ],
     vatNote: vatPct === 0 ? P.zeroVat : null,
     bank: {

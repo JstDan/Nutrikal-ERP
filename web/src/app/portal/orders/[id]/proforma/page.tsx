@@ -18,9 +18,11 @@ export default async function PortalProforma({ params, searchParams }: PageProps
   const final = (await searchParams).final === "1";
   const { user, t } = await getPortalSession();
   if (!validId(id)) notFound();
-  const [row] = await q<{ d: Row | null }>(user.id, "select portal_proforma($1) as d", [id]);
+  const [row] = await q<{ d: Row | null; advance_base: string | null }>(user.id,
+    "select portal_proforma($1) as d, order_advance_base($1)::text as advance_base", [id]);
   const x = row?.d;
   if (!x || (final && !x.done)) notFound();
+  x.pay = { ...x.pay, advance_base: row.advance_base };
   const lines: ProformaLine[] = final
     ? x.lines.map((l) => ({ ...l, ordered: l.quantity, quantity: l.kind !== "service" && l.produced != null ? l.produced : l.quantity }))
     : x.lines;
