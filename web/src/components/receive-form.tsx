@@ -14,7 +14,7 @@ export async function ReceiveForm({ user, t }: { user: SessionUser; t: Dict }) {
       "select id, sku, name, name_bg, base_unit, type from items where is_active and type <> 'finished_good' order by type, name",
     )).rows,
     locations: (await tx.query<{ id: string; name: string; type: string }>(
-      "select id, name, type from locations where is_active and type <> 'virtual' order by (type = 'quarantine') desc, name",
+      "select id, name, type from locations where is_active and type <> 'virtual' order by (code = 'G-PRO') desc, name",
     )).rows,
     suppliers: (await tx.query<{ id: string; name: string }>("select id, name from suppliers where is_active order by name")).rows,
   }));

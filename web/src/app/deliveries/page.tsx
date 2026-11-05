@@ -99,7 +99,7 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
             "select id, sku, name, name_bg, base_unit, type from items where is_active and type <> 'finished_good' order by type, name")).rows,
           suppliers: (await tx.query<Opt>("select id, name from suppliers where is_active order by name")).rows,
           locations: (await tx.query<Opt>(
-            "select id, name from locations where is_active and type <> 'virtual' order by (code = 'NK-WH') desc, (type = 'quarantine') desc, name")).rows,
+            "select id, name from locations where is_active and type <> 'virtual' order by (code = 'G-PRO') desc, name")).rows,
           request: requestId
             ? (await tx.query<Req>(
                 "select id, code, item_id, quantity::text, needed_by::text from purchase_requests where id = $1 and status in ('open', 'ordered')",

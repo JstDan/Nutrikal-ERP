@@ -50,7 +50,7 @@ export async function createPurchaseOrder(_: ActionState, fd: FormData): Promise
   let id: string;
   try {
     id = (await q<{ id: string }>(user.id,
-      "insert into purchase_orders (supplier_id, location_id) values ($1, (select id from locations where code = 'NK-WH')) returning id",
+      "insert into purchase_orders (supplier_id, location_id) values ($1, (select id from locations where code = 'G-PRO')) returning id",
       [str(fd, "supplier_id")]))[0].id;
   } catch (e) {
     return { error: errorText(e) };

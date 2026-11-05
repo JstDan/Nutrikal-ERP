@@ -182,7 +182,7 @@ console.log('\nReceiving, QC and stock');
 let lot;
 await ok('production receives a lot at the production facility, released on receipt', async () => {
   const r = await one('production', `select receive_lot($1, $2, 100, null, 'SUP-778', current_date - 30) as id`,
-                      [item.id, L['PF-QUAR']]);
+                      [item.id, L['G-PRO']]);
   lot = (await db.query('select * from lots where id = $1', [r.id])).rows[0];
   eq(lot.lot_number, 'LOT-000001', 'lot number');
   eq(lot.qc_status, 'released', 'status');
@@ -193,12 +193,20 @@ await ok('expiry is calculated from the 24-month shelf life', async () => {
 });
 await fails('production cannot receive into the Nutrikal warehouse', () =>
   as('production', 'select receive_lot($1, $2, 5)', [item.id, L['NK-WH']]), 'production locations');
-await ok('transfer quarantine → raw materials store', async () => {
-  await as('production', 'select transfer_stock($1, $2, $3, 100)', [lot.id, L['PF-QUAR'], L['PF-RM']]);
+await ok('four stores: Nutrikal, Production (G-PRO), Finished goods, Fulfilment; the old production sub-stores are closed', async () => {
+  const r = (await db.query(`select code, name, is_partner_visible as p from locations where is_active order by code`)).rows;
+  eq(r.map((x) => `${x.code}:${x.name}:${x.p}`).join('|'),
+     'FG:Готова продукция:true|FULFIL:Фулфилмънт:false|G-PRO:Производство (G-PRO):true|NK-WH:Nutrikal:false', 'stores');
 });
+await ok('production moves stock between its stores (G-PRO ↔ finished goods)', async () => {
+  await as('production', 'select transfer_stock($1, $2, $3, 100)', [lot.id, L['G-PRO'], L['FG']]);
+  await as('production', 'select transfer_stock($1, $2, $3, 100)', [lot.id, L['FG'], L['G-PRO']]);
+});
+await fails('production cannot move stock to the fulfilment centre', () =>
+  as('production', 'select transfer_stock($1, $2, $3, 1)', [lot.id, L['G-PRO'], L['FULFIL']]), 'production locations');
 await fails('consumption of a lot admin put in quarantine is blocked', async () => {
   await as('admin', `select set_lot_qc_status($1, 'quarantine', 'Under review')`, [lot.id]);
-  await as('production', `select post_stock_movement('consumption', $1, $2, 10)`, [lot.id, L['PF-RM']]);
+  await as('production', `select post_stock_movement('consumption', $1, $2, 10)`, [lot.id, L['G-PRO']]);
 }, 'not released');
 await fails('production cannot release a lot (Admin only)', () =>
   as('production', `select set_lot_qc_status($1, 'released')`, [lot.id]), 'not allowed');
@@ -211,16 +219,16 @@ await ok('admin releases the lot; decision is recorded', async () => {
 });
 await ok('production consumes 30 kg in production', async () => {
   await as('production', `select post_stock_movement('consumption', $1, $2, 30, null, $3, 'MO-TEST')`,
-           [lot.id, L['PF-RM'], project.id]);
+           [lot.id, L['G-PRO'], project.id]);
 });
 await fails('negative stock is refused', () =>
-  as('production', `select post_stock_movement('consumption', $1, $2, 80)`, [lot.id, L['PF-RM']]), 'insufficient');
+  as('production', `select post_stock_movement('consumption', $1, $2, 80)`, [lot.id, L['G-PRO']]), 'insufficient');
 await fails('production cannot post adjustments as movements', () =>
-  as('production', `select post_stock_movement('adjustment', $1, $2, -2, 'spill')`, [lot.id, L['PF-RM']]), 'count_stock');
+  as('production', `select post_stock_movement('adjustment', $1, $2, -2, 'spill')`, [lot.id, L['G-PRO']]), 'count_stock');
 await fails('production corrects stock only with a reason', () =>
-  as('production', 'select count_stock($1, $2, 68)', [lot.id, L['PF-RM']]), 'reason');
+  as('production', 'select count_stock($1, $2, 68)', [lot.id, L['G-PRO']]), 'reason');
 await ok('production corrects stock directly: a ledger adjustment, every admin notified', async () => {
-  const d = await one('production', `select count_stock($1, $2, 68, 'Spillage during weighing') as d`, [lot.id, L['PF-RM']]);
+  const d = await one('production', `select count_stock($1, $2, 68, 'Spillage during weighing') as d`, [lot.id, L['G-PRO']]);
   eq(Number(d.d), -2, 'difference');
   const m = await one('admin', `select quantity, reason from stock_movements where lot_id = $1 and type = 'adjustment'`, [lot.id]);
   eq(Number(m.quantity), -2, 'movement'); eq(m.reason, 'Spillage during weighing', 'reason');
@@ -233,7 +241,7 @@ await ok('production corrects stock directly: a ledger adjustment, every admin n
   eq((await as('production', 'select id from production_corrections')).length, 0, 'history is for Admin');
 });
 await fails('production no longer files correction requests', () =>
-  as('production', `select request_stock_adjustment($1, $2, -1, 'x')`, [lot.id, L['PF-RM']]), 'count_stock');
+  as('production', `select request_stock_adjustment($1, $2, -1, 'x')`, [lot.id, L['G-PRO']]), 'count_stock');
 await ok('a user marks only their own notifications read', async () => {
   eq((await one('production', 'select mark_notifications_read() as n')).n, 0, 'none for production');
   eq((await one('admin', 'select mark_notifications_read() as n')).n, 1, 'admin');
@@ -243,11 +251,11 @@ await fails('nobody writes notifications directly', () =>
   as('admin', `insert into notifications (user_id, kind) values ($1, 'mo_sent')`, [U.admin]), 'row-level security');
 await fails('direct writes to the ledger are refused', () =>
   as('admin', `insert into stock_movements (type, lot_id, location_id, quantity) values ('receipt', $1, $2, 5)`,
-     [lot.id, L['PF-RM']]), 'row-level security');
+     [lot.id, L['G-PRO']]), 'row-level security');
 await fails('ledger rows cannot be edited, even by the database owner', () =>
   db.query('update stock_movements set quantity = 1000'), 'cannot be changed');
 await fails('sales cannot post stock movements', () =>
-  as('sales', `select post_stock_movement('waste', $1, $2, 1)`, [lot.id, L['PF-RM']]), 'not allowed');
+  as('sales', `select post_stock_movement('waste', $1, $2, 1)`, [lot.id, L['G-PRO']]), 'not allowed');
 
 console.log('\nReservations and availability');
 await ok('sales reserves 60 kg for the project', async () => {
@@ -278,7 +286,7 @@ await ok('expired lot shows in expiring_lots; not counted as usable', async () =
 });
 await ok('production sees only production lots and locations', async () => {
   eq((await as('production', 'select id from lots')).length, 1, 'lots');
-  eq((await as('production', 'select code from locations')).length, 5, 'locations');
+  eq((await as('production', 'select code from locations')).length, 2, 'locations');
   eq((await as('production', 'select * from stock_movements where location_id = $1', [L['NK-WH']])).length, 0, 'warehouse moves');
 });
 
@@ -575,10 +583,10 @@ const lots = {};
 await ok('stock arrives at the production; everything gets reserved; sent to the production', async () => {
   const old = await one('admin', `select id from stock_reservations where project_id = $1 and manufacturing_order_id is null and status = 'active'`, [project.id]);
   await as('sales', `select close_reservation($1, 'released')`, [old.id]);
-  lots.mcc = await recv(mcc.id, 2, 'PF-RM');
-  lots.novel = await recv(novelPending.id, 2, 'PF-RM');
-  lots.caps = await recv(caps.id, 70000, 'PF-PACK');
-  lots.jar = await recv(jar.id, 1100, 'PF-PACK');
+  lots.mcc = await recv(mcc.id, 2, 'G-PRO');
+  lots.novel = await recv(novelPending.id, 2, 'G-PRO');
+  lots.caps = await recv(caps.id, 70000, 'G-PRO');
+  lots.jar = await recv(jar.id, 1100, 'G-PRO');
   await as('admin', 'select reserve_mo_materials($1)', [mo.id]);
   eq((await one('admin', 'select status from sales_orders where id = $1', [order.id])).status, 'confirmed', 'order before');
   await as('admin', 'select release_mo($1)', [mo.id]);
@@ -624,19 +632,19 @@ await ok('production sees supplier, quantity, purchase price and date of its mat
 await fails('sales cannot see the material sources', () =>
   as('sales', 'select * from mo_material_sources($1)', [mo.id]), 'not allowed');
 const consumption = () => JSON.stringify([
-  { lot_id: lot.id, location_id: L['PF-RM'], quantity: 22.5 },
-  { lot_id: lots.mcc, location_id: L['PF-RM'], quantity: 2 },
-  { lot_id: lots.novel, location_id: L['PF-RM'], quantity: 1.5 },
-  { lot_id: lots.caps, location_id: L['PF-PACK'], quantity: 60000 },
-  { lot_id: lots.jar, location_id: L['PF-PACK'], quantity: 1000 },
+  { lot_id: lot.id, location_id: L['G-PRO'], quantity: 22.5 },
+  { lot_id: lots.mcc, location_id: L['G-PRO'], quantity: 2 },
+  { lot_id: lots.novel, location_id: L['G-PRO'], quantity: 1.5 },
+  { lot_id: lots.caps, location_id: L['G-PRO'], quantity: 60000 },
+  { lot_id: lots.jar, location_id: L['G-PRO'], quantity: 1000 },
 ]);
 await fails('production cannot consume stock in the Nutrikal warehouse', () =>
   as('production', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb)`,
      [mo.id, JSON.stringify([{ lot_id: mccWh, location_id: L['NK-WH'], quantity: 1 }])]), 'production locations');
 await fails('a lot that is not a material of the order is refused', async () => {
-  const other = await one('admin', 'select receive_lot($1, $2, 5) as id', [novelBlocked.id, L['PF-QUAR']]);
+  const other = await one('admin', 'select receive_lot($1, $2, 5) as id', [novelBlocked.id, L['G-PRO']]);
   await as('production', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb)`,
-           [mo.id, JSON.stringify([{ lot_id: other.id, location_id: L['PF-QUAR'], quantity: 1 }])]);
+           [mo.id, JSON.stringify([{ lot_id: other.id, location_id: L['G-PRO'], quantity: 1 }])]);
 }, 'not one of the materials');
 const reserved = async () => Object.fromEntries((await as('admin',
   `select i.sku, sum(r.quantity) as q from stock_reservations r join items i on i.id = r.item_id
@@ -646,7 +654,7 @@ await fails('a usage more than 5 % away from the reservation needs a reason', as
   reservedBefore = await reserved();
   await as('production', `select complete_production($1, 'B-24001', 990, current_date, $2::jsonb)`, [mo.id, consumption()]);
 }, 'enter a reason');
-await ok('production reports the batch: lots used, finished lot in quarantine in PF-QUAR', async () => {
+await ok('production reports the batch: lots used, finished lot in quarantine in FG', async () => {
   const before = Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [lot.id])).q);
   const items = await as('admin', 'select item_id from mo_material_requirements($1)', [mo.id]);
   const reasons = JSON.stringify(items.map(i => ({ item_id: i.item_id, reason: 'Less needed' })));
@@ -655,7 +663,7 @@ await ok('production reports the batch: lots used, finished lot in quarantine in
   const fg = await one('admin', 'select l.lot_number, l.qc_status, i.type, i.sku from lots l join items i on i.id = l.item_id where l.id = $1', [r.lot]);
   eq(fg.lot_number, 'B-24001', 'batch number'); eq(fg.qc_status, 'quarantine', 'QC'); eq(fg.type, 'finished_good', 'item type');
   eq(fg.sku, 'FG-NK-P-0001', 'finished goods item');
-  eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1 and location_id = $2', [r.lot, L['PF-QUAR']])).q), 990, 'made in quarantine');
+  eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1 and location_id = $2', [r.lot, L['FG']])).q), 990, 'made in quarantine');
   eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [lot.id])).q), before - 22.5, 'magnesium used');
   const m = await one('admin', 'select status, batch_number, produced_quantity from manufacturing_orders where id = $1', [mo.id]);
   eq(m.status, 'completed', 'status'); eq(m.produced_quantity, 990, 'quantity');
@@ -1415,8 +1423,8 @@ await fails('sales cannot count stock', () =>
 await fails('production cannot count stock in the Nutrikal warehouse', () =>
   as('production', 'select count_stock($1, $2, 1)', [edLot.id, L['NK-WH']]), 'production locations');
 await ok('a production count is posted directly, also in quarantine', async () => {
-  const pl = await one('production', `select receive_lot($1, $2, 10) as id`, [edItem.id, L['PF-QUAR']]);
-  eq(Number((await one('production', `select count_stock($1, $2, 9, 'Bag torn') as d`, [pl.id, L['PF-QUAR']])).d), -1, 'difference');
+  const pl = await one('production', `select receive_lot($1, $2, 10) as id`, [edItem.id, L['G-PRO']]);
+  eq(Number((await one('production', `select count_stock($1, $2, 9, 'Bag torn') as d`, [pl.id, L['G-PRO']])).d), -1, 'difference');
   eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1', [pl.id])).q), 9, 'balance');
 });
 await fails('a count below zero is refused', () =>
@@ -1429,7 +1437,7 @@ const attach = (user, deliveryId, name = 'w.jpg') =>
       [deliveryId, deliveryId + '/' + name]);
 await ok('admin orders a delivery to production; production is notified', async () => {
   await db.query('update company_settings set require_waybill_photo = true');
-  pd = await one('admin', `select create_expected_delivery($1, 40, $2, current_date + 3, 9.9, 'PO-9', $3) as id`, [edItem.id, edSupplier.id, L['PF-RM']]);
+  pd = await one('admin', `select create_expected_delivery($1, 40, $2, current_date + 3, 9.9, 'PO-9', $3) as id`, [edItem.id, edSupplier.id, L['G-PRO']]);
   pdWh = await one('admin', `select create_expected_delivery($1, 5, $2, current_date + 3, 9.9, null, $3) as id`, [edItem.id, edSupplier.id, L['NK-WH']]);
   const n = await as('production', `select params, link from notifications where kind = 'delivery_ordered'`);
   eq(n.length, 1, 'one notification (not for the warehouse delivery)'); eq(Number(n[0].params.quantity), 40, 'quantity');
@@ -1455,15 +1463,15 @@ await fails('a file path must start with its delivery', () =>
   as('production', `insert into delivery_attachments (delivery_id, storage_path) values ($1, 'other/x.jpg')`, [pd.id]), 'path_chk');
 await fails('production cannot receive a warehouse delivery', () =>
   as('production', 'select receive_expected_delivery($1, null, 5)', [pdWh.id]), 'not found');
-await ok('production receives with a photo: released lot in PF-QUAR at the delivery price, admins notified', async () => {
+await ok('production receives with a photo: released lot in G-PRO at the delivery price, admins notified', async () => {
   await attach('production', pd.id, 'a.jpg');
   await attach('production', pd.id, 'b.jpg');
-  pdLot = await one('production', `select receive_expected_delivery($1, $2, 40, 'SUP-PF-1', null, current_date + 400) as id`, [pd.id, L['PF-RM']]);
+  pdLot = await one('production', `select receive_expected_delivery($1, $2, 40, 'SUP-PF-1', null, current_date + 400) as id`, [pd.id, L['G-PRO']]);
   const l = await one('admin', `select l.qc_status, l.supplier_lot, l.expires_on = current_date + 400 as exp, c.unit_cost
                                   from lots l left join lot_costs c on c.lot_id = l.id where l.id = $1`, [pdLot.id]);
   eq(l.qc_status, 'released', 'released'); eq(l.supplier_lot, 'SUP-PF-1', 'supplier lot'); eq(l.exp, true, 'expiry');
   eq(Number(l.unit_cost), 9.9, 'cost');
-  eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1 and location_id = $2', [pdLot.id, L['PF-QUAR']])).q), 40, 'in PF-QUAR');
+  eq(Number((await one('admin', 'select sum(quantity) as q from stock_movements where lot_id = $1 and location_id = $2', [pdLot.id, L['G-PRO']])).q), 40, 'in G-PRO');
   eq((await one('admin', 'select status from expected_deliveries where id = $1', [pd.id])).status, 'received', 'received');
   eq((await as('admin', 'select id from delivery_attachments where lot_id = $1', [pdLot.id])).length, 2, 'photos on the lot');
   const n = await one('admin', `select params from notifications where kind = 'delivery_received'`);
@@ -2180,7 +2188,7 @@ await fails('nobody writes the impersonation log directly',
 
 console.log('\nBatch release, dispatch, traceability, credit and debit notes');
 const fgLot = (await one('admin', 'select finished_lot_id as id from manufacturing_orders where id = $1', [mo.id])).id;
-const qcDispatch = () => JSON.stringify([{ lot_id: fgLot, location_id: L['PF-QUAR'], quantity: 500 }]);
+const qcDispatch = () => JSON.stringify([{ lot_id: fgLot, location_id: L['FG'], quantity: 500 }]);
 await fails('blocking a lot needs a reason', () =>
   as('admin', `select set_lot_qc_status($1, 'rejected')`, [lot.id]), 'reason');
 await fails('sales cannot block a lot', () =>
@@ -2193,12 +2201,12 @@ await fails('a batch without any shelf life needs an expiry date', async () => {
   const v = await one('sales', 'select id from formula_versions where formula_id = $1', [f.id]);
   await as('sales', 'insert into formula_lines (version_id, item_id, amount) values ($1, $2, 100)', [v.id, mcc.id]);
   await as('admin', 'select approve_formula_version($1)', [v.id]);
-  const l = await recv(mcc.id, 5, 'PF-RM');
+  const l = await recv(mcc.id, 5, 'G-PRO');
   const m = await one('admin', 'insert into manufacturing_orders (formula_version_id, project_id, quantity) values ($1, $2, 10) returning id', [v.id, p.id]);
   await as('admin', 'select schedule_mo($1, current_date + 1)', [m.id]);
   await as('admin', 'select release_mo($1)', [m.id]);
   await as('production', 'select start_production($1)', [m.id]);
-  globalThis.nkExpiry = { m: m.id, usage: JSON.stringify([{ lot_id: l, location_id: L['PF-RM'], quantity: 0.03 }]) };
+  globalThis.nkExpiry = { m: m.id, usage: JSON.stringify([{ lot_id: l, location_id: L['G-PRO'], quantity: 0.03 }]) };
   await as('production', `select complete_production($1, 'B-EXP', 10, current_date, $2::jsonb)`, [m.id, globalThis.nkExpiry.usage]);
 }, 'expiry date');
 await ok('the expiry date entered with the batch is used; the batch waits in quarantine', async () => {
@@ -2235,16 +2243,16 @@ await ok('the COA can be attached after the release', async () => {
   eq((await one('admin', 'select qc_status from lots where id = $1', [fgLot])).qc_status, 'released', 'still released');
 });
 await ok('the rest can follow on a second delivery note', async () => {
-  const lines = JSON.stringify([{ lot_id: fgLot, location_id: L['PF-QUAR'], quantity: 90 }]);
+  const lines = JSON.stringify([{ lot_id: fgLot, location_id: L['FG'], quantity: 90 }]);
   await as('admin', 'select dispatch_order($1, current_date, $2::jsonb)', [order.id, lines]);
   eq((await as('sales', 'select id from dispatches where order_id = $1', [order.id])).length, 2, 'notes');
 });
 await fails('no more than is in stock', () =>
   as('admin', 'select dispatch_order($1, current_date, $2::jsonb)',
-     [order.id, JSON.stringify([{ lot_id: fgLot, location_id: L['PF-QUAR'], quantity: 401 }])]), 'insufficient');
+     [order.id, JSON.stringify([{ lot_id: fgLot, location_id: L['FG'], quantity: 401 }])]), 'insufficient');
 await fails('a batch of another order is refused', () =>
   as('admin', 'select dispatch_order($1, current_date, $2::jsonb)',
-     [order.id, JSON.stringify([{ lot_id: lot.id, location_id: L['PF-RM'], quantity: 1 }])]), 'does not belong');
+     [order.id, JSON.stringify([{ lot_id: lot.id, location_id: L['G-PRO'], quantity: 1 }])]), 'does not belong');
 await ok('trace back: a finished batch lists the raw material lots', async () => {
   const rows = await as('sales', 'select lot_id, mo_code, quantity from trace_back($1)', [fgLot]);
   const m = rows.find(r => r.lot_id === lot.id);
@@ -3444,7 +3452,7 @@ await ok('e2e: Admin releases the batches; the order is ready; the final payment
 await ok('e2e: advance invoice, dispatch with a delivery note, final invoice, order closed', async () => {
   const adv = (await one('sales', `select create_order_invoice($1, 'advance') as id`, [e2e.order])).id;
   await as('sales', 'select issue_invoice($1, next_invoice_number(), current_date)', [adv]);
-  const lines = JSON.stringify(e2e.lots.map((x) => ({ lot_id: x.lot, location_id: L['PF-QUAR'], quantity: x.qty })));
+  const lines = JSON.stringify(e2e.lots.map((x) => ({ lot_id: x.lot, location_id: L['FG'], quantity: x.qty })));
   await as('bookkeeper', 'select dispatch_order($1, current_date, $2::jsonb)', [e2e.order, lines]);
   eq((await one('sales', 'select status from sales_orders where id = $1', [e2e.order])).status, 'dispatched', 'dispatched');
   const fin = (await one('sales', 'select create_order_invoice($1) as id', [e2e.order])).id;

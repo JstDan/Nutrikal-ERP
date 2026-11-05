@@ -109,13 +109,13 @@ export async function seedDemo(db: PGlite) {
   }
 
   // ------------------------------------------------------------ stock
-  const PF_QUAR = await loc("PF-QUAR"), PF_RM = await loc("PF-RM"), PF_PACK = await loc("PF-PACK");
+  // One production store (G-PRO) since Nov 2026
+  const PF_QUAR = await loc("G-PRO"), PF_RM = PF_QUAR, PF_PACK = PF_QUAR;
 
   async function receiveRelease(user: string, itemId: string, qty: number, toLoc: string, supplierLot: string, mfgDaysAgo: number, expires?: string) {
     const lot = (await as<{ id: string }>(user, `select receive_lot($1, $2, $3, $4, $5, current_date - $6::int, $7::date) as id`,
-      [itemId, PF_QUAR, qty, sup, supplierLot, mfgDaysAgo, expires ?? null]))[0].id;
+      [itemId, toLoc, qty, sup, supplierLot, mfgDaysAgo, expires ?? null]))[0].id;
     await as(ADMIN, `select set_lot_qc_status($1, 'released', 'COA checked against specification')`, [lot]);
-    await as(PRODUCTION, `select transfer_stock($1, $2, $3, $4)`, [lot, PF_QUAR, toLoc, qty]);
     return lot;
   }
 

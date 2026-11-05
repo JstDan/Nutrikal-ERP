@@ -54,7 +54,7 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
     const edit = isAdmin && po.status === "draft"
       ? {
           locations: (await tx.query<Opt>(
-            "select id, name from locations where is_active and type <> 'virtual' order by (code = 'NK-WH') desc, name")).rows,
+            "select id, name from locations where is_active and type <> 'virtual' order by (code = 'G-PRO') desc, name")).rows,
           items: (await tx.query<ItemOpt>(
             "select id, sku, name, name_bg, type from items where is_active and type in ('raw_material', 'excipient', 'packaging') order by type, name")).rows,
         }

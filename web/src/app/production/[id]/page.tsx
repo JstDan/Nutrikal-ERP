@@ -91,7 +91,7 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
       ? {
           suppliers: (await tx.query<Opt>("select id, name from suppliers where is_active order by name")).rows,
           locations: (await tx.query<Opt & { code: string }>(
-            "select id, code, name from locations where is_active and type <> 'virtual' order by (code = 'PF-QUAR') desc, is_partner_visible desc, name")).rows,
+            "select id, code, name from locations where is_active and type <> 'virtual' order by (code = 'G-PRO') desc, is_partner_visible desc, name")).rows,
         }
       : undefined;
     return { mo, reqs, packaging, packOptions, projects, usage, sources, tolerance, orderForm };
