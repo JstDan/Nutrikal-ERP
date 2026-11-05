@@ -2265,6 +2265,18 @@ export const en = {
     invalid: "Nothing usable is left in this signature: paste it again from Gmail.",
     ofUser: "E-mail signature of {name}",
   },
+  productionScreen: {
+    title: "Production screen",
+    subtitle: "The app exactly as the partner facility sees it, from your own sign-in.",
+    accounts: "Production accounts",
+    note: "You see their pages, menus and data and can do what they do: confirm dates, record usage, report batches, write in their chats.",
+    warning: "These are real actions: they are saved as done by the production account, and each opening of the screen is logged.",
+    none: "There is no active production account. Make one under Settings > Users.",
+    open: "Open as {name}",
+    banner: "{admin}, you are in the Production screen as {name}.",
+    bannerNote: "Everything you do here is saved as done by Production.",
+    close: "Back to Admin",
+  },
   catalog: {
     conversations: "Conversations",
     conversationsNote: "What visitors asked Nutri AI on the open catalog. Those without an enquiry are deleted after 12 months.",

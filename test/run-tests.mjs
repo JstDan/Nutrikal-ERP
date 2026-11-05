@@ -3758,5 +3758,21 @@ await fails('signature: a client cannot set one', async () =>
 await fails('signature: nobody writes the table directly', async () =>
   as('admin', `insert into mail_signatures (user_id, html) values (auth.uid(), 'x')`), 'permission denied');
 
+// ---------------------------------------------------------------- Production screen (Admin works as the production account)
+await ok('production screen: Admin gets the production accounts only, and the opening is logged', async () => {
+  const rows = await as('admin', 'select id, role::text from production_screen_targets()');
+  eq(rows.length > 0 && rows.every((r) => r.role === 'production'), true, 'production only');
+  eq(rows.some((r) => r.id === U.production), true, 'the partner account');
+  await db.exec('reset role');
+  const before = Number((await db.query('select count(*) as n from impersonation_log where target_id = $1', [U.production])).rows[0].n);
+  await as('admin', 'select start_production_screen($1)', [U.production]);
+  await db.exec('reset role');
+  const after = Number((await db.query('select count(*) as n from impersonation_log where target_id = $1', [U.production])).rows[0].n);
+  eq(after, before + 1, 'logged');
+});
+await fails('production screen: Sales cannot open it', () => as('sales', 'select * from production_screen_targets()'), 'Only Admin');
+await fails('production screen: Production cannot open it', () => as('production', 'select * from production_screen_targets()'), 'Only Admin');
+await fails('production screen: Admin cannot act as a non-production account', () => as('admin', 'select start_production_screen($1)', [U.sales]), 'Not a production account');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

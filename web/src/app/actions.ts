@@ -4,7 +4,7 @@ import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { q, withUser } from "@/lib/db/engine";
-import { ACT_AS_COOKIE, getLocale, getOptionalSession, getSession, homeFor } from "@/lib/session";
+import { ACT_AS_COOKIE, PRODUCTION_SCREEN_COOKIE, getLocale, getOptionalSession, getSession, homeFor } from "@/lib/session";
 import { supabaseConfigured, supabaseServer } from "@/lib/supabase/server";
 import { DEFAULT_LOCALE, fmt, formatQty, getDict, isLocale, LOCALE_COOKIE } from "@/lib/i18n";
 import type { Role } from "@/lib/db/demo-users";
@@ -62,6 +62,7 @@ export async function signIn(_: ActionState, fd: FormData): Promise<ActionState>
   }
   jar.delete(LOCALE_COOKIE); // use the user's saved language
   jar.delete(ACT_AS_COOKIE);
+  jar.delete(PRODUCTION_SCREEN_COOKIE);
   if (profile.role === "developer") {
     // a developer starts as the first user in the list; log it like any switch
     await q(data.user.id, "select start_impersonation(id) from impersonation_targets() limit 1");
@@ -93,6 +94,7 @@ export async function setNewPassword(_: ActionState, fd: FormData): Promise<Acti
 export async function signOut() {
   if (supabaseConfigured()) await (await supabaseServer()).auth.signOut();
   (await cookies()).delete(ACT_AS_COOKIE);
+  (await cookies()).delete(PRODUCTION_SCREEN_COOKIE);
   redirect("/login");
 }
 
@@ -104,6 +106,22 @@ export async function actAs(fd: FormData) {
   await q(developer.id, "select start_impersonation($1)", [target.id]);
   (await cookies()).set(ACT_AS_COOKIE, target.id, { path: "/", maxAge: YEAR, sameSite: "lax", httpOnly: true });
   redirect(homeFor(target.role));
+}
+
+/** Admin: open the Production screen as a production account (checked and logged in the database). */
+export async function openProductionScreen(fd: FormData) {
+  const { user, screen } = await getSession();
+  const target = str(fd, "user");
+  if (screen || user.access !== "admin" || !target) return;
+  await q(user.id, "select start_production_screen($1)", [target]);
+  (await cookies()).set(PRODUCTION_SCREEN_COOKIE, target, { path: "/", maxAge: 60 * 60 * 12, sameSite: "lax", httpOnly: true });
+  redirect("/factory");
+}
+
+/** Back to Admin's own screen. */
+export async function closeProductionScreen() {
+  (await cookies()).delete(PRODUCTION_SCREEN_COOKIE);
+  redirect("/production/screen");
 }
 
 // -------------------------------------------------------------------- CRM

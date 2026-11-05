@@ -9,6 +9,10 @@ import { isPortalLocale, PORTAL_LOCALE_COOKIE, portalDict } from "./i18n/portal"
 
 /** Developer only: the user they act as. Checked against the database on every request. */
 export const ACT_AS_COOKIE = "nk_act_as";
+/** Admin only: the production account whose screen Admin has open (Production > Production screen). Checked on every request. */
+export const PRODUCTION_SCREEN_COOKIE = "nk_production_screen";
+/** Set while Admin works in the Production screen: who Admin really is. */
+export type ProductionScreen = { adminId: string; adminName: string };
 
 /**
  * role is what the screens work with: the accountant reads what Admin reads, the bookkeeper works like Sales.
@@ -64,9 +68,20 @@ export const getOptionalSession = cache(async () => {
     if (target) user = { id: target.id, name: target.full_name, ...rights(target.role), locale: target.locale, initials: initials(target.full_name) };
   }
 
+  // Admin in the Production screen: every page and action runs as the production account
+  let screen: ProductionScreen | null = null;
+  const screenId = jar.get(PRODUCTION_SCREEN_COOKIE)?.value;
+  if (screenId && user.access === "admin" && !developer) {
+    const [target] = await q<ActAsTarget>(user.id, "select id, full_name, email, role, locale from production_screen_targets() where id = $1", [screenId]);
+    if (target) {
+      screen = { adminId: user.id, adminName: user.name };
+      user = { id: target.id, name: target.full_name, ...rights(target.role), locale: user.locale, initials: initials(target.full_name) };
+    }
+  }
+
   const locale: Locale = isLocale(cookieLocale) ? cookieLocale : developer ? profile.locale : user.locale;
   user.locale = locale;
-  return { user, developer, locale, t: getDict(locale), local: !supabaseConfigured() };
+  return { user, developer, screen, locale, t: getDict(locale), local: !supabaseConfigured() };
 });
 
 /** Like getOptionalSession, but sends signed-out visitors to the sign-in page. */

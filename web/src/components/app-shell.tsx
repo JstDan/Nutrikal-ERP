@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { THEME_COOKIE } from "@/lib/theme";
 import { q } from "@/lib/db/engine";
-import { setLocale, signOut } from "@/app/actions";
+import { closeProductionScreen, setLocale, signOut } from "@/app/actions";
 import { getSession } from "@/lib/session";
-import { LOCALES } from "@/lib/i18n";
+import { fmt, LOCALES } from "@/lib/i18n";
 import { SideNav, type NavGroup } from "./side-nav";
 import { ActAsSwitch } from "./act-as-switch";
 import { ThemeSwitch } from "./theme-switch";
@@ -16,7 +16,7 @@ import { ChatDrawer } from "./chat-drawer";
 import { aiConfigured, aiModels } from "@/lib/ai/gateway";
 
 export async function AppShell({ children }: { children: ReactNode }) {
-  const { user, developer, locale, t, local } = await getSession();
+  const { user, developer, screen, locale, t, local } = await getSession();
   const isProduction = user.role === "production";
   const savedTheme = (await cookies()).get(THEME_COOKIE)?.value;
   const soon = (n: number) => `${t.common.phase} ${n}`;
@@ -67,6 +67,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
             { href: "/formulas", label: t.nav.formulas },
             ...(user.role === "admin" ? [{ href: "/quality", label: t.nav.quality, also: ["/traceability"] }] : []),
             ...(user.role === "sales" ? [{ href: "/traceability", label: t.nav.traceability }] : []),
+            ...(user.access === "admin" ? [{ href: "/production/screen", label: t.productionScreen.title }] : []),
           ],
         },
         {
@@ -147,7 +148,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
             {!local && (
               <form action={signOut} className="flex min-w-0 items-center gap-3">
                 {isProduction ? (
-                  <span className="hidden min-w-0 truncate text-xs font-semibold text-ink-2 lg:block">{developer?.name ?? user.name}</span>
+                  <span className="hidden min-w-0 truncate text-xs font-semibold text-ink-2 lg:block">{developer?.name ?? screen?.adminName ?? user.name}</span>
                 ) : (
                   // One's own e-mail signature is kept under one's name
                   <a href="/signature" title={t.signature.title} className="hidden min-h-11 min-w-0 items-center truncate text-xs font-semibold text-ink-2 hover:text-ink lg:flex">{developer?.name ?? user.name}</a>
@@ -157,6 +158,15 @@ export async function AppShell({ children }: { children: ReactNode }) {
             )}
           </div>
         </header>
+        {screen && (
+          // Admin in the Production screen: always in sight, with the way back
+          <form action={closeProductionScreen} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-ink px-4 py-2 text-sm text-white print:hidden sm:px-8">
+            <span className="min-w-0 flex-[1_1_280px] break-words">
+              <strong>{fmt(t.productionScreen.banner, { admin: screen.adminName, name: user.name })}</strong> {t.productionScreen.bannerNote}
+            </span>
+            <button type="submit" className="btn btn-outline border-white bg-white text-ink">{t.productionScreen.close}</button>
+          </form>
+        )}
         <main className="w-full max-w-[1360px] px-4 py-6 sm:px-8 sm:py-8">
           {user.readOnly && <p className="m-0 mb-4 text-sm font-semibold text-ink-2 print:hidden">{t.common.readOnlyNote}</p>}
           {children}
