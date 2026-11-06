@@ -6,11 +6,12 @@ import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import { boardOp, deleteBoardPart, type BoardOp } from "@/app/board-actions";
 import {
-  BOARD_HEX, between, DUE_TONE, dueState, initials, LABEL_HEX,
+  BOARD_HEX, between, DUE_TONE, dueState, LABEL_HEX,
   type BoardCard, type BoardData, type BoardLabel, type BoardList,
 } from "@/lib/boards-shared";
 import { CardPanel } from "@/components/boards/card-panel";
 import { BoardSettings } from "@/components/boards/board-settings";
+import { UserAvatar } from "@/components/user-avatar";
 
 type T = Dict["boards"];
 export type FileText = { tooBig: string; type: string; limits: string };
@@ -125,10 +126,7 @@ export function BoardView({ data, locale, userId, isAdmin, canEdit, T, today, in
         <div className="flex flex-wrap items-center gap-2">
           <span className="flex -space-x-1.5" aria-label={fmt(T.onCard, { names: data.members.map((m) => m.full_name).join(", ") })}>
             {data.members.slice(0, 8).map((m) => (
-              <span key={m.user_id} title={m.full_name} aria-hidden="true"
-                className="flex h-8 w-8 items-center justify-center rounded-full border-2 bg-ink text-[11px] font-bold text-white" style={{ borderColor: hex }}>
-                {initials(m.full_name)}
-              </span>
+              <UserAvatar key={m.user_id} id={m.user_id} size={32} title={m.full_name} className="border-2 border-white" />
             ))}
           </span>
           {canEdit && <button type="button" className="btn bg-white text-ink" onClick={() => setSettings(true)}>{T.settings}</button>}
@@ -176,7 +174,7 @@ export function BoardView({ data, locale, userId, isAdmin, canEdit, T, today, in
                 {visible.map((c) => (
                   <li key={c.id}>
                     <CardFace card={c} T={T} locale={locale} today={today} canEdit={canEdit} pending={pending}
-                      labels={labelsOf(c)} people={peopleOf(c).map((id) => names.get(id) ?? "—")}
+                      labels={labelsOf(c)} people={peopleOf(c).map((id) => ({ id, name: names.get(id) ?? "—" }))}
                       checks={data.checklist.filter((i) => i.card_id === c.id)}
                       comments={data.comments.filter((m) => m.card_id === c.id).length}
                       files={data.files.filter((f) => f.card_id === c.id).length}
@@ -319,7 +317,7 @@ function ListHead({ list, count, T, canEdit, first, last, pending, onDragStart, 
 
 function CardFace({ card: c, T, locale, today, canEdit, pending, labels, people, checks, comments, files, lists, first, last,
   onOpen, onDone, onDragStart, onDragEnd, onDrop, onShift, onMove }: {
-  card: BoardCard; T: T; locale: Locale; today: string; canEdit: boolean; pending: boolean; labels: BoardLabel[]; people: string[];
+  card: BoardCard; T: T; locale: Locale; today: string; canEdit: boolean; pending: boolean; labels: BoardLabel[]; people: { id: string; name: string }[];
   checks: { done: boolean }[]; comments: number; files: number; lists: BoardList[]; first: boolean; last: boolean;
   onOpen: () => void; onDone: () => void; onDragStart: (e: DragEvent) => void; onDragEnd: () => void; onDrop: (e: DragEvent) => void;
   onShift: (d: -1 | 1) => void; onMove: (list: string) => void;
@@ -373,11 +371,8 @@ function CardFace({ card: c, T, locale, today, canEdit, pending, labels, people,
         {comments > 0 && <span aria-label={fmt(T.commentsCount, { n: comments })}>💬 {comments}</span>}
         {files > 0 && <span aria-label={fmt(T.filesCount, { n: files })}>📎 {files}</span>}
         {people.length > 0 && (
-          <span className="ml-auto flex -space-x-1" aria-label={fmt(T.onCard, { names: people.join(", ") })}>
-            {people.slice(0, 4).map((p, i) => (
-              <span key={i} aria-hidden="true" title={p}
-                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-ink text-[10px] font-bold text-white">{initials(p)}</span>
-            ))}
+          <span className="ml-auto flex -space-x-1" aria-label={fmt(T.onCard, { names: people.map((p) => p.name).join(", ") })}>
+            {people.slice(0, 4).map((p) => <UserAvatar key={p.id} id={p.id} size={28} title={p.name} className="border-2 border-white" />)}
           </span>
         )}
         {canEdit && (

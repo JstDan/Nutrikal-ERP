@@ -10,6 +10,7 @@ import { ActAsSwitch } from "./act-as-switch";
 import { ThemeSwitch } from "./theme-switch";
 import { MobileMenu } from "./mobile-menu";
 import { Wordmark } from "./logo";
+import { UserAvatar } from "./user-avatar";
 import { NotificationBell } from "./notification-bell";
 import { AssistantPanel } from "./assistant-panel";
 import { ChatDrawer } from "./chat-drawer";
@@ -158,7 +159,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
                   <span className="hidden min-w-0 truncate text-xs font-semibold text-ink-2 lg:block">{developer?.name ?? screen?.adminName ?? user.name}</span>
                 ) : (
                   // One's own e-mail signature is kept under one's name
-                  <a href="/signature" title={t.signature.title} className="hidden min-h-11 min-w-0 items-center truncate text-xs font-semibold text-ink-2 hover:text-ink lg:flex">{developer?.name ?? user.name}</a>
+                  <a href="/signature" title={t.signature.title} className="hidden min-h-11 min-w-0 items-center gap-2 truncate text-xs font-semibold text-ink-2 hover:text-ink lg:flex"><UserAvatar id={user.id} size={28} />{developer?.name ?? user.name}</a>
                 )}
                 <button type="submit" className="btn btn-outline">{t.topbar.signOut}</button>
               </form>

@@ -3015,6 +3015,17 @@ export const bg: Dict = {
       task: "Задача по поръчка",
     },
   },
+  avatar: {
+    profile: "Моят профил",
+    title: "Снимка",
+    upload: "Качи снимка",
+    change: "Смени снимката",
+    remove: "Премахни",
+    hint: "Всяка снимка: изрязва се на квадрат и се смалява. Показва се в чата, в таблата и до името ти.",
+    saving: "Запазвам…",
+    invalid: "Избери снимка JPG, PNG или WebP.",
+    ofUser: "Снимка на {name}",
+  },
   enums: {
     moStatus: {
       simulation: "Симулация",

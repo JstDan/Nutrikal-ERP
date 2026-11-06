@@ -66,6 +66,8 @@ export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale
   const shown = channels.filter((c) => !find || c.name.toLowerCase().includes(find));
   const shared = shown.filter((c) => c.kind !== "direct");
   const talks = shown.filter((c) => c.kind === "direct");
+  // A direct talk is named after the other person: their picture
+  const personId = (name: string) => everyone.find((p) => p.full_name === name)?.id;
   const others = everyone.filter((p) => (!find || p.full_name.toLowerCase().includes(find)) && !talks.some((c) => c.name === p.full_name));
   const badge = (n: number) => n > 0 && (
     <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red px-1 text-[11px] font-bold text-[#fff]">{n > 99 ? "99+" : n}</span>
@@ -87,7 +89,7 @@ export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale
           className="chat-drawer fixed inset-0 z-50 flex flex-col bg-paper text-ink shadow-2xl print:hidden sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] sm:border-l sm:border-line">
           <header className="flex min-h-14 items-center gap-2 border-b border-line px-3">
             {room && <button type="button" onClick={back} aria-label={C.back} className="grid h-11 w-9 shrink-0 place-items-center rounded-lg text-xl hover:bg-mist">←</button>}
-            {room?.channel.kind === "direct" && <Avatar name={room.channel.name} id={room.channel.id} size={30} />}
+            {room?.channel.kind === "direct" && <Avatar name={room.channel.name} id={personId(room.channel.name) ?? room.channel.id} photo={!!personId(room.channel.name)} size={30} />}
             <h2 className="m-0 min-w-0 flex-1 truncate text-base font-bold">{room ? `${room.channel.kind === "direct" ? "" : "# "}${room.channel.name}` : C.title}</h2>
             <Link href={room ? `/chat?c=${room.channel.id}` : "/chat"} onClick={() => setOpen(false)} className="flex min-h-11 items-center rounded-sm px-2 text-xs font-semibold text-ink-2 no-underline hover:text-ink">{C.fullView}</Link>
             <button type="button" onClick={close} aria-label={C.close} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-xl text-ink-2 hover:bg-mist hover:text-ink">×</button>
@@ -120,7 +122,7 @@ export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale
                   <span className="label px-2 pb-1">{C.direct}</span>
                   {talks.map((c) => (
                     <button key={c.id} type="button" onClick={() => enter(c)} className="flex min-h-11 min-w-0 items-center gap-3 rounded-xl px-2 text-left text-sm hover:bg-mist">
-                      <Avatar name={c.name} id={c.id} />
+                      <Avatar name={c.name} id={personId(c.name) ?? c.id} photo={!!personId(c.name)} />
                       <span className={`min-w-0 flex-1 truncate ${Number(c.unread) ? "font-bold" : ""}`}>{c.name}</span>
                       {badge(Number(c.unread))}
                     </button>

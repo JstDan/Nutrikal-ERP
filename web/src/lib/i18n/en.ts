@@ -3013,6 +3013,17 @@ export const en = {
       task: "Order task",
     },
   },
+  avatar: {
+    profile: "My profile",
+    title: "Photo",
+    upload: "Upload a photo",
+    change: "Change the photo",
+    remove: "Remove",
+    hint: "Any picture: it is cut to a square and made small. It shows in the chat, on boards and next to your name.",
+    saving: "Saving…",
+    invalid: "Choose a JPG, PNG or WebP picture.",
+    ofUser: "Photo of {name}",
+  },
   enums: {
     moStatus: {
       simulation: "Simulation",

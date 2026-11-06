@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { fmt, formatDate, formatNumber, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import { boardOp, deleteBoardFile, deleteBoardPart, uploadBoardFile, type BoardOp } from "@/app/board-actions";
-import { between, initials, LABEL_COLORS, LABEL_HEX, type BoardCard, type BoardData, type LabelColor } from "@/lib/boards-shared";
+import { between, LABEL_COLORS, LABEL_HEX, type BoardCard, type BoardData, type LabelColor } from "@/lib/boards-shared";
 import { fileExt, linkParts, TASK_FILE_MAX, TASK_FILE_TYPES } from "@/lib/tasks-shared";
 import { SearchSelect } from "@/components/search-select";
 import { labelText, type FileText } from "@/components/boards/board-view";
+import { UserAvatar } from "@/components/user-avatar";
 
 type T = Dict["boards"];
 type Props = {
@@ -196,7 +197,7 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
                 return (
                   <button key={m.user_id} type="button" aria-pressed={on} disabled={!canEdit || pending} className={toggle(on)}
                     onClick={() => void run("cardMember", { user: m.user_id, on: !on })}>
-                    <span aria-hidden="true" className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${on ? "bg-white text-ink" : "bg-ink text-white"}`}>{initials(m.full_name)}</span>
+                    <UserAvatar id={m.user_id} size={26} />
                     {m.full_name}
                   </button>
                 );
@@ -354,7 +355,7 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
             <ol className="m-0 flex list-none flex-col gap-3 p-0">
               {comments.map((m) => (
                 <li key={m.id} className="flex gap-2">
-                  <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white">{initials(nameOf(m.author_id))}</span>
+                  <UserAvatar id={m.author_id} size={32} />
                   <div className="min-w-0 flex-1">
                     <p className="m-0 text-xs"><span className="font-semibold">{nameOf(m.author_id)}</span> <span className="text-ink-2">{time(locale, m.created_at)}{m.edited_at ? ` · ${C.edited}` : ""}</span></p>
                     {editing?.id === m.id ? (
@@ -431,7 +432,7 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
                   <li key={m.user_id} role="option" aria-selected="false">
                     <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-mist"
                       aria-label={fmt(C.mention, { name: m.full_name })} onMouseDown={(e) => { e.preventDefault(); pickMention(m); }}>
-                      <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white">{initials(m.full_name)}</span>
+                      <UserAvatar id={m.user_id} size={28} />
                       {m.full_name}
                     </button>
                   </li>

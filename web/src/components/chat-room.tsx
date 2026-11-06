@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState, useTransition, type KeyboardEven
 import { deleteChatMessage, editChatMessage, pollChat, searchGifs, sendChat, toggleReaction, type Gif } from "@/app/chat-actions";
 import { formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
+import { UserAvatar } from "@/components/user-avatar";
 
 export type ChatAttachment = { id: string; name: string; mime: string | null; size: number };
 export type ChatReaction = { emoji: string; n: number; mine: boolean };
@@ -69,7 +70,9 @@ const Emoji = ({ code }: { code: string }) =>
     : <>{code}</>;
 
 /** A round avatar with the initials; the colour stays the same for a person. */
-export function Avatar({ name, id, size = 32 }: { name: string; id: string; size?: number }) {
+export function Avatar({ name, id, size = 32, photo = true }: { name: string; id: string; size?: number; photo?: boolean }) {
+  // A person: their photo (or initials) from /api/avatar; otherwise the initials of the name here
+  if (photo) return <UserAvatar id={id} size={size} />;
   const colour = AVATARS[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATARS.length];
   const letters = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
   return (

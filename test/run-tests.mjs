@@ -3956,5 +3956,28 @@ await ok('a board is deleted by its creator with everything on it', async () => 
   eq((await as('admin', `select 1 from board_lists where board_id = $1`, [bd])).length, 0, 'lists gone');
 });
 
+// ----- Profile photos (owner, Nov 2026)
+const avPath = (u) => `${U[u]}/aaaaaaaa-0000-4000-8000-000000000001.webp`;
+await ok('everyone sets their own photo; the team sees it; a client only its own', async () => {
+  eq((await one('designer', 'select set_avatar(auth.uid(), $1) as old', [avPath('designer')])).old, null, 'no old photo');
+  for (const who of ['sales', 'production', 'admin']) {
+    eq((await one(who, 'select avatar_path from avatar_of($1)', [U.designer]))?.avatar_path, avPath('designer'), who);
+  }
+  eq((await as('clientA', 'select 1 from avatar_of($1)', [U.designer])).length, 0, 'client sees no staff');
+  eq((await as('clientA', 'select 1 from avatar_of(auth.uid())')).length, 1, 'client sees itself');
+});
+await ok('a new photo returns the old file to remove; clearing works', async () => {
+  const p2 = `${U.designer}/aaaaaaaa-0000-4000-8000-000000000002.webp`;
+  eq((await one('designer', 'select set_avatar(auth.uid(), $1) as old', [p2])).old, avPath('designer'), 'old');
+  eq((await one('designer', 'select set_avatar(auth.uid(), null) as old')).old, p2, 'cleared');
+});
+await fails('nobody but Admin sets the photo of another account', () => as('sales', 'select set_avatar($1, $2)', [U.designer, avPath('designer')]), 'Only Admin');
+await fails('a photo must sit under its own account', () => as('sales', 'select set_avatar(auth.uid(), $1)', [avPath('designer')]), 'Invalid file path');
+await ok('Admin sets the photo of anyone', async () => {
+  await as('admin', 'select set_avatar($1, $2)', [U.production, avPath('production')]);
+  eq((await one('production', 'select avatar_path from avatar_of(auth.uid())')).avatar_path, avPath('production'), 'set');
+});
+await fails('the accountant changes no photo (read-only)', () => session('accountant', 'select set_avatar(auth.uid(), null)'), 'read-only');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

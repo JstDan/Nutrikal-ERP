@@ -11,6 +11,7 @@ import {
 } from "@/lib/tasks-shared";
 import { deleteTaskFile, taskOp, uploadTaskFile } from "@/app/task-actions";
 import { noteText } from "@/components/tasks/board";
+import { UserAvatar } from "@/components/user-avatar";
 
 type T = Dict["tasks"];
 type Props = {
@@ -425,9 +426,7 @@ export function TaskPanel({ orderId, task: t, data, T, locale, userId, isAdmin, 
                 const attached = files.filter((f) => f.comment_id === c.id);
                 return (
                   <div key={c.id} className={`flex gap-2 ${grouped ? "-mt-2" : ""}`}>
-                    <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${grouped ? "invisible" : "bg-ink text-white"}`}>
-                      {initials(nameOf(c.author_id))}
-                    </span>
+                    {grouped ? <span aria-hidden="true" className="w-8 shrink-0" /> : <UserAvatar id={c.author_id} size={32} />}
                     <div className="min-w-0 flex-1">
                       {!grouped && <p className="m-0 text-xs"><span className="font-semibold">{nameOf(c.author_id)}</span> <span className="text-ink-2">{time(locale, c.created_at)}</span></p>}
                       {c.deleted_at ? <p className="m-0 text-sm text-ink-2 italic">{P.deleted}</p> : editing?.id === c.id ? (
@@ -485,7 +484,7 @@ export function TaskPanel({ orderId, task: t, data, T, locale, userId, isAdmin, 
                 <li key={u.id} role="option" aria-selected="false">
                   <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-mist"
                     aria-label={fmt(P.mention, { name: u.full_name })} onMouseDown={(e) => { e.preventDefault(); pickMention(u); }}>
-                    <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white">{initials(u.full_name)}</span>
+                    <UserAvatar id={u.id} size={28} />
                     {u.full_name}
                   </button>
                 </li>
