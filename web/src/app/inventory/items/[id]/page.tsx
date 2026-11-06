@@ -17,7 +17,7 @@ export default async function ItemPage({ params }: PageProps<"/inventory/items/[
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
     const item = (await tx.query<ItemRecord>(
       `select id, sku, type, name, name_bg, base_unit, latin_name, novel_food_status, novel_food_reference, shelf_life_months,
-              reorder_level::text, storage_conditions, allergens::text[] as allergens, is_vegan, is_vegetarian, regulatory_notes, notes, is_active
+              storage_conditions, allergens::text[] as allergens, is_vegan, is_vegetarian, regulatory_notes, notes, is_active
          from items where id = $1 and type <> 'finished_good'`, [id])).rows[0];
     if (!item) return null;
     const stock = (await tx.query<Stock>(

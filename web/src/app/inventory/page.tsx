@@ -15,7 +15,7 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 type Item = {
   item_id: string; sku: string; name: string; name_bg: string | null; type: string; base_unit: string; shelf_life_months: number | null;
   novel_food_status: string | null; on_hand: string; usable: string; quarantine: string; reserved: string; available: string;
-  reorder_level: string | null; below_reorder_level: boolean; next_expiry: string | null; days_left: number | null;
+  next_expiry: string | null; days_left: number | null;
   incoming: string; next_expected_on: string | null; projected: string;
 };
 type Lot = { lot_id: string; item_id: string; location_id: string; lot_number: string; location: string; quantity: string; qc_status: string; expires_on: string | null; supplier_lot: string | null; is_expired: boolean; unit_cost: string | null };
@@ -36,7 +36,6 @@ function flag(i: Item, t: Dict, locale: Locale, warnDays: number): { tone: Tone;
   if (i.days_left !== null && i.days_left <= warnDays) return { tone: "red", text: fmt(f.expiring, { d: i.days_left }) };
   if (Number(i.available) < 0) return { tone: "red", text: fmt(f.short, { qty: formatQty(locale, -Number(i.available), i.base_unit) }) };
   if (Number(i.on_hand) <= 0) return { tone: "neutral", text: f.noStock };
-  if (i.below_reorder_level) return { tone: "amber", text: f.low };
   if (Number(i.available) <= 0) return { tone: "neutral", text: f.fullyReserved };
   return { tone: "green", text: f.ok };
 }
@@ -73,7 +72,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       // Stock in the chosen warehouse only; reservations and incoming goods are not kept per warehouse
       `select i.id as item_id, i.sku, i.name, i.name_bg, i.type, i.base_unit, i.shelf_life_months, i.novel_food_status,
               b.on_hand::text, b.usable::text, b.quarantine::text, '0' as reserved, b.usable::text as available,
-              null as reorder_level, false as below_reorder_level, b.next_expiry::text, (b.next_expiry - current_date) as days_left,
+              b.next_expiry::text, (b.next_expiry - current_date) as days_left,
               '0' as incoming, null as next_expected_on, b.usable::text as projected
          from items i
          join (select item_id, sum(quantity) as on_hand,
@@ -86,7 +85,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       [TAB_TYPES[type], term, at],
     )).rows : (await tx.query<Item>(
       `select s.item_id, s.sku, s.name, i.name_bg, s.type, s.base_unit, i.shelf_life_months, i.novel_food_status,
-              s.on_hand, s.usable, s.quarantine, s.reserved, s.available, s.reorder_level, s.below_reorder_level,
+              s.on_hand, s.usable, s.quarantine, s.reserved, s.available,
               e.next_expiry::text, (e.next_expiry - current_date) as days_left,
               s.incoming, s.next_expected_on::text, s.projected
          from item_stock_summary s

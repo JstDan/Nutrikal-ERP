@@ -16,7 +16,7 @@
 -- * Suppliers (spelling variants merged, as in the old app).
 -- * Items: raw materials (RM-1001 …) and three excipients (EX-…), unit kg,
 --   Novel Food status "unknown" (to be checked before the item is used
---   in an approved formula), reorder level = old minimum stock.
+--   in an approved formula), the old minimum stock is not imported (no minimum stock, owner Nov 2026).
 -- * Supplier item + current purchase price = the old "best price"
 --   (or the average price when there is no best price).
 -- * For every ingredient with stock: one lot OB-1xxx, released, with an
@@ -228,8 +228,8 @@ select distinct x.supplier, 'Imported from Nutrikal Inventory'
    and not exists (select 1 from public.suppliers s where lower(s.name) = lower(x.supplier));
 
 -- Items
-insert into public.items (sku, type, name, base_unit, novel_food_status, reorder_level, notes)
-select x.sku, x.type, x.name, 'kg', 'unknown', nullif(x.min_stock, 0),
+insert into public.items (sku, type, name, base_unit, novel_food_status, notes)
+select x.sku, x.type, x.name, 'kg', 'unknown',
        'Imported from Nutrikal Inventory. Check the Novel Food status, shelf life and Bulgarian name.'
   from nk_import x
 on conflict (sku) do nothing;
