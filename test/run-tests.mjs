@@ -3983,6 +3983,10 @@ await ok('a board is copied with its open lists, labels, cards and checklists; n
   eq((await as('designer', `select count(*)::int as n from board_card_labels cl join board_cards c on c.id = cl.card_id where c.board_id = $1`, [copy]))[0].n, 1, 'label');
   eq((await as('designer', `select user_id from board_members where board_id = $1`, [copy])).map((r) => r.user_id).join(), U.designer, 'only the one who copied');
 });
+await ok('a template without labels (blank) gets the six coloured labels', async () => {
+  const id = (await one('admin', `select create_board_from('Празно', 'blue', $1::jsonb) as id`, [JSON.stringify({ labels: [], lists: [{ name: 'За правене', cards: [] }] })])).id;
+  eq((await as('admin', `select 1 from board_labels where board_id = $1`, [id])).length, 6, 'labels');
+});
 await fails('a board one does not see cannot be copied', () => as('bookkeeper', `select copy_board($1, 'x')`, [tplBoard]), 'Board not found');
 await fails('production cannot make a board from a template', () => as('production', `select create_board_from('x', 'blue', '{}'::jsonb)`), 'Not allowed');
 

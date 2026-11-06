@@ -136,6 +136,30 @@ async function init(): Promise<PGlite> {
     const opening = path.join(/*turbopackIgnore: true*/ dir, "..", "import", "opening_stock.sql");
     if (fs.existsSync(opening)) await db.exec(fs.readFileSync(opening, "utf8"));
     console.log(`[nutrikal] database created in ${dataDir} with ${files.length} migrations + demo data + opening stock`);
+    await db.exec("create schema if not exists nk_local; create table nk_local.migrations (name text primary key)");
+    for (const f of files) await db.query("insert into nk_local.migrations values ($1)", [f]);
+  } else {
+    // A database kept from earlier: new migrations are added on start, so local data survives updates.
+    // One made before this list existed counts as up to date.
+    const dir = migrationsDir();
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql") && !f.includes("storage")).sort();
+    const known = await db.query<{ ok: boolean }>("select to_regclass('nk_local.migrations') is not null as ok");
+    if (!known.rows[0]?.ok) {
+      await db.exec("create schema if not exists nk_local; create table nk_local.migrations (name text primary key)");
+      for (const f of files) await db.query("insert into nk_local.migrations values ($1)", [f]);
+    }
+    const done = new Set((await db.query<{ name: string }>("select name from nk_local.migrations")).rows.map((r) => r.name));
+    for (const f of files.filter((x) => !done.has(x))) {
+      try {
+        await db.exec(fs.readFileSync(path.join(/*turbopackIgnore: true*/ dir, f), "utf8"));
+        console.log(`[nutrikal] local database: applied ${f}`);
+      } catch (e) {
+        // Already in this database (it was made on another branch): counted as applied
+        if (!["42701", "42P07", "42710", "42723", "42P06"].includes((e as { code?: string }).code ?? "")) throw e;
+        console.log(`[nutrikal] local database: ${f} was already there`);
+      }
+      await db.query("insert into nk_local.migrations values ($1)", [f]);
+    }
   }
   return db;
 }
