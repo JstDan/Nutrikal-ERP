@@ -135,7 +135,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
                 </button>
               ))}
             </form>
-            <ChatDrawer unread={unread} userId={user.id} me={user.name} isAdmin={user.role === "admin"} partner={isProduction} locale={locale} text={t.chat} />
+            <ChatDrawer unread={unread} userId={developer?.id ?? user.id} me={developer?.name ?? user.name} isAdmin={user.role === "admin"} partner={isProduction} locale={locale} text={t.chat} gifs={!!process.env.GIPHY_API_KEY} />
             <NotificationBell userId={user.id} label={t.topbar.notifications} unreadLabel={t.topbar.unread} />
             <ThemeSwitch toDark={t.topbar.toDark} toLight={t.topbar.toLight} saved={savedTheme} />
             {developer && (

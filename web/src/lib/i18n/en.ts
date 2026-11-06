@@ -2613,6 +2613,11 @@ export const en = {
     send: "Send",
     delete: "Delete",
     empty: "No messages yet. Start the conversation.",
+    gif: "GIF",
+    gifSearch: "Search GIFs",
+    gifNone: "No GIFs found.",
+    gifPowered: "Powered by GIPHY",
+    developerDirect: "As a developer you write under your own name, so you cannot write in this person's direct messages. Write in a channel.",
   },
   clientFiles: {
     title: "Files",

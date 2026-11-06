@@ -13,8 +13,8 @@ type Room = { channel: Channel; messages: ChatMessage[]; people: ChatPerson[] };
 const BADGE_MS = 15000;
 
 /** The chat from anywhere: a button by the bell and a panel over the page. */
-export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale, text }: {
-  unread: number; userId: string; me: string; isAdmin: boolean; partner: boolean; locale: Locale; text: Dict["chat"];
+export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale, text, gifs = false }: {
+  unread: number; userId: string; me: string; isAdmin: boolean; partner: boolean; locale: Locale; text: Dict["chat"]; gifs?: boolean;
 }) {
   const C = text;
   const pathname = usePathname();
@@ -95,7 +95,7 @@ export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale
 
           {room ? (
             <div className="min-h-0 flex-1 pt-2">
-              <ChatRoom key={room.channel.id} channel={room.channel.id} initial={room.messages} people={room.people} me={me} userId={userId} isAdmin={isAdmin}
+              <ChatRoom key={room.channel.id} channel={room.channel.id} initial={room.messages} people={room.people} me={me} userId={userId} isAdmin={isAdmin} gifs={gifs}
                 locale={locale} text={C} warning={room.channel.kind === "external" && !partner ? C.partnerWarning : null} />
             </div>
           ) : (

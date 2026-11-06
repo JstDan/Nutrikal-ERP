@@ -12,7 +12,7 @@ type Hit = { id: string; channel_id: string; channel: string; author: string; bo
 
 /** Channels and direct messages. Production sees only the channels marked for the partner. */
 export default async function ChatPage({ searchParams }: PageProps<"/chat">) {
-  const { user, locale, t } = await getSession();
+  const { user, developer, locale, t } = await getSession();
   const C = t.chat;
   const sp = await searchParams;
   const term = typeof sp.q === "string" ? sp.q.trim() : "";
@@ -96,7 +96,8 @@ export default async function ChatPage({ searchParams }: PageProps<"/chat">) {
               {current.description && current.kind !== "external" && <p className="m-0 text-sm text-ink-2">{current.description}</p>}
             </div>
             <div className="min-h-0 flex-1 pt-2">
-            <ChatRoom key={current.id} channel={current.id} initial={messages} people={people} me={user.name} userId={user.id} isAdmin={user.role === "admin"}
+            <ChatRoom key={current.id} channel={current.id} initial={messages} people={people} // A developer acting as someone writes under their own name
+              me={developer?.name ?? user.name} userId={developer?.id ?? user.id} isAdmin={user.role === "admin"} gifs={!!process.env.GIPHY_API_KEY}
               locale={locale} text={C} warning={current.kind === "external" && !partner ? C.partnerWarning : null} />
             </div>
           </section>

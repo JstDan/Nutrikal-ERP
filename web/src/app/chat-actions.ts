@@ -13,6 +13,15 @@ import type { ChatMessage, ChatPerson } from "@/components/chat-room";
 const FEED = "select id, author_id, author, body, created_at::text, edited_at::text, attachments, reactions from chat_feed($1)";
 const text = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
 
+/**
+ * Who writes: a developer acting as someone else writes under their own name (owner, Nov 2026);
+ * reading, unread counts and the channels stay those of the person they act as.
+ */
+async function writer() {
+  const s = await getSession();
+  return { ...s, writerId: s.developer?.id ?? s.user.id };
+}
+
 const markRead = (userId: string, channel: string) =>
   qChat(userId, "insert into chat_reads (channel_id, user_id) values ($1, auth.uid()) on conflict (channel_id, user_id) do update set read_at = now()", [channel]);
 
@@ -52,7 +61,7 @@ export async function openDirectChat(person: string): Promise<string> {
 
 /** A message with its files: fd has channel, body, mentions and files. */
 export async function sendChat(fd: FormData): Promise<{ error?: string }> {
-  const { user, t } = await getSession();
+  const { t, developer, writerId } = await writer();
   const channel = String(fd.get("channel") ?? "");
   const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   if (files.some((f) => f.size > MAX_DESIGN_BYTES)) return { error: t.chat.tooBig };
@@ -60,33 +69,63 @@ export async function sendChat(fd: FormData): Promise<{ error?: string }> {
   if (!body) return {};
   try {
     const mentions = (JSON.parse(String(fd.get("mentions") ?? "[]")) as string[]).filter((x) => /^[0-9a-f-]{36}$/i.test(x));
-    const [{ id }] = await qChat<{ id: string }>(user.id, "select chat_post($1, $2, $3::uuid[]) as id", [channel, body, mentions]);
+    const [{ id }] = await qChat<{ id: string }>(writerId, "select chat_post($1, $2, $3::uuid[]) as id", [channel, body, mentions]);
     for (const f of files) {
       const key = newTaskFilePath(channel, randomUUID(), f.name);
       await putFile(CHAT_BUCKET, key, Buffer.from(await f.arrayBuffer()), f.type || "application/octet-stream");
-      await qChat(user.id, "insert into chat_attachments (message_id, file_name, storage_path, mime, size_bytes) values ($1, $2, $3, $4, $5)",
+      await qChat(writerId, "insert into chat_attachments (message_id, file_name, storage_path, mime, size_bytes) values ($1, $2, $3, $4, $5)",
         [id, f.name, key, f.type || null, f.size]);
     }
   } catch (e) {
+    // A developer is not a member of the direct messages of the person they act as
+    if (developer && /Not allowed in this channel/.test(text(e))) return { error: t.chat.developerDirect };
     return { error: text(e) };
   }
   return {};
 }
 
 export async function editChatMessage(id: string, body: string) {
-  const { user } = await getSession();
-  await qChat(user.id, "update chat_messages set body = $2, edited_at = now() where id = $1", [id, body.trim()]);
+  const { writerId } = await writer();
+  await qChat(writerId, "update chat_messages set body = $2, edited_at = now() where id = $1", [id, body.trim()]);
 }
 
 export async function deleteChatMessage(id: string) {
-  const { user } = await getSession();
-  await qChat(user.id, "delete from chat_messages where id = $1", [id]);
+  const { user, writerId } = await writer();
+  const gone = await qChat(writerId, "delete from chat_messages where id = $1 returning id", [id]);
+  // Someone else's message: only as the person acted as (an Admin may delete any)
+  if (!gone.length && writerId !== user.id) await qChat(user.id, "delete from chat_messages where id = $1", [id]);
 }
 
 export async function toggleReaction(message: string, emoji: string) {
-  const { user } = await getSession();
-  const gone = await qChat(user.id, "delete from chat_reactions where message_id = $1 and user_id = auth.uid() and emoji = $2 returning emoji", [message, emoji]);
-  if (!gone.length) await qChat(user.id, "insert into chat_reactions (message_id, emoji) values ($1, $2)", [message, emoji]);
+  const { writerId } = await writer();
+  const gone = await qChat(writerId, "delete from chat_reactions where message_id = $1 and user_id = auth.uid() and emoji = $2 returning emoji", [message, emoji]);
+  if (!gone.length) await qChat(writerId, "insert into chat_reactions (message_id, emoji) values ($1, $2)", [message, emoji]);
+}
+
+export type Gif = { id: string; url: string; preview: string; width: number; height: number; title: string };
+
+/** GIFs from GIPHY (owner, Nov 2026): trending without a search. Needs GIPHY_API_KEY; only the search words leave the app. */
+export async function searchGifs(term: string): Promise<Gif[]> {
+  const { locale } = await getSession();
+  const key = process.env.GIPHY_API_KEY;
+  if (!key) return [];
+  const words = term.trim().slice(0, 50);
+  const url = new URL(`https://api.giphy.com/v1/gifs/${words ? "search" : "trending"}`);
+  url.search = new URLSearchParams({ api_key: key, limit: "24", rating: "g", bundle: "messaging_non_clips", ...(words && { q: words, lang: locale }) }).toString();
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return [];
+    type Img = { url?: string; width?: string; height?: string };
+    const data = (await res.json()) as { data?: { id: string; title?: string; images?: Record<string, Img> }[] };
+    return (data.data ?? []).flatMap((g) => {
+      const full = g.images?.fixed_height;
+      const small = g.images?.fixed_width_small ?? g.images?.fixed_height_small ?? full;
+      if (!full?.url || !small?.url) return [];
+      return [{ id: g.id, url: full.url, preview: small.url, width: Number(full.width) || 200, height: Number(full.height) || 200, title: g.title ?? "" }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 export async function openDirect(fd: FormData) {

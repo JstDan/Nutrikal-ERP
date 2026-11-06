@@ -2615,6 +2615,11 @@ export const bg: Dict = {
     send: "Изпрати",
     delete: "Изтрий",
     empty: "Още няма съобщения. Започнете разговора.",
+    gif: "GIF",
+    gifSearch: "Търсене на GIF",
+    gifNone: "Не са намерени GIF-ове.",
+    gifPowered: "Powered by GIPHY",
+    developerDirect: "Като разработчик пишете със собственото си име, затова не можете да пишете в личните съобщения на този човек. Пишете в канал.",
   },
   clientFiles: {
     title: "Файлове",

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
-import { deleteChatMessage, editChatMessage, pollChat, sendChat, toggleReaction } from "@/app/chat-actions";
+import { deleteChatMessage, editChatMessage, pollChat, searchGifs, sendChat, toggleReaction, type Gif } from "@/app/chat-actions";
 import { formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
@@ -22,6 +22,45 @@ const IMAGE = /^image\/(png|jpeg|webp|gif)$/;
 const AVATARS = ["#222831", "#4a5160", "#3b6fd8", "#8a5cd6", "#c2610f", "#1a8078"];
 /** Messages of one person this close together are shown as one group. */
 const GROUP_MS = 5 * 60 * 1000;
+/** A message that is only a GIPHY picture is shown as the picture (sent from the GIF panel). */
+const GIF = /^https:\/\/(?:media\d?\.giphy\.com\/media|i\.giphy\.com)\/[\w./=%-]+\.(?:gif|webp)(?:\?[\w=&.%-]*)?$/;
+
+/** GIF search: trending until something is typed; a click sends the GIF. GIPHY asks to be named. */
+function GifPanel({ onPick, onClose, text }: { onPick: (g: Gif) => void; onClose: () => void; text: Dict["chat"] }) {
+  const [term, setTerm] = useState("");
+  const [gifs, setGifs] = useState<Gif[] | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { input.current?.focus(); }, []);
+  useEffect(() => {
+    let live = true;
+    const t = setTimeout(() => { searchGifs(term).then((g) => { if (live) setGifs(g); }).catch(() => { if (live) setGifs([]); }); }, term ? 350 : 0);
+    return () => { live = false; clearTimeout(t); };
+  }, [term]);
+  return (
+    <div role="dialog" aria-label={text.gif} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      className="flex max-h-[360px] w-full flex-col gap-2 rounded-xl border border-line bg-paper p-2 shadow-xl">
+      <div className="flex items-center gap-2">
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">{text.gifSearch}</span>
+          <input ref={input} type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={text.gifSearch} className="input min-h-11 w-full" />
+        </label>
+        <button type="button" onClick={onClose} aria-label={text.close} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg text-ink-2 hover:bg-mist">×</button>
+      </div>
+      <div className="grid min-h-0 grid-cols-3 gap-1 overflow-x-hidden overflow-y-auto">
+        {gifs === null && <p className="col-span-3 m-0 py-6 text-center text-sm text-ink-2">…</p>}
+        {gifs?.length === 0 && <p className="col-span-3 m-0 py-6 text-center text-sm text-ink-2">{text.gifNone}</p>}
+        {gifs?.map((g) => (
+          <button key={g.id} type="button" onClick={() => onPick(g)} aria-label={g.title || text.gif}
+            className="overflow-hidden rounded-lg bg-mist p-0 hover:opacity-80 focus-visible:outline-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={g.preview} alt="" loading="lazy" className="block aspect-square h-full w-full object-cover" />
+          </button>
+        ))}
+      </div>
+      <p className="m-0 text-right text-[10px] font-semibold tracking-[1px] text-ink-2 uppercase">{text.gifPowered}</p>
+    </div>
+  );
+}
 
 const Emoji = ({ code }: { code: string }) =>
   BRAND.includes(code)
@@ -68,8 +107,9 @@ function Picker({ onPick, label }: { onPick: (code: string) => void; label: stri
 }
 
 /** One channel, in a page or in the side panel: it fills the height it gets. Enter sends, Shift+Enter starts a new line, @ mentions a person. */
-export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale, text, warning }: {
+export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale, text, warning, gifs = false }: {
   channel: string; initial: ChatMessage[]; people: ChatPerson[]; me: string; userId: string; isAdmin: boolean; locale: Locale; text: Dict["chat"]; warning?: string | null;
+  gifs?: boolean;                           // GIF search is set up (GIPHY_API_KEY)
 }) {
   const C = text;
   const [messages, setMessages] = useState(initial);
@@ -141,6 +181,21 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
       } else await refresh();
     });
   };
+  const sendGif = (g: Gif) => {
+    setPickerFor(null);
+    if (pending) return;
+    const fd = new FormData();
+    fd.set("channel", channel);
+    fd.set("body", g.url);
+    fd.set("mentions", "[]");
+    setError(null);
+    atEnd.current = true;
+    start(async () => {
+      const r = await sendChat(fd).catch(() => ({ error: C.failed }));
+      if (r.error) setError(r.error); else await refresh();
+      box.current?.focus();
+    });
+  };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
@@ -192,6 +247,9 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
                         <button type="button" onClick={() => setEditing(null)} className="btn btn-outline">{C.cancel}</button>
                       </div>
                     </form>
+                  ) : GIF.test(m.body) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.body} alt={C.gif} loading="lazy" className="max-h-56 max-w-full rounded-xl border border-line" />
                   ) : m.body !== "📎" && (
                     <div className={`min-w-0 rounded-2xl px-3 py-1.5 text-sm ${own ? "rounded-br-md bg-ink text-white" : "rounded-bl-md bg-neutral-tint text-ink"}`}>
                       <p className="m-0 whitespace-pre-line break-words"><Body text={m.body} names={names} own={own} /></p>
@@ -226,7 +284,7 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
                     <button key={q} type="button" aria-label={q} onClick={() => react(m.id, q)} className="hide-sm grid h-7 w-7 place-items-center rounded-full text-sm transition-transform hover:scale-125 hover:bg-mist"><Emoji code={q} /></button>
                   ))}
                   <button type="button" aria-label={C.react} onClick={() => setPickerFor(pickerFor === m.id ? null : m.id)} className="grid h-7 w-7 place-items-center rounded-full text-sm text-ink-2 hover:bg-mist">☺</button>
-                  {own && !editing && <button type="button" aria-label={C.edit} title={C.edit} onClick={() => setEditing({ id: m.id, body: m.body })} className="grid h-7 w-7 place-items-center rounded-full text-sm text-ink-2 hover:bg-mist">✎</button>}
+                  {own && !editing && !GIF.test(m.body) && <button type="button" aria-label={C.edit} title={C.edit} onClick={() => setEditing({ id: m.id, body: m.body })} className="grid h-7 w-7 place-items-center rounded-full text-sm text-ink-2 hover:bg-mist">✎</button>}
                   {(own || isAdmin) && <button type="button" aria-label={C.delete} title={C.delete} onClick={() => act(() => deleteChatMessage(m.id))} className="grid h-7 w-7 place-items-center rounded-full text-sm text-ink-2 hover:bg-mist">×</button>}
                 </div>
                 {pickerFor === m.id && <div className={`absolute top-full z-20 ${own ? "right-0" : "left-10"}`}><Picker label={C.emoji} onPick={(c) => react(m.id, c)} /></div>}
@@ -252,6 +310,7 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
           </div>
         )}
         {pickerFor === "composer" && <div className="absolute bottom-full left-3 z-20 mb-1"><Picker label={C.emoji} onPick={addEmoji} /></div>}
+        {pickerFor === "gif" && <div className="absolute right-3 bottom-full left-3 z-20 mb-1 sm:right-auto sm:w-[360px]"><GifPanel text={C} onPick={sendGif} onClose={() => { setPickerFor(null); box.current?.focus(); }} /></div>}
         {files.length > 0 && (
           <div className="mb-1 flex flex-wrap gap-2">
             {files.map((f, i) => (
@@ -264,6 +323,12 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
           <input ref={pick} type="file" multiple hidden aria-label={C.attach} onChange={(e) => { setFiles([...files, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
           <button type="button" aria-label={C.attach} onClick={() => pick.current?.click()} className="grid h-11 w-9 shrink-0 place-items-center text-lg text-ink-2 hover:text-ink">📎</button>
           <button type="button" aria-label={C.emoji} aria-expanded={pickerFor === "composer"} onClick={() => setPickerFor(pickerFor === "composer" ? null : "composer")} className="grid h-11 w-9 shrink-0 place-items-center text-lg text-ink-2 hover:text-ink">☺</button>
+          {gifs && (
+            <button type="button" aria-label={C.gif} aria-expanded={pickerFor === "gif"} onClick={() => setPickerFor(pickerFor === "gif" ? null : "gif")}
+              className="grid h-11 w-10 shrink-0 place-items-center text-[11px] font-bold tracking-[0.5px] text-ink-2 hover:text-ink">
+              <span className="rounded border border-current px-1 leading-4">GIF</span>
+            </button>
+          )}
           <label htmlFor={`chat-text-${channel}`} className="sr-only">{C.message}</label>
           <textarea id={`chat-text-${channel}`} data-chat-input ref={box} rows={1} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey}
             placeholder={C.message} className="max-h-40 min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2.5 text-sm text-ink outline-none" />
