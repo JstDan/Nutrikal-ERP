@@ -3755,5 +3755,30 @@ await ok('the Google Sheet sync functions are gone', async () => {
       'calc_record_catalog_sync', 'calc_record_scheduled_catalog_sync', 'calc_apply_catalog_sync')`)).rows.length, 0, 'functions');
 });
 
+console.log('\nExpiry date and batch number of a lot (Admin, under Stock)');
+const ldLot = await one('admin', `select l.id, l.expires_on::text as e, l.supplier_lot as b, (select sum(quantity) from stock_movements where lot_id = l.id)::text as q
+                                    from lots l where l.manufactured_on is null order by l.lot_number limit 1`);
+await ok('admin adds an expiry date and a batch number to a lot; the stock does not change', async () => {
+  await as('admin', `select set_lot_details($1, '2028-03-31', '  B-77  12 ')`, [ldLot.id]);
+  const r = await one('admin', `select expires_on::text as e, supplier_lot as b from lots where id = $1`, [ldLot.id]);
+  eq(r.e, '2028-03-31', 'expiry'); eq(r.b, 'B-77 12', 'batch tidied');
+  eq((await one('admin', `select sum(quantity)::text as q from stock_movements where lot_id = $1`, [ldLot.id])).q, ldLot.q, 'quantity unchanged');
+  eq((await as('admin', `select 1 from audit_log where table_name = 'lots' and row_id = $1::text and new_data->>'supplier_lot' = 'B-77 12'`, [ldLot.id])).length > 0, true, 'audited');
+});
+await ok('both are optional: empty values clear them', async () => {
+  await as('admin', `select set_lot_details($1, null, '   ')`, [ldLot.id]);
+  const r = await one('admin', `select expires_on, supplier_lot from lots where id = $1`, [ldLot.id]);
+  eq(r.expires_on, null, 'no expiry'); eq(r.supplier_lot, null, 'no batch');
+  await as('admin', `select set_lot_details($1, $2::date, $3)`, [ldLot.id, ldLot.e, ldLot.b]);
+});
+await fails('the expiry date must be after the manufacturing date', async () => {
+  const m = await one('admin', `select id from lots where manufactured_on is not null limit 1`);
+  await as('admin', `select set_lot_details($1, '2000-01-01', null)`, [m.id]);
+}, 'after the manufacturing date');
+for (const who of ['sales', 'bookkeeper', 'production', 'designer', 'clientA']) {
+  await fails(`${who} cannot change the expiry date or batch number of a lot`, () =>
+    as(who, `select set_lot_details($1, '2029-01-01', 'X')`, [ldLot.id]));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

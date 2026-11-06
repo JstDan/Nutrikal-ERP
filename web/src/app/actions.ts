@@ -1108,6 +1108,46 @@ export async function countStock(_: ActionState, fd: FormData): Promise<ActionSt
   }
 }
 
+/** Admin, under Stock: expiry date and supplier's batch number of a lot; both optional, empty clears (owner, Nov 2026). */
+export async function setLotDetails(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  try {
+    const lotNumber = await withUser(user.id, async (tx) => {
+      await tx.query("select set_lot_details($1, $2::date, $3)", [str(fd, "lot_id"), str(fd, "expires_on"), str(fd, "supplier_lot")]);
+      return (await tx.query<{ lot_number: string }>("select lot_number from lots where id = $1", [str(fd, "lot_id")])).rows[0]?.lot_number ?? "";
+    });
+    revalidatePath("/", "layout");
+    return { ok: true, message: fmt(t.inventory.lotDetails.saved, { lot: lotNumber }) };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+}
+
+// Move a lot from one warehouse to another (Admin, stock page; owner, Nov 2026). The ledger function checks the role and refuses more than is there.
+export async function transferStock(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, locale, t } = await getSession();
+  const T = t.inventory.transfer;
+  const [lotId, fromId] = (str(fd, "lot_location") ?? "|").split("|");
+  const toId = str(fd, "to_location_id");
+  const qty = num(fd, "quantity");
+  if (!lotId || !fromId || !toId || !qty || qty <= 0) return { error: T.missing };
+  if (fromId === toId) return { error: T.sameLocation };
+  try {
+    const done = await withUser(user.id, async (tx) => {
+      await tx.query("select transfer_stock($1, $2, $3, $4, $5)", [lotId, fromId, toId, qty, str(fd, "reason")]);
+      return (await tx.query<{ lot_number: string; base_unit: string; to_name: string }>(
+        `select l.lot_number, i.base_unit, (select name from locations where id = $2) as to_name
+           from lots l join items i on i.id = l.item_id where l.id = $1`, [lotId, toId])).rows[0];
+    });
+    revalidatePath("/", "layout");
+    return { ok: true, message: fmt(T.done, { qty: formatQty(locale, qty, done?.base_unit ?? ""), lot: done?.lot_number ?? "", to: done?.to_name ?? "" }) };
+  } catch (e) {
+    const msg = errorText(e);
+    if (/Insufficient stock/i.test(msg)) return { error: T.notEnough };
+    return { error: msg };
+  }
+}
+
 // ----------------------------------------------------- expected deliveries
 export async function createDeliveries(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
