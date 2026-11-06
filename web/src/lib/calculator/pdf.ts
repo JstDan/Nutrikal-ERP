@@ -489,10 +489,11 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   flow.y += 7;
 
   if (m.doseRows.length) {
-    // One clean list; from seven ingredients three columns, row by row
-    const threeColumns = m.doseRows.length > 6;
-    const AMT = 19;
-    const nameW = (W - 10) / 3 - AMT;
+    // One clean list; from seven ingredients two columns, row by row (owner, Nov 2026)
+    const twoColumns = m.doseRows.length > 6;
+    const AMT = 22;
+    const GAP = 8;
+    const nameW = (W - GAP) / 2 - AMT;
     const titleStyle9 = st(8.5, 'semibold');
     const title = fmt(PDF.amountPerDose, { portion: m.dosePortion });
     flow.ensure(lay.height(title, W, titleStyle9) + 12);
@@ -502,21 +503,21 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
       margin: { left: L, right: pageW - R, top: 18, bottom: pageH - bottom },
       theme: 'plain',
       rowPageBreak: TABLE_RULES.rowPageBreak,
-      body: threeColumns
-        ? Array.from({ length: Math.ceil(m.doseRows.length / 3) }, (_, i) => {
-            const [a, b, c] = m.doseRows.slice(i * 3, i * 3 + 3);
-            return [a.name, a.amount, '', b?.name ?? '', b?.amount ?? '', '', c?.name ?? '', c?.amount ?? ''];
+      body: twoColumns
+        ? Array.from({ length: Math.ceil(m.doseRows.length / 2) }, (_, i) => {
+            const [a, b] = m.doseRows.slice(i * 2, i * 2 + 2);
+            return [a.name, a.amount, '', b?.name ?? '', b?.amount ?? ''];
           })
         : m.doseRows.map((r) => [r.name, r.amount]),
       styles: { font: 'Poppins', fontSize: 8, textColor: TEXT, cellPadding: { top: 1.1, bottom: 1.1, left: 0, right: 1 }, overflow: TABLE_RULES.overflow },
-      columnStyles: threeColumns
-        ? { 0: { cellWidth: nameW }, 1: { cellWidth: AMT, halign: 'right' }, 2: { cellWidth: 5 }, 3: { cellWidth: nameW }, 4: { cellWidth: AMT, halign: 'right' }, 5: { cellWidth: 5 }, 6: { cellWidth: nameW }, 7: { cellWidth: AMT, halign: 'right' } }
+      columnStyles: twoColumns
+        ? { 0: { cellWidth: nameW }, 1: { cellWidth: AMT, halign: 'right' }, 2: { cellWidth: GAP }, 3: { cellWidth: nameW }, 4: { cellWidth: AMT, halign: 'right' } }
         : { 0: { cellWidth: W - 28 }, 1: { cellWidth: 28, halign: 'right' } },
       didParseCell: (data) => {
         const text = data.cell.text.join(' ');
         if (CYRILLIC.test(text)) Object.assign(data.cell.styles, cellFont(text, 'regular'));
       },
-      didDrawCell: (data) => { if (data.cell.text.join('') && !(threeColumns && data.column.index % 3 === 2)) underline(data.cell); },
+      didDrawCell: (data) => { if (data.cell.text.join('') && !(twoColumns && data.column.index === 2)) underline(data.cell); },
     });
     flow.y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
   }
