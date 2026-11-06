@@ -189,6 +189,15 @@ export const en = {
       notes: "Notes",
       submit: "Create client",
     },
+    delete: {
+      button: "Delete client",
+      title: "Delete {name}?",
+      confirm: "Its contacts, notes, files, portal access and the mail saved for it are deleted too (the mail stays in Gmail). This cannot be undone. A client with offers, orders, recipes, projects or invoices cannot be deleted.",
+      yes: "Delete",
+      cancel: "Cancel",
+      blocked: "The client still has offers, orders, recipes, projects or invoices. Delete or move them first.",
+      notAllowed: "Only Admin, or the salesperson responsible for the client, can delete it.",
+    },
     detail: {
       editClient: "Edit details",
       companyTerms: "Company and terms",

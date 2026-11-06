@@ -15,6 +15,7 @@ Talk to the owner in the language they write in (usually Bulgarian).
 - Partner invoices Nutrikal per batch (record against the batch for actual cost).
 - Client-supplied materials: not in v1.
 - Offers are costed per unit and priced by product format.
+- Deleting a client (owner, Nov 2026): Admin any client, Sales and the bookkeeper only the clients they are responsible for (`owner_id`), through `delete_client`; refused while the client has offers, orders, recipes, projects, own items or invoices; its contacts, notes, files, portal access and the mail saved from Gmail go with it (the mail stays in Gmail); catalogue enquiries stay, unlinked.
 - Payment terms: by default 60% deposit + 40% before dispatch (owner, Nov 2026); editable per order; the client form has no payment-term fields (owner, Nov 2026), so new clients follow the company default.
 - The ERP issues FINAL invoices. Invoice numbers: one 10-digit series shared by invoices, credit and debit notes; editable on a draft before issue with duplicate/gap warnings and audit log; locked after issue; corrections only via credit/debit notes. Design the invoice data to map to EN 16931 (Bulgaria plans mandatory structured e-invoicing from 2028).
 - Shelf life is tracked per raw material. Recipes have none (owner, Oct 2026): the expiry date of a finished batch is entered when it is reported.

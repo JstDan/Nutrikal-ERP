@@ -9,7 +9,7 @@ import { supabaseConfigured, supabaseServer } from "@/lib/supabase/server";
 import { DEFAULT_LOCALE, fmt, formatQty, getDict, isLocale, LOCALE_COOKIE } from "@/lib/i18n";
 import type { Role } from "@/lib/db/demo-users";
 import { DELIVERY_LINES } from "@/lib/deliveries";
-import { DELIVERY_BUCKET, MAX_FILE_BYTES, newDeliveryPath, putFile, removeFile } from "@/lib/files";
+import { CLIENT_BUCKET, DELIVERY_BUCKET, MAX_FILE_BYTES, newDeliveryPath, putFile, removeFile } from "@/lib/files";
 import type { Tx } from "@/lib/db/engine";
 import { offerPriceOptions } from "@/lib/calculator/priceOptions";
 import type { CalcResult } from "@/lib/calculator/calc";
@@ -168,6 +168,29 @@ const clientValues = (fd: FormData) => [
   str(fd, "company_id"), str(fd, "address_line1"), str(fd, "city"), str(fd, "postal_code"), str(fd, "billing_email"),
   str(fd, "phone"), str(fd, "website"), str(fd, "preferred_locale"), num(fd, "credit_limit"), str(fd, "notes"), str(fd, "registration_address"),
 ];
+
+/**
+ * Admin: any client; Sales and the bookkeeper: only the clients they are responsible for (owner, Nov 2026).
+ * delete_client refuses a client that still has offers, orders, recipes, projects or invoices.
+ */
+export async function deleteClient(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const id = str(fd, "client_id");
+  try {
+    const files = await withUser(user.id, async (tx) =>
+      (await tx.query<{ files: string[] }>("select delete_client($1) as files", [id])).rows[0].files);
+    // The rows are gone; their files in Storage go after the commit
+    for (const key of files ?? []) await removeFile(CLIENT_BUCKET, key).catch(() => undefined);
+  } catch (e) {
+    const msg = errorText(e);
+    const D = t.clients.delete;
+    if (/still has/i.test(msg)) return { error: D.blocked };
+    if (/Only Admin/i.test(msg)) return { error: D.notAllowed };
+    return { error: msg };
+  }
+  revalidatePath("/clients");
+  redirect("/clients");
+}
 
 export async function updateClient(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();
