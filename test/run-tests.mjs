@@ -829,8 +829,9 @@ await ok('production and admin see nothing of the calculator', async () => {
     }
   }
 });
-await fails('sales cannot change a raw material price', () =>
-  as('sales', `update calc_raw_materials set price_eur_per_kg = 1 where name = 'Zinc Glycinate'`), 'permission denied');
+await ok('sales cannot change a raw material price', async () => {
+  eq((await as('sales', `update calc_raw_materials set price_eur_per_kg = 1 where name = 'Zinc Glycinate' returning id`)).length, 0, 'no row');
+});
 await fails('sales cannot add raw materials directly', () =>
   as('sales', `insert into calc_raw_materials (name, price_eur_per_kg) values ('X', 1)`), 'permission denied');
 await ok('only admin edits the regulatory note', async () => {
@@ -863,21 +864,6 @@ await ok('only admin changes calculator settings', async () => {
   eq((await as('admin', `update calc_settings set default_markup = 35 returning id`)).length, 1, 'admin');
   eq(Number((await one('sales', 'select default_markup from calc_settings')).default_markup), 35, 'value');
 });
-await ok('sheet sync upserts, deactivates and logs the run', async () => {
-  const plan = { upserts: [{ name: 'New Extract', price_eur_per_kg: 12.5, active: true }, { name: 'Zinc Glycinate', price_eur_per_kg: 31, active: true }], deactivate: ['Zinc Citrate Trihydrate'] };
-  const run = await one('sales', `select * from calc_record_sync('manual', $1::jsonb, $2::jsonb)`,
-    [JSON.stringify(plan), JSON.stringify({ added: 1, changed: 1, removed: 1 })]);
-  eq(run.status, 'success', 'status');
-  eq(Number((await one('sales', `select price_eur_per_kg from calc_raw_materials where name = 'Zinc Glycinate'`)).price_eur_per_kg), 31, 'price');
-  eq((await one('sales', `select active from calc_raw_materials where name = 'Zinc Citrate Trihydrate'`)).active, false, 'deactivated');
-  eq((await as('sales', `select id from calc_raw_materials where name = 'New Extract'`)).length, 1, 'added');
-  eq((await one('admin', 'select count(*) from calc_sync_runs')).count, 1, 'logged');
-});
-await ok('a failed sync changes nothing and is logged', async () => {
-  const run = await one('admin', `select * from calc_record_sync('auto', '{"upserts":[{"name":"Y","price_eur_per_kg":1}]}', '{}', 'boom')`);
-  eq(run.status, 'error', 'status');
-  eq((await as('admin', `select id from calc_raw_materials where name = 'Y'`)).length, 0, 'not applied');
-});
 await ok('sales adds a raw material that is not in the price list; marked manual', async () => {
   const { id } = await one('sales', `select calc_add_raw_material('  Saffron   Extract ', 1234.56789) as id`);
   const m = await one('admin', `select name, price_eur_per_kg, active, manual from calc_raw_materials where id = $1`, [id]);
@@ -891,14 +877,16 @@ await fails('a hand-added raw material needs a price above 0', () =>
   as('sales', `select calc_add_raw_material('Something', 0)`), 'price per kg above 0');
 await fails('production cannot add raw materials', () =>
   as('production', `select calc_add_raw_material('Other', 5)`), 'not allowed');
-await ok('sales changes the name and price of a raw material, then deletes it', async () => {
+await ok('sales changes the name and price of a raw material, then sets it inactive (nothing is deleted)', async () => {
   const { id } = await one('sales', `select calc_add_raw_material('Edit Me', 3) as id`);
   await as('sales', `select calc_update_raw_material($1, '  Edited   Name ', 4.56789)`, [id]);
   const m = await one('admin', `select name, price_eur_per_kg from calc_raw_materials where id = $1`, [id]);
   eq(m.name, 'Edited Name', 'name tidied');
   eq(Number(m.price_eur_per_kg), 4.5679, 'price');
-  await as('sales', `select calc_delete_raw_material($1)`, [id]);
-  eq((await as('admin', `select id from calc_raw_materials where id = $1`, [id])).length, 0, 'deleted');
+  await as('sales', `select calc_set_raw_material_active($1, false)`, [id]);
+  eq((await one('admin', `select active from calc_raw_materials where id = $1`, [id])).active, false, 'inactive, still there');
+  await as('admin', `select calc_set_raw_material_active($1, true)`, [id]);
+  eq((await one('sales', `select active from calc_raw_materials where id = $1`, [id])).active, true, 'active again');
 });
 await fails('a raw material cannot be renamed to a name already in the price list', async () => {
   const { id } = await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`);
@@ -908,104 +896,24 @@ await fails('an edited raw material needs a price above 0', async () => {
   const { id } = await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`);
   await as('sales', `select calc_update_raw_material($1, 'Zinc Glycinate', 0)`, [id]);
 }, 'price per kg above 0');
+await fails('a raw material cannot get an empty name', async () => {
+  const { id } = await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`);
+  await as('sales', `select calc_update_raw_material($1, '   ', 5)`, [id]);
+}, 'name');
 await fails('production cannot change raw materials', async () => {
   const { id } = await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`);
   await as('production', `select calc_update_raw_material($1, 'X', 5)`, [id]);
 }, 'not allowed');
-await fails('production cannot delete raw materials', async () => {
+await fails('production cannot set a raw material inactive', async () => {
   const { id } = await one('admin', `select id from calc_raw_materials where name = 'Zinc Glycinate'`);
-  await as('production', `select calc_delete_raw_material($1)`, [id]);
+  await as('production', `select calc_set_raw_material_active($1, false)`, [id]);
 }, 'not allowed');
-await ok('the sheet sync never removes a hand-added material; the sheet takes it over when it lists it', async () => {
-  await one('sales', `select calc_add_raw_material('Manual Only', 9) as id`);
-  await as('sales', `select calc_record_sync('manual', $1::jsonb, '{}')`,
-    [JSON.stringify({ upserts: [{ name: 'Saffron Extract', price_eur_per_kg: 1000, active: true }], deactivate: ['Manual Only'] })]);
-  eq((await one('admin', `select active, manual from calc_raw_materials where name = 'Manual Only'`)).active, true, 'still active');
-  const s = await one('admin', `select price_eur_per_kg, manual from calc_raw_materials where name = 'Saffron Extract'`);
-  eq(Number(s.price_eur_per_kg), 1000, 'sheet price');
-  eq(s.manual, false, 'no longer manual');
-});
-await fails('production cannot run the sheet sync', () =>
-  as('production', `select calc_record_sync('manual', '{}', '{}')`), 'not allowed');
-await fails('sync source "scheduled" is reserved for the server job', () =>
-  as('sales', `select calc_record_sync('scheduled', '{}', '{}')`), 'invalid sync source');
-await fails('users cannot call the scheduled sync', () =>
-  as('admin', `select calc_record_scheduled_sync('{}', '{}')`), 'permission denied');
-await fails('users cannot call the sync body directly', () =>
-  as('sales', `select calc_apply_sync('manual', '{}', '{}', null, null)`), 'permission denied');
-await ok('the server job logs a scheduled run', async () => {
-  const run = (await db.query(`select * from calc_record_scheduled_sync('{"upserts":[{"name":"Daily Extract","price_eur_per_kg":7}]}', '{"added":1}')`)).rows[0];
-  eq(run.source, 'scheduled', 'source');
-  eq(run.triggered_by, null, 'no user');
-  eq((await as('sales', `select id from calc_raw_materials where name = 'Daily Extract'`)).length, 1, 'applied');
-});
-
-const catalogProducts = (products) => JSON.stringify(products.map(([code, name, price], i) => ({
-  code, name, category: 'Test', tiers: [{ min_qty: 500, price }, { min_qty: 1000, price: price - 0.5 }], sort_order: i })));
-await ok('the catalog syncs on its own and logs its own run; admin and sales read it', async () => {
-  const before = Number((await one('admin', 'select count(*) from calc_sync_runs')).count);
-  const run = await one('sales', `select * from calc_record_catalog_sync('manual', $1::jsonb, '{"added":2}')`,
-    [catalogProducts([['NTL-T1', 'Joint Test', 6.2], ['NTL-T2', 'Sleep Test', 5.9]])]);
-  eq(run.status, 'success', 'status');
-  eq(run.added, 2, 'added');
-  eq(Number((await one('admin', 'select count(*) from calc_sync_runs')).count), before, 'price-list log untouched');
-  eq((await as('admin', `select code from calc_catalog_products where active order by code`)).map((r) => r.code).join(), 'NTL-T1,NTL-T2', 'admin');
-  eq(Number((await one('sales', `select tiers from calc_catalog_products where code = 'NTL-T1'`)).tiers[1].price), 5.7, 'tier price');
-  eq((await as('sales', 'select id from calc_catalog_sync_runs')).length, 1, 'logged');
-});
-await ok('a product no longer in the catalog sheet is deactivated, not deleted', async () => {
-  await as('admin', `select calc_record_catalog_sync('auto', $1::jsonb, '{}')`, [catalogProducts([['NTL-T1', 'Joint Test v2', 6.4]])]);
-  eq((await one('sales', `select active from calc_catalog_products where code = 'NTL-T2'`)).active, false, 'deactivated');
-  eq((await one('sales', `select name from calc_catalog_products where code = 'NTL-T1'`)).name, 'Joint Test v2', 'updated');
-});
-await ok('a failed or empty catalog sync changes nothing and is logged', async () => {
-  const failed = await one('sales', `select * from calc_record_catalog_sync('manual', $1::jsonb, '{}', 'boom')`, [catalogProducts([['NTL-X', 'X', 1]])]);
-  eq(failed.status, 'error', 'failed status');
-  const empty = await one('sales', `select * from calc_record_catalog_sync('manual', '[]', '{}')`);
-  eq(empty.status, 'error', 'empty status');
-  eq((await as('sales', `select id from calc_catalog_products where code = 'NTL-X'`)).length, 0, 'not applied');
-  eq((await one('sales', `select active from calc_catalog_products where code = 'NTL-T1'`)).active, true, 'catalog kept');
-});
-await ok('the price-list sync no longer touches the catalog', async () => {
-  await as('sales', `select calc_record_sync('manual', $1::jsonb, '{}')`,
-    [JSON.stringify({ upserts: [{ name: 'Catalog Day Extract', price_eur_per_kg: 3 }], deactivate: [], catalog: [] })]);
-  eq((await one('sales', `select active from calc_catalog_products where code = 'NTL-T1'`)).active, true, 'catalog kept');
-});
-await ok('the server job logs a scheduled catalog run', async () => {
-  const run = (await db.query(`select * from calc_record_scheduled_catalog_sync($1::jsonb, '{}')`, [catalogProducts([['NTL-T1', 'Joint Test v2', 6.4], ['NTL-T3', 'Daily Test', 4]])])).rows[0];
-  eq(run.source, 'scheduled', 'source');
-  eq(run.triggered_by, null, 'no user');
-  eq((await as('sales', `select id from calc_catalog_products where code = 'NTL-T3'`)).length, 1, 'applied');
-});
-await fails('production cannot run the catalog sync', () =>
-  as('production', `select calc_record_catalog_sync('manual', '[]', '{}')`), 'not allowed');
 await ok('production sees no catalog sync runs', async () => {
   eq((await as('production', 'select id from calc_catalog_sync_runs')).length, 0, 'production');
 });
-await fails('catalog sync source "scheduled" is reserved for the server job', () =>
-  as('sales', `select calc_record_catalog_sync('scheduled', '[]', '{}')`), 'invalid sync source');
-await fails('users cannot call the scheduled catalog sync', () =>
-  as('admin', `select calc_record_scheduled_catalog_sync('[]', '{}')`), 'permission denied');
-await fails('users cannot call the catalog sync body directly', () =>
-  as('sales', `select calc_apply_catalog_sync('manual', '[]', '{}', null, null)`), 'permission denied');
-await ok('the catalog sync keeps the capsules per jar and composition of a product', async () => {
-  await db.query(`update calc_catalog_products set capsules_per_serving = 2, capsules_per_container = 60,
-    composition = '[{"name":"MSM","amount":200,"unit":"mg","note":null}]' where code = 'NTL-T1'`);
-  await as('sales', `select calc_record_catalog_sync('manual', $1::jsonb, '{}')`, [catalogProducts([['NTL-T1', 'Joint Test v3', 6.5], ['NTL-T3', 'Daily Test', 4]])]);
-  const p = await one('sales', `select name, capsules_per_container, composition from calc_catalog_products where code = 'NTL-T1'`);
-  eq(p.name, 'Joint Test v3', 'name from the sheet');
-  eq(p.capsules_per_container, 60, 'capsules kept');
-  eq(p.composition[0].name, 'MSM', 'composition kept');
-});
-await fails('sales cannot change the capsules per jar of a catalog product', () =>
-  as('sales', `update calc_catalog_products set capsules_per_container = 90 where code = 'NTL-T1'`), 'permission denied');
 await ok('production cannot read catalog compositions', async () => {
   eq((await as('production', 'select composition from calc_catalog_products')).length, 0, 'production');
 });
-await fails('sales cannot add catalog products directly', () =>
-  as('sales', `insert into calc_catalog_products (code, name, tiers) values ('X', 'X', '[{"min_qty":1,"price":1}]')`), 'permission denied');
-await fails('admin cannot change catalog prices directly', () =>
-  as('admin', `update calc_catalog_products set tiers = '[{"min_qty":1,"price":0}]'`), 'permission denied');
 await fails('nobody writes the catalog sync log directly', () =>
   as('admin', `insert into calc_catalog_sync_runs (source, status) values ('manual', 'success')`), 'permission denied');
 await ok('only admin changes the catalog sheet link', async () => {
@@ -3811,6 +3719,41 @@ await ok('an order gives the links of its next steps, by its own payments', asyn
     const d = await one('admin', aiQueries.order_details, [unpaid[0].code]);
     eq(d.links.advance_invoice ?? d.links.invoice ?? null, null, 'no invoice link before the payment');
   }
+});
+
+console.log('\nCalculator price list in the database (no Google Sheet)');
+const plMat = (await one('admin', `select calc_add_raw_material('PL Test Material', 10) as id`)).id;
+await fails('sales does not write the price list directly, only through the functions', () =>
+  as('sales', 'update calc_raw_materials set price_eur_per_kg = 1 where id = $1', [plMat]), 'permission denied');
+await ok('the regulatory note stays Admin only; production does not see the price list', async () => {
+  eq((await as('sales', `update calc_raw_materials set regulatory_note = 'x' where id = $1 returning id`, [plMat])).length, 0, 'sales: no row');
+  eq((await one('admin', `update calc_raw_materials set regulatory_note = 'Novel Food' where id = $1 returning regulatory_note`, [plMat])).regulatory_note, 'Novel Food', 'admin');
+  eq((await as('production', 'select id from calc_raw_materials')).length, 0, 'production');
+});
+await fails('nobody deletes a raw material directly', () => as('admin', 'delete from calc_raw_materials where id = $1', [plMat]));
+await ok('the delete function of raw materials is gone', async () => {
+  eq((await db.query(`select 1 from pg_proc where proname = 'calc_delete_raw_material'`)).rows.length, 0, 'gone');
+});
+let plProd;
+await ok('admin adds and edits a catalog product', async () => {
+  plProd = (await one('admin', `insert into calc_catalog_products (code, name, tiers, composition, capsules_per_serving, capsules_per_container)
+      values ('PL-T1', 'PL Test', '[{"min_qty": 500, "price": 5}]', '[{"name": "MSM", "amount": 200, "unit": "mg", "note": null}]', 2, 60)
+      returning id`)).id;
+  const r = await one('admin', `update calc_catalog_products set tiers = '[{"min_qty": 500, "price": 4.5}, {"min_qty": 1000, "price": 4}]', active = false
+                                 where id = $1 returning jsonb_array_length(tiers) as n, active`, [plProd]);
+  eq(r.n, 2, 'tiers'); eq(r.active, false, 'inactive');
+});
+await fails('sales cannot add a catalog product', () =>
+  as('sales', `insert into calc_catalog_products (code, name, tiers) values ('PL-T2', 'x', '[{"min_qty": 1, "price": 1}]')`));
+await ok('sales cannot change a catalog product; production sees none', async () => {
+  eq((await as('sales', `update calc_catalog_products set name = 'x' where id = $1 returning id`, [plProd])).length, 0, 'sales');
+  eq((await as('production', 'select id from calc_catalog_products')).length, 0, 'production');
+});
+await fails('a catalog product needs at least one price step', () =>
+  as('admin', `update calc_catalog_products set tiers = '[]' where id = $1`, [plProd]));
+await ok('the Google Sheet sync functions are gone', async () => {
+  eq((await db.query(`select proname from pg_proc where proname in ('calc_record_sync', 'calc_record_scheduled_sync', 'calc_apply_sync',
+      'calc_record_catalog_sync', 'calc_record_scheduled_catalog_sync', 'calc_apply_catalog_sync')`)).rows.length, 0, 'functions');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

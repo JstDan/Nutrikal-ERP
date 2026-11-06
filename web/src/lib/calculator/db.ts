@@ -1,8 +1,7 @@
 // Calculator reads, always as the signed-in user (row-level security decides what comes back).
 import { q } from "@/lib/db/engine";
 import { countryName } from "./countries";
-import { CATALOG_RUN_COLUMNS, envCatalogSheetUrl, envSheetUrl } from "./sync";
-import { DEFAULT_SETTINGS, type CatalogProduct, type CatalogSyncRun, type OfferRecord, type RawMaterial, type ServicePreset, type Settings, type SyncRun } from "./types";
+import { DEFAULT_SETTINGS, type CatalogProduct, type OfferRecord, type RawMaterial, type ServicePreset, type Settings } from "./types";
 
 // Postgres numeric columns arrive as strings.
 const num = (v: number | string | null | undefined) => Number(v ?? 0);
@@ -38,25 +37,18 @@ export function settingsFromRow(r: SettingsRow): Settings {
 
 export async function loadSettings(userId: string): Promise<Settings> {
   const [row] = await q<SettingsRow>(userId, "select * from calc_settings");
-  const s = row ? settingsFromRow(row) : DEFAULT_SETTINGS;
-  const env = envSheetUrl();
-  const catalogEnv = envCatalogSheetUrl();
-  return {
-    ...s,
-    ...(env && { google_sheet_url: env, google_sheet_from_env: true }),
-    ...(catalogEnv && { catalog_sheet_url: catalogEnv, catalog_sheet_from_env: true }),
-  };
+  return row ? settingsFromRow(row) : DEFAULT_SETTINGS;
 }
 
-/** Catalog products in the order of the catalog sheet (active only, unless includeInactive). Products without a
- *  known composition are left out until it is filled in (owner, Oct 2026). */
-export async function loadCatalog(userId: string, { includeInactive = false } = {}): Promise<CatalogProduct[]> {
+/** Catalog products in their order (active only, unless includeInactive). The calculator leaves out products without
+ *  a known composition until it is filled in (owner, Oct 2026); the catalog tab lists them too (withoutComposition). */
+export async function loadCatalog(userId: string, { includeInactive = false, withoutComposition = false } = {}): Promise<CatalogProduct[]> {
   const rows = await q<CatalogProduct>(
     userId,
-    `select id, code, name, category, tiers, active, capsules_per_serving, capsules_per_container,
+    `select id, code, name, category, tiers, active, sort_order, capsules_per_serving, capsules_per_container,
             serving_g::float as serving_g, servings_per_container, composition from calc_catalog_products
-      where composition is not null and (active or $1) order by active desc, sort_order, code`,
-    [includeInactive],
+      where (composition is not null or $2) and (active or $1) order by active desc, sort_order, code`,
+    [includeInactive, withoutComposition],
   );
   return rows.map((p) => ({ ...p, tiers: p.tiers.map((x) => ({ min_qty: Number(x.min_qty), price: Number(x.price) })) }));
 }
@@ -87,20 +79,6 @@ export async function loadOffer(userId: string, id: string): Promise<OfferRecord
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const [row] = await q<OfferRecord>(userId, `select ${OFFER_COLUMNS} from calc_offers where id = $1`, [id]);
   return row ? toOffer(row) : null;
-}
-
-export async function loadLastSync(userId: string): Promise<SyncRun | null> {
-  const [row] = await q<SyncRun>(
-    userId,
-    `select id, created_at::text, source, status, added, changed, unchanged, invalid, missing, removed, restored, error
-       from calc_sync_runs order by created_at desc limit 1`,
-  );
-  return row ?? null;
-}
-
-export async function loadLastCatalogSync(userId: string): Promise<CatalogSyncRun | null> {
-  const [row] = await q<CatalogSyncRun>(userId, `select ${CATALOG_RUN_COLUMNS} from calc_catalog_sync_runs order by created_at desc limit 1`);
-  return row ?? null;
 }
 
 /** CRM client data the calculator can copy into an offer. */

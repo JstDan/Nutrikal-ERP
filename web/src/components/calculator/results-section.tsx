@@ -2,7 +2,7 @@
 
 import { hasAluminiumCap, type CalcResult } from "@/lib/calculator/calc";
 import { parseNum } from "@/lib/calculator/numbers";
-import { catalogPrice } from "@/lib/calculator/catalogImport";
+import { catalogPrice } from "@/lib/calculator/catalogPrice";
 import { catalogTiersFor, hasAluminiumLid, offerCapsules } from "@/lib/calculator/catalogCapsules";
 import { productName } from "@/lib/calculator/offerRecord";
 import { isCapsule, type OfferForm } from "@/lib/calculator/types";

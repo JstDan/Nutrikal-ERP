@@ -4,9 +4,7 @@ import { revalidatePath } from "next/cache";
 import { q, withUser } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import { toOffer } from "@/lib/calculator/db";
-import { extractSheetId } from "@/lib/calculator/materialImport";
-import { catalogSyncDue, runCatalogSync } from "@/lib/calculator/sync";
-import type { CatalogSyncRun, OfferInput, OfferRecord, RawMaterial, Settings } from "@/lib/calculator/types";
+import type { CatalogIngredient, CatalogTier, OfferInput, OfferRecord, RawMaterial, Settings } from "@/lib/calculator/types";
 
 export type CalcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -121,7 +119,7 @@ export async function saveRegulatoryNote(id: string, note: string | null): Promi
   return res;
 }
 
-/** Admin, sales: a raw material that is not in the price list, with its price per kg (kept apart from the sheet). */
+/** Admin, sales: a raw material that is not in the price list, with its price per kg. */
 export async function addRawMaterial(name: string, price: number): Promise<CalcResult<RawMaterial>> {
   const res = await run(async (uid) => {
     const rows = await withUser(uid, async (tx) => {
@@ -138,55 +136,70 @@ export async function addRawMaterial(name: string, price: number): Promise<CalcR
   return res;
 }
 
-/** Admin, sales: change the name and the price per kg of a raw material (saved offers keep their own copy). */
-export async function updateRawMaterial(id: string, name: string, price: number): Promise<CalcResult<boolean>> {
-  const res = await run(async (uid) => {
-    await q(uid, "select calc_update_raw_material($1, $2, $3)", [id, name, price]);
-    return true;
-  });
-  if (res.ok) revalidatePath("/calculator", "layout");
-  return res;
-}
-
-/** Admin, sales: delete a raw material from the price list (saved offers keep their own copy). */
-export async function deleteRawMaterial(id: string): Promise<CalcResult<boolean>> {
-  const res = await run(async (uid) => {
-    await q(uid, "select calc_delete_raw_material($1)", [id]);
-    return true;
-  });
-  if (res.ok) revalidatePath("/calculator", "layout");
-  return res;
-}
-
 /**
- * Called when the calculator opens: catches up the catalog when its daily 17:00 sync has not run
- * yet (retried hourly after a failure). The price list is no longer synced (owner, Nov 2026).
+ * Admin, sales: name, price per kg and status of a raw material (the price list lives in the database since Nov 2026).
+ * Nothing is deleted: an inactive material is hidden from the calculator; saved offers keep their own copy.
  */
-export async function syncIfStale(): Promise<CalcResult<boolean>> {
+export async function updateRawMaterial(id: string, patch: { name: string; price: number; active: boolean }): Promise<CalcResult<RawMaterial>> {
   const { t } = await getSession();
   const res = await run(async (uid) => {
-    const catalog = (await catalogSyncDue(uid)) ? await runCatalogSync(uid, "auto", t.calc.sync) : null;
-    return catalog?.status === "success";
+    const name = patch.name.trim().replace(/\s+/g, " ");
+    if (!name) throw new Error(t.calc.formula.addNameRequired);
+    if (!Number.isFinite(patch.price) || patch.price <= 0) throw new Error(t.calc.formula.addPriceInvalid);
+    const rows = await withUser(uid, async (tx) => {
+      await tx.query("select calc_update_raw_material($1, $2, $3)", [id, name, patch.price]);
+      await tx.query("select calc_set_raw_material_active($1, $2)", [id, patch.active]);
+      return (await tx.query<RawMaterial>(
+        "select id, name, price_eur_per_kg, regulatory_note, active, manual, updated_at::text from calc_raw_materials where id = $1",
+        [id],
+      )).rows;
+    });
+    if (!rows[0]) throw new Error("Not allowed");
+    return { ...rows[0], price_eur_per_kg: Number(rows[0].price_eur_per_kg) };
   });
-  if (res.ok && res.data) revalidatePath("/calculator", "layout");
+  if (res.ok) revalidatePath("/calculator", "layout");
   return res;
 }
 
-// ------------------------------------------------- catalog sheet sync
-export async function syncCatalog(): Promise<CalcResult<CatalogSyncRun>> {
+export type CatalogProductInput = {
+  id?: string | null;
+  code: string;
+  name: string;
+  category: string | null;
+  tiers: CatalogTier[];
+  sort_order: number;
+  active: boolean;
+  capsules_per_serving: number | null;
+  capsules_per_container: number | null;
+  serving_g: number | null;
+  servings_per_container: number | null;
+  composition: CatalogIngredient[] | null;
+};
+
+/** Admin: a new catalog product of the calculator, or changes to one. */
+export async function saveCatalogProduct(p: CatalogProductInput): Promise<CalcResult<string>> {
   const { t } = await getSession();
-  const res = await run((uid) => runCatalogSync(uid, "manual", t.calc.sync));
-  revalidatePath("/calculator", "layout");
-  return res;
-}
-
-/** Admin: the catalog Google Sheet link (when it is not set on the server). */
-export async function saveCatalogSheetUrl(url: string): Promise<CalcResult<boolean>> {
   const res = await run(async (uid) => {
-    if (!extractSheetId(url)) throw new Error("Invalid link");
-    const rows = await q<{ id: boolean }>(uid, "update calc_settings set catalog_sheet_url = $1 returning id", [url.trim()]);
-    if (!rows.length) throw new Error("Not allowed");
-    return true;
+    const code = p.code.trim().toUpperCase(), name = p.name.trim();
+    if (!code || !name) throw new Error(t.calc.catalogTab.errCodeName);
+    const tiers = [...p.tiers].sort((a, b) => a.min_qty - b.min_qty);
+    if (!tiers.length || tiers.some((x) => !(x.min_qty > 0) || !(x.price >= 0))) throw new Error(t.calc.catalogTab.errTiers);
+    const values = [
+      code, name, p.category?.trim() || null, JSON.stringify(tiers), Math.round(p.sort_order) || 0, p.active,
+      p.capsules_per_serving, p.capsules_per_container, p.serving_g, p.servings_per_container,
+      p.composition?.length ? JSON.stringify(p.composition) : null,
+    ];
+    const rows = p.id
+      ? await q<{ id: string }>(uid,
+          `update calc_catalog_products set code = $1, name = $2, category = $3, tiers = $4::jsonb, sort_order = $5, active = $6,
+             capsules_per_serving = $7, capsules_per_container = $8, serving_g = $9, servings_per_container = $10, composition = $11::jsonb
+           where id = $12 returning id`, [...values, p.id])
+      : await q<{ id: string }>(uid,
+          `insert into calc_catalog_products (code, name, category, tiers, sort_order, active, capsules_per_serving, capsules_per_container,
+             serving_g, servings_per_container, composition)
+           values ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11::jsonb) returning id`, values);
+    if (!rows[0]) throw new Error("Not allowed");
+    return rows[0].id;
   });
   if (res.ok) revalidatePath("/calculator", "layout");
   return res;

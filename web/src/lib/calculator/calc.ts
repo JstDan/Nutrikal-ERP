@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { catalogPrice } from './catalogImport';
+import { catalogPrice } from './catalogPrice';
 import { ALUMINIUM_LID_EUR, GLASS_JAR_EUR, catalogTiersFor } from './catalogCapsules';
 import { isCapsule, type CatalogTier, type DoseUnit, type FixedCosts, type OfferForm, type ProductType } from './types';
 import { parseNum, parsePositiveInt } from './numbers';

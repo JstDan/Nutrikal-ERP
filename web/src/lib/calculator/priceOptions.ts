@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 import { unitPriceFor, type CalcResult } from './calc';
 import { catalogTiersFor } from './catalogCapsules';
-import { catalogPrice } from './catalogImport';
+import { catalogPrice } from './catalogPrice';
 import { parseNum } from './numbers';
 import type { OfferForm, PriceTier } from './types';
 

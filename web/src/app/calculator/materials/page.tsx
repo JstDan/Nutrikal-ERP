@@ -16,12 +16,7 @@ export default async function CalculatorMaterialsPage() {
         subtitle={fmt(t.calc.materials.count, { n: materials.filter((m) => m.active).length })}
       />
       <CalcTabs t={t.calc} active="materials" />
-      <MaterialsView
-        t={t.calc}
-        locale={locale}
-        materials={materials}
-        isAdmin={user.role === "admin"}
-      />
+      <MaterialsView t={t.calc} locale={locale} materials={materials} isAdmin={user.role === "admin"} />
     </div>
   );
 }

@@ -24,7 +24,7 @@ export function AddMaterialPrompt({ query, onAdded }: { query: string; onAdded: 
   );
 }
 
-function AddMaterialDialog({ initialName, onClose, onAdded }: { initialName: string; onClose: () => void; onAdded: (m: RawMaterial) => void }) {
+export function AddMaterialDialog({ initialName, onClose, onAdded }: { initialName: string; onClose: () => void; onAdded: (m: RawMaterial) => void }) {
   const { t } = useCalcText();
   const F = t.formula;
   const router = useRouter();
