@@ -4024,5 +4024,20 @@ await ok('seeing a page reads only its own notifications', async () => {
   eq((await one('admin', `select count(*)::int as n from notifications where link = '/chat?c=aaa' and read_at is null`)).n, 1, 'another user untouched');
 });
 
+// ----- Nutrikal stock moved to production (owner, Nov 2026)
+await ok('everything in NK-WH moves to G-PRO through the ledger, reservations too', async () => {
+  const stockAt = async (code) => Number((await db.query(
+    `select coalesce(sum(m.quantity), 0) as q from stock_movements m join locations l on l.id = m.location_id where l.code = $1`, [code])).rows[0].q);
+  await recv(mcc.id, 5, 'NK-WH');
+  await db.exec('reset role');
+  const before = { nk: await stockAt('NK-WH'), pro: await stockAt('G-PRO') };
+  if (before.nk <= 0) throw new Error('no stock at NK-WH to move');
+  await db.exec(readFileSync(join(migDir, '20261107000300_nutrikal_stock_to_production.sql'), 'utf8'));
+  eq(await stockAt('NK-WH'), 0, 'NK-WH empty');
+  eq(await stockAt('G-PRO'), before.pro + before.nk, 'all at G-PRO');
+  eq((await db.query(`select count(*)::int as n from stock_reservations r join locations l on l.id = r.location_id
+                       where l.code = 'NK-WH' and r.status = 'active'`)).rows[0].n, 0, 'no reservation left at NK-WH');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
