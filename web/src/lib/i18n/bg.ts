@@ -2250,6 +2250,10 @@ export const bg: Dict = {
     },
   },
   send: {
+    offerTitle: "Оферта",
+    language: "Език на офертата",
+    languageBg: "Български",
+    languageEn: "English",
     title: "Изпрати по имейл",
     lastSent: "изпратено на {date} до {to}",
     notConfigured: "Имейлът още не е настроен: Admin свързва общата Gmail поща от Настройки > Поща.",

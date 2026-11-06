@@ -124,11 +124,11 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
       {/* Opened with the button next to Download PDF */}
       {sending && (
         <SendDocument id="offer-send" open onToggle={setSending} info={send} text={sendText} locale={locale}
-          makePdf={async () => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings)} />
+          makePdfIn={async (lang) => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings, lang)} />
       )}
       {reminder && (
         <SendDocument info={reminder} text={sendText} locale={locale} title={reminderTitle}
-          makePdf={async () => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings)} />
+          makePdfIn={async (lang) => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings, lang)} />
       )}
       <DocLangDialog open={asking} text={langText} onPick={pdf} onClose={() => setAsking(false)} />
       <Toast toast={toast} onClose={clear} closeLabel={t.close} />

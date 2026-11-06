@@ -24,15 +24,24 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
     [offer.id],
   )).length > 0;
 
-  // The offer document is always in English
-  const send = await loadSendInfo(user.id, user.name, "calc_offer", offer.id, { to: offer.receiver_email, title: "Offer", no: offer.offer_no, lang: "en" });
+  // The sender picks the language of the offer on the card (owner, Nov 2026); English first
+  const lang: "bg" | "en" = "en";
+  const send = await loadSendInfo(user.id, user.name, "calc_offer", offer.id, {
+    to: offer.receiver_email, title: getDict(lang).send.offerTitle, no: offer.offer_no, lang,
+    titles: { bg: getDict("bg").send.offerTitle, en: getDict("en").send.offerTitle },
+  });
 
   const closed = (await q<{ id: number }>(user.id, "select 1 as id from calc_offer_closed where offer_id = $1", [offer.id])).length > 0;
-  const M = getDict("en").assistant;
+  const reminderIn = (l: "bg" | "en") => {
+    const M = getDict(l).assistant;
+    return {
+      subject: fmt(M.offerReminderSubject, { no: offer.offer_no }),
+      body: fmt(M.offerReminderBody, { no: offer.offer_no, date: formatDate(l, offer.created_at.slice(0, 10)), name: user.name }),
+    };
+  };
   const reminder = !inOrder && !closed ? {
-    ...send, history: [],
-    subject: fmt(M.offerReminderSubject, { no: offer.offer_no }),
-    body: fmt(M.offerReminderBody, { no: offer.offer_no, date: formatDate("en", offer.created_at.slice(0, 10)), name: user.name }),
+    ...send, history: [], ...reminderIn(lang),
+    versions: { bg: reminderIn("bg"), en: reminderIn("en") },
   } : null;
 
   return (

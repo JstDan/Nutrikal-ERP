@@ -2248,6 +2248,10 @@ export const en = {
     },
   },
   send: {
+    offerTitle: "Offer",
+    language: "Language of the offer",
+    languageBg: "Български",
+    languageEn: "English",
     title: "Send by e-mail",
     lastSent: "sent {date} to {to}",
     notConfigured: "E-mail is not set up yet: Admin connects the shared Gmail mailbox under Settings > Mail.",

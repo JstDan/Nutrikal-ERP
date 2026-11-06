@@ -6,6 +6,8 @@ import type { SendInfo, SendKind } from "@/components/send-document";
 /** What the send card shows: the proposed e-mail in the document's language and the earlier sends of the document. */
 export async function loadSendInfo(userId: string, userName: string, kind: SendKind, refId: string, o: {
   to?: string | null; orderId?: string | null; clientId?: string; title: string; no: string; lang: "bg" | "en";
+  /** The title in both languages: the card then lets the sender pick the language of the document. */
+  titles?: Record<"bg" | "en", string>;
 }): Promise<SendInfo> {
   const history = await q<SendInfo["history"][number]>(
     userId,
@@ -31,7 +33,14 @@ export async function loadSendInfo(userId: string, userName: string, kind: SendK
   const route = await mailRoute();
   // With a signature the message ends at the greeting: the name and contacts come with the signature
   const signed = (await q<{ one: number }>(userId, "select 1 as one from mail_signatures where user_id = auth.uid()")).length > 0;
+  const version = (l: "bg" | "en", title: string) => {
+    const D = getDict(l).send.mail;
+    const v = { title, no: o.no, lower: title.toLocaleLowerCase(l), name: userName };
+    return { subject: fmt(D.subject, v), body: fmt(signed ? D.bodySigned : D.body, v) };
+  };
   return {
+    versions: o.titles ? { bg: version("bg", o.titles.bg), en: version("en", o.titles.en) } : undefined,
+    lang: o.lang,
     kind, refId, history, configured: route !== null, via: route && route !== "resend" ? route.gmail : null, signed, to: o.to ?? client ?? direct ?? "",
     subject: fmt(M.subject, values), body: fmt(signed ? M.bodySigned : M.body, values),
   };

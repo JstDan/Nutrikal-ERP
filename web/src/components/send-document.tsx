@@ -18,10 +18,14 @@ export type SendInfo = {
   /** The sender has an e-mail signature: it goes under the message. */
   signed: boolean;
   history: { id: string; recipient: string; status: "sending" | "sent" | "failed"; error: string | null; created_at: string; sender: string | null }[];
+  /** The proposed e-mail in both languages, when the sender picks the language of the document (offers; owner, Nov 2026). */
+  versions?: Record<"bg" | "en", { subject: string; body: string }>;
+  /** The language picked first. */
+  lang?: "bg" | "en";
 };
 
 /** E-mails a document to the client as a PDF made in the browser, the same file as the download. */
-export function SendDocument({ info, model, makePdf, text, locale, title, id, open, onToggle }: {
+export function SendDocument({ info, model, makePdf, makePdfIn, text, locale, title, id, open, onToggle }: {
   info: SendInfo;
   /** Opened from a button elsewhere (controlled); left out, the card opens on its own heading. */
   id?: string;
@@ -29,6 +33,8 @@ export function SendDocument({ info, model, makePdf, text, locale, title, id, op
   onToggle?: (open: boolean) => void;
   model?: ProformaPdfModel;
   makePdf?: () => Promise<{ base64: string; fileName: string }>;
+  /** The document in the language picked on the card (with info.versions): Български or English. */
+  makePdfIn?: (lang: "bg" | "en") => Promise<{ base64: string; fileName: string }>;
   text: Dict["send"];
   locale: Locale;
   title?: string;
@@ -38,7 +44,16 @@ export function SendDocument({ info, model, makePdf, text, locale, title, id, op
   const [pending, start] = useTransition();
   const [state, setState] = useState<{ ok?: boolean; error?: string; message?: string }>({});
   const last = info.history.find((h) => h.status === "sent");
-  const [subject, setSubject] = useState(info.subject);
+  const pickLang = !!(info.versions && makePdfIn);
+  const [lang, setLang] = useState<"bg" | "en">(info.lang ?? "en");
+  const [subject, setSubject] = useState(pickLang ? info.versions![lang].subject : info.subject);
+  const [body, setBody] = useState(pickLang ? info.versions![lang].body : info.body);
+  /** Another language: the subject and the message follow it (whatever was typed is replaced). */
+  const changeLang = (l: "bg" | "en") => {
+    setLang(l);
+    setSubject(info.versions![l].subject);
+    setBody(info.versions![l].body);
+  };
   // Earlier Gmail conversations with the address: the document can go as a reply in one (owner, Nov 2026)
   const [threads, setThreads] = useState<{ for: string; list: MailThread[]; loading: boolean; error?: string }>({ for: "", list: [], loading: false });
   const [threadId, setThreadId] = useState("");
@@ -70,7 +85,7 @@ export function SendDocument({ info, model, makePdf, text, locale, title, id, op
     try {
       const pdf = model
         ? await (await import("@/lib/proforma-pdf")).proformaPdfBase64(model)
-        : await makePdf!();
+        : pickLang ? await makePdfIn!(lang) : await makePdf!();
       fd.set("pdf", pdf.base64);
       fd.set("file_name", pdf.fileName);
       const res = await sendDocument(fd);
@@ -97,6 +112,19 @@ export function SendDocument({ info, model, makePdf, text, locale, title, id, op
             <label className="field"><span>{S.to} *</span><input name="to" type="email" required defaultValue={info.to} onBlur={(e) => loadThreads(e.currentTarget.value)} className="input" /></label>
             <label className="field"><span>{S.cc}</span><input name="cc" type="email" className="input" /></label>
           </div>
+          {pickLang && (
+            <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+              <legend className="mb-1 text-sm font-semibold">{S.language}</legend>
+              <div className="flex flex-wrap gap-2">
+                {(["bg", "en"] as const).map((l) => (
+                  <label key={l} className={`btn ${lang === l ? "btn-primary" : "btn-outline"} cursor-pointer`}>
+                    <input type="radio" name="doc_lang" value={l} checked={lang === l} onChange={() => changeLang(l)} className="sr-only" />
+                    {l === "bg" ? S.languageBg : S.languageEn}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           {info.via && (
             <label className="field">
               <span>{S.thread}</span>
@@ -118,7 +146,7 @@ export function SendDocument({ info, model, makePdf, text, locale, title, id, op
             <input name="subject" required value={thread ? replySubject(thread.subject) : subject} readOnly={!!thread}
               onChange={(e) => setSubject(e.currentTarget.value)} className="input read-only:bg-mist" />
           </label>
-          <label className="field"><span>{S.body} *</span><textarea name="body" required rows={7} defaultValue={info.body} className="input" /></label>
+          <label className="field"><span>{S.body} *</span><textarea name="body" required rows={7} value={body} onChange={(e) => setBody(e.currentTarget.value)} className="input" /></label>
           <p className="m-0 text-xs text-ink-2">
             {info.signed ? S.signatureAdded : S.noSignature}{" "}
             <a href="/signature" className="font-semibold text-ink underline">{S.signatureLink}</a>
