@@ -7,8 +7,7 @@ export type ClientValues = {
   legal_name: string; trade_name: string | null; status: string; country_code: string; vat_number: string | null;
   company_id: string | null; registration_address: string | null; address_line1: string | null; city: string | null;
   postal_code: string | null; billing_email: string | null; phone: string | null; website: string | null;
-  preferred_locale: "bg" | "en"; deposit_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null;
-  balance_net_days: number | null; credit_limit: string | null; notes: string | null;
+  preferred_locale: "bg" | "en"; credit_limit: string | null; notes: string | null;
 };
 
 /**
@@ -86,18 +85,8 @@ export function ClientFields({ t, locale, c, withContact }: { t: Dict; locale: L
       </fieldset>
 
       <fieldset className="m-0 flex flex-col gap-4 border-0 border-t border-mist p-0 pt-4">
-        <legend className="mb-1 text-base font-bold">{f.terms}</legend>
-        <p className="m-0 text-[13px] text-ink-2">{f.termsHint}</p>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <label className="field"><span>{f.depositPct}</span><input name="deposit_pct" type="number" min={0} max={100} step="1" defaultValue={v(c?.deposit_pct)} className="input" /></label>
-          <label className="field"><span>{f.balanceTerms}</span>
-            <select name="balance_terms" className="input" defaultValue={c?.balance_terms ?? ""}>
-              <option value="">—</option>
-              <option value="before_dispatch">{t.enums.balanceTermsOption.before_dispatch}</option>
-              <option value="net_days">{t.enums.balanceTermsOption.net_days}</option>
-            </select>
-          </label>
-          <label className="field"><span>{f.netDays}</span><input name="balance_net_days" type="number" min={0} defaultValue={v(c?.balance_net_days)} className="input" /></label>
+        <legend className="mb-2 text-base font-bold">{f.terms}</legend>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className="field"><span>{f.creditLimit}</span><input name="credit_limit" type="number" min={0} step="100" defaultValue={v(c?.credit_limit)} className="input" /></label>
         </div>
         <label className="field"><span>{f.notes}</span><textarea name="notes" defaultValue={v(c?.notes)} className="input" /></label>
