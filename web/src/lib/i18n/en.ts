@@ -1211,6 +1211,15 @@ export const en = {
       noApproved: "No approved formula yet: create and approve it in Formulas.",
       linkedFormula: "Formula",
     },
+    invoiceStart: {
+      title: "{kind} · {code}",
+      advance: "Advance invoice",
+      final: "Final invoice",
+      full: "Invoice",
+      note: "The draft is filled from the order. You check it on the next page and issue it there; nothing is issued yet.",
+      make: "Make the draft",
+      back: "Back to the order",
+    },
     final: {
       title: "Documents",
       finalTitle: "Final proforma",

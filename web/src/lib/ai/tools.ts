@@ -69,20 +69,35 @@ export const aiTools = () => (process.env.AI_READ_MAIL?.trim() === "on" ? [...AI
 
 const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
   find_clients: (a) => [
-    `select code, legal_name, trade_name, status, country_code, vat_number, billing_email from clients
+    `select code, legal_name, trade_name, status, country_code, vat_number, billing_email, '/clients/' || id as link from clients
       where $1 = '' or legal_name ilike '%' || $1 || '%' or trade_name ilike '%' || $1 || '%' order by legal_name limit ${LIMIT}`, [term(a)]],
   list_orders: (a) => [
-    `select code, status, client, total_packs, requested_date::text from sales_order_overview
+    `select code, status, client, total_packs, requested_date::text, '/orders/' || id as link from sales_order_overview
       where ($1 = '' or client ilike '%' || $1 || '%') and ($2 = '' or status::text = $2) order by code desc limit ${LIMIT}`, [term(a), a.status ?? ""]],
   order_details: (a) => [
     `select so.code, so.status, c.legal_name as client, so.currency, so.vat_pct, so.deposit_pct, so.deposit_amount, so.deposit_received_on::text,
             so.balance_terms, so.balance_received_on::text, so.requested_date::text, so.customer_ref, so.notes,
+            '/orders/' || so.id as link, '/clients/' || so.client_id as client_link,
+            (select json_agg(json_build_object('purpose', i.purpose, 'number', i.number, 'status', i.status, 'total', i.total, 'link', '/invoices/' || i.id))
+               from invoices i where i.order_id = so.id) as invoices,
+            -- Pages to act on the order; an invoice link opens the invoice, or one click there makes its draft
+            json_strip_nulls(json_build_object(
+              'proforma', '/orders/' || so.id || '/proforma',
+              'final_proforma', case when two.v and order_production_done(so.id) then '/orders/' || so.id || '/proforma?final=1' end,
+              'advance_invoice', case when two.v and so.deposit_received_on is not null and paid.v then '/orders/' || so.id || '/invoice?purpose=advance' end,
+              'final_invoice', case when two.v and so.balance_received_on is not null and paid.v then '/orders/' || so.id || '/invoice?purpose=final' end,
+              'invoice', case when not two.v and paid.v then '/orders/' || so.id || '/invoice?purpose=full' end,
+              'payments_and_tasks', '/orders/' || so.id,
+              'dispatch', case when so.status = 'ready' then '/orders/' || so.id || '#dispatch-h' end)) as links,
             (select json_agg(json_build_object('product', coalesce(l.description, f.name), 'quantity', l.quantity, 'unit_price', l.unit_price) order by l.sort_order)
                from sales_order_lines l left join formula_versions v on v.id = l.formula_version_id left join formulas f on f.id = v.formula_id
               where l.order_id = so.id) as lines,
-            (select json_agg(json_build_object('code', m.code, 'status', m.status, 'quantity', m.quantity, 'produced', m.produced_quantity, 'planned', m.planned_date) order by m.code)
+            (select json_agg(json_build_object('code', m.code, 'status', m.status, 'quantity', m.quantity, 'produced', m.produced_quantity, 'planned', m.planned_date, 'link', '/production/' || m.id) order by m.code)
                from manufacturing_orders m join sales_order_lines l on l.id = m.sales_order_line_id where l.order_id = so.id) as batches
-       from sales_orders so join clients c on c.id = so.client_id where so.code = $1`, [(a.code ?? "").trim().toUpperCase()]],
+       from sales_orders so join clients c on c.id = so.client_id
+       cross join lateral (select order_paid_in_two(so.id) as v) two
+       cross join lateral (select so.status not in ('draft', 'unpaid', 'cancelled') as v) paid
+      where so.code = $1`, [(a.code ?? "").trim().toUpperCase()]],
   find_stock: (a) => [
     `select i.sku, i.name, i.name_bg, s.available, s.reorder_level, s.base_unit
        from item_stock_summary s join items i on i.id = s.item_id
@@ -93,18 +108,18 @@ const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
   expiring_lots: () => [
     `select lot_number, item_name, days_left, quantity from expiring_lots order by days_left limit ${LIMIT}`, []],
   find_recipes: (a) => [
-    `select f.code, f.name, f.name_bg, f.product_format, f.is_active, c.legal_name as client,
+    `select f.code, f.name, f.name_bg, f.product_format, f.is_active, c.legal_name as client, '/formulas/' || f.id as link,
             (select v.status from formula_versions v where v.formula_id = f.id order by v.version desc limit 1) as latest_status
        from formulas f left join clients c on c.id = f.client_id
       where $1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%' order by f.code desc limit ${LIMIT}`, [term(a)]],
   find_invoices: (a) => [
-    `select i.number, i.kind, i.status, i.buyer ->> 'name' as client, so.code as order_code, i.issue_date::text, i.due_date::text, i.total, i.currency,
+    `select i.number, i.kind, i.status, i.buyer ->> 'name' as client, so.code as order_code, i.issue_date::text, i.due_date::text, i.total, i.currency, '/invoices/' || i.id as link,
             case when i.status = 'issued' and i.kind = 'invoice' then invoice_open_amount(i.id) end as left_to_pay
        from invoices i left join sales_orders so on so.id = i.order_id
       where $1 = '' or i.number ilike '%' || $1 || '%' or i.buyer ->> 'name' ilike '%' || $1 || '%' or so.code ilike '%' || $1 || '%'
       order by i.created_at desc limit ${LIMIT}`, [term(a)]],
   production_details: (a) => [
-    `select m.code, m.status, m.quantity, m.produced_quantity, m.planned_date::text, m.produced_on::text, f.code as recipe, f.name as product, so.code as sales_order
+    `select m.code, m.status, m.quantity, m.produced_quantity, m.planned_date::text, m.produced_on::text, f.code as recipe, f.name as product, so.code as sales_order, '/production/' || m.id as link
        from manufacturing_orders m
        left join formula_versions v on v.id = m.formula_version_id left join formulas f on f.id = v.formula_id
        left join sales_order_lines l on l.id = m.sales_order_line_id left join sales_orders so on so.id = l.order_id
@@ -129,7 +144,7 @@ const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
       order by name limit 15`, [term(a)]],
   find_materials: (a) => ["select * from recipe_materials($1)", [term(a)]],
   recipe_details: (a) => [
-    `select f.code, f.name, v.version, v.status, f.product_format, f.serving_size, f.serving_unit, f.servings_per_pack,
+    `select f.code, f.name, v.version, v.status, f.product_format, f.serving_size, f.serving_unit, f.servings_per_pack, '/formulas/' || f.id as link,
             (select json_agg(json_build_object('ingredient', d.name, 'amount', d.amount, 'unit', d.unit) order by d.sort_order, d.name)
                from formula_line_details d where d.version_id = v.id) as lines
        from formulas f join formula_versions v on v.formula_id = f.id
