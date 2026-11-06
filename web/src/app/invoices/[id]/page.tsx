@@ -77,7 +77,9 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
   const subtotal = draft ? lines.reduce((a, r) => a + Number(r.amount), 0) : Number(x.subtotal);
   const vat = draft ? Math.round(subtotal * vatPct) / 100 : Number(x.vat_amount);
 
-  const model = invoiceModel(x, lines, logo, asProforma);
+  // Both languages: the download asks which one (owner, Nov 2026); the page and the e-mail keep the invoice's own
+  const both = { bg: invoiceModel({ ...x, locale: "bg" }, lines, logo, asProforma), en: invoiceModel({ ...x, locale: "en" }, lines, logo, asProforma) };
+  const model = both[l];
 
   const send = draft ? null : await loadSendInfo(user.id, user.name, "invoice", x.id, { orderId: x.order_id, clientId: x.client_id, title: docTitle, no: x.number ?? "", lang: l });
 
@@ -86,7 +88,7 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-2 print:hidden">
-          <ProformaPdfButton model={model} label={t.orders.proforma.download} errorText={t.orders.proforma.downloadFailed} />
+          <ProformaPdfButton models={both} langText={t.common.docLang} label={t.orders.proforma.download} errorText={t.orders.proforma.downloadFailed} />
           <PrintButton label={t.orders.proforma.printNow} variant="outline" />
           <Link href={`/invoices/${x.id}`} className="btn btn-outline">{W.toDraft}</Link>
         </div>
@@ -286,7 +288,7 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
         </div>
       ) : (
         <div className="flex flex-wrap gap-2 print:hidden">
-          <ProformaPdfButton model={model} label={I.download} errorText={I.downloadFailed} />
+          <ProformaPdfButton models={both} langText={t.common.docLang} label={I.download} errorText={I.downloadFailed} />
           <PrintButton label={I.print} variant="outline" />
           {x.order_id && <Link href={`/orders/${x.order_id}`} className="btn btn-outline">{I.toOrder}</Link>}
           {direct && !isNote && (
@@ -328,7 +330,7 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
           </Card>
         </div>
       )}
-      {locale !== l && <p className="m-0 text-xs text-ink-2 print:hidden">{I.clientLanguage}</p>}
+
     </div>
   );
 }

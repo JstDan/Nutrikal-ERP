@@ -46,7 +46,7 @@ const de: PortalText = {
   },
   invoices: {
     title: "Rechnungen", empty: "Noch keine Rechnungen.", due: "Fällig", open: "Offen", paid: "Bezahlt",
-    pdf: "PDF herunterladen", print: "Drucken", pdfFailed: "Das PDF konnte nicht erstellt werden.",
+    pdf: "PDF herunterladen", print: "Drucken", pdfFailed: "Das PDF konnte nicht erstellt werden.", langTitle: "In welcher Sprache?", langBg: "Herunterladen: BG", langEn: "Herunterladen: EN", langCancel: "Abbrechen",
     kinds: { invoice: "Rechnung", credit_note: "Gutschrift", debit_note: "Belastungsanzeige" },
   },
   support: {
@@ -97,7 +97,7 @@ const fr: PortalText = {
   },
   invoices: {
     title: "Factures", empty: "Aucune facture pour le moment.", due: "Échéance", open: "Dû", paid: "Payée",
-    pdf: "Télécharger le PDF", print: "Imprimer", pdfFailed: "Le PDF n'a pas pu être créé.",
+    pdf: "Télécharger le PDF", print: "Imprimer", pdfFailed: "Le PDF n'a pas pu être créé.", langTitle: "Dans quelle langue ?", langBg: "Télécharger en BG", langEn: "Télécharger en EN", langCancel: "Annuler",
     kinds: { invoice: "Facture", credit_note: "Avoir", debit_note: "Note de débit" },
   },
   support: {
@@ -148,7 +148,7 @@ const it: PortalText = {
   },
   invoices: {
     title: "Fatture", empty: "Ancora nessuna fattura.", due: "Scadenza", open: "Da pagare", paid: "Pagata",
-    pdf: "Scarica il PDF", print: "Stampa", pdfFailed: "Non è stato possibile creare il PDF.",
+    pdf: "Scarica il PDF", print: "Stampa", pdfFailed: "Non è stato possibile creare il PDF.", langTitle: "In quale lingua?", langBg: "Scarica in BG", langEn: "Scarica in EN", langCancel: "Annulla",
     kinds: { invoice: "Fattura", credit_note: "Nota di credito", debit_note: "Nota di debito" },
   },
   support: {
@@ -199,7 +199,7 @@ const ro: PortalText = {
   },
   invoices: {
     title: "Facturi", empty: "Încă nu există facturi.", due: "Scadență", open: "De plată", paid: "Plătită",
-    pdf: "Descarcă PDF", print: "Tipărește", pdfFailed: "PDF-ul nu a putut fi creat.",
+    pdf: "Descarcă PDF", print: "Tipărește", pdfFailed: "PDF-ul nu a putut fi creat.", langTitle: "În ce limbă?", langBg: "Descarcă în BG", langEn: "Descarcă în EN", langCancel: "Anulează",
     kinds: { invoice: "Factură", credit_note: "Notă de credit", debit_note: "Notă de debit" },
   },
   support: {
@@ -250,7 +250,7 @@ const el: PortalText = {
   },
   invoices: {
     title: "Τιμολόγια", empty: "Δεν υπάρχουν ακόμη τιμολόγια.", due: "Λήξη", open: "Οφειλόμενο", paid: "Πληρώθηκε",
-    pdf: "Λήψη PDF", print: "Εκτύπωση", pdfFailed: "Δεν ήταν δυνατή η δημιουργία του PDF.",
+    pdf: "Λήψη PDF", print: "Εκτύπωση", pdfFailed: "Δεν ήταν δυνατή η δημιουργία του PDF.", langTitle: "Σε ποια γλώσσα;", langBg: "Λήψη στα BG", langEn: "Λήψη στα EN", langCancel: "Ακύρωση",
     kinds: { invoice: "Τιμολόγιο", credit_note: "Πιστωτικό σημείωμα", debit_note: "Χρεωστικό σημείωμα" },
   },
   support: {

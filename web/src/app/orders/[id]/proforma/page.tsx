@@ -68,14 +68,16 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
 
   const l = o.locale === "bg" ? "bg" : "en";
   const withVat = sp.vat === "1" ? true : sp.vat === "0" ? false : Number(o.vat_pct ?? 0) > 0;
-  const model = proformaModel(o, lines, s, { vatPct: withVat ? rate : 0, pay, ordered });
+  // Both languages: the download asks which one (owner, Nov 2026); the page and the e-mail use the client's
+  const both = { bg: proformaModel({ ...o, locale: "bg" }, lines, s, { vatPct: withVat ? rate : 0, pay, ordered }), en: proformaModel({ ...o, locale: "en" }, lines, s, { vatPct: withVat ? rate : 0, pay, ordered }) };
+  const model = both[l];
 
   const send = await loadSendInfo(user.id, user.name, "proforma", id, { orderId: id, title: model.title, no: o.code, lang: l });
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2 print:hidden">
-        <ProformaPdfButton model={model} label={ui.orders.proforma.download} errorText={ui.orders.proforma.downloadFailed} keep={{ orderId: id, final }} />
+        <ProformaPdfButton models={both} langText={ui.common.docLang} label={ui.orders.proforma.download} errorText={ui.orders.proforma.downloadFailed} keep={{ orderId: id, final }} />
         <PrintButton label={ui.orders.proforma.printNow} variant="outline" />
         <Link href={`/orders/${id}`} className="btn btn-outline">{ui.orders.proforma.back}</Link>
       </div>

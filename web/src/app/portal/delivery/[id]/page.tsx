@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
+import { portalLangText } from "@/components/doc-lang-dialog";
 import { SalesDocument } from "@/components/sales-document";
 import { q } from "@/lib/db/engine";
 import { deliveryModel, type DeliveryLine, type DeliveryNote, type DocSeller } from "@/lib/order-docs";
@@ -19,13 +20,14 @@ export default async function PortalDelivery({ params }: PageProps<"/portal/deli
   const [row] = await q<{ d: Row | null }>(user.id, "select portal_delivery($1) as d", [id]);
   const x = row?.d;
   if (!x) notFound();
-  const model = deliveryModel(x.note, x.lines, x.seller);
+  const both = { bg: deliveryModel({ ...x.note, locale: "bg" }, x.lines, x.seller), en: deliveryModel({ ...x.note, locale: "en" }, x.lines, x.seller) };
+  const model = both[x.note.locale === "bg" ? "bg" : "en"];
   return (
     <>
       <div className="flex flex-col gap-3 print:hidden">
         <PageHeader title={model.title} crumb={<Link href="/portal/orders">{t.portal.nav.orders}</Link>} />
         <div className="flex flex-wrap gap-2">
-          <ProformaPdfButton model={model} label={t.portal.invoices.pdf} errorText={t.portal.invoices.pdfFailed} />
+          <ProformaPdfButton models={both} langText={portalLangText(t.portal.invoices)} label={t.portal.invoices.pdf} errorText={t.portal.invoices.pdfFailed} />
           <PrintButton label={t.portal.invoices.print} variant="outline" />
         </div>
       </div>

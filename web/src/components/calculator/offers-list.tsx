@@ -10,6 +10,7 @@ import type { OfferRecord, Settings } from "@/lib/calculator/types";
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import { Empty } from "@/components/ui";
 import { CalcTextProvider, Toast, useCalcText, useToast, type CalcDict } from "./kit";
+import { DocLangDialog, type DocLang, type DocLangText } from "@/components/doc-lang-dialog";
 
 type Props = {
   t: CalcDict;
@@ -20,6 +21,8 @@ type Props = {
   isAdmin: boolean;
   /** Offers in an order that is not cancelled: fixed, no Delete */
   inOrder: string[];
+  /** Download in BG / Download in EN, asked before every download. */
+  langText: DocLangText;
 };
 
 /** Offers created in the calculator, listed under Offers: open the summary, edit in the calculator, download the PDF, delete. */
@@ -34,12 +37,13 @@ export function OffersList(props: Props) {
 const GRID =
   "grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[130px_minmax(0,1.4fr)_minmax(0,1fr)_120px] lg:grid-cols-[130px_110px_minmax(0,1.4fr)_minmax(0,1fr)_120px]";
 
-function List({ offers, settings, userId, isAdmin, inOrder }: Props) {
+function List({ offers, settings, userId, isAdmin, inOrder, langText }: Props) {
   const { t, locale, eur } = useCalcText();
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [asking, setAsking] = useState<OfferRecord | null>(null);
   const { toast, show, clear } = useToast();
   const o = t.offers;
 
@@ -51,12 +55,13 @@ function List({ offers, settings, userId, isAdmin, inOrder }: Props) {
     [offers, query],
   );
 
-  const pdf = async (x: OfferRecord) => {
+  const pdf = async (x: OfferRecord, lang: DocLang) => {
+    setAsking(null);
     setBusyId(x.id);
     try {
       const { downloadOfferPdf } = await import("@/lib/calculator/pdf");
       const { form, result } = fromOfferRecord(x, settings);
-      await downloadOfferPdf(form, result, settings);
+      await downloadOfferPdf(form, result, settings, lang);
     } catch (e) {
       show("error", `${t.results.pdfFailed}: ${(e as Error).message}`);
     } finally {
@@ -113,7 +118,7 @@ function List({ offers, settings, userId, isAdmin, inOrder }: Props) {
               </div>
               <div role="group" aria-label={`${o.actions} ${x.offer_no}`} className="mt-3 flex flex-wrap gap-2">
                 <Link href={`/calculator?open=${x.id}`} className={small} aria-label={`${o.edit} ${x.offer_no}`}>{o.edit}</Link>
-                <button type="button" onClick={() => pdf(x)} disabled={busy} className={small} aria-label={`${t.results.downloadPdf} ${x.offer_no}`}>
+                <button type="button" onClick={() => setAsking(x)} aria-haspopup="dialog" disabled={busy} className={small} aria-label={`${t.results.downloadPdf} ${x.offer_no}`}>
                   {busy ? "…" : t.results.downloadPdf}
                 </button>
                 {(isAdmin || x.created_by === userId) && !inOrder.includes(x.id) && (
@@ -133,6 +138,7 @@ function List({ offers, settings, userId, isAdmin, inOrder }: Props) {
           );
         })}
       </div>
+      <DocLangDialog open={asking !== null} text={langText} onPick={(lang) => asking && pdf(asking, lang)} onClose={() => setAsking(null)} />
       <Toast toast={toast} onClose={clear} closeLabel={t.close} />
     </section>
   );

@@ -48,7 +48,9 @@ export class PdfLayout {
     this.doc.setCharSpace(style.spacing ?? 0);
   }
 
+  /** Width in the font the text is drawn with (the font can depend on the text: Cyrillic falls back). */
   private width(text: string, style: TextStyle): number {
+    this.use(style, text);
     return this.doc.getTextWidth(text) + (style.spacing ?? 0) * text.length;
   }
 
@@ -59,7 +61,6 @@ export class PdfLayout {
     for (const paragraph of paragraphs) {
       const clean = paragraph.replace(/\s+/g, ' ').trim();
       if (!clean) continue;
-      this.use(style, clean);
       let line = '';
       for (const word of clean.split(' ')) {
         const candidate = line ? `${line} ${word}` : word;

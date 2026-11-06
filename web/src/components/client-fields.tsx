@@ -53,12 +53,6 @@ export function ClientFields({ t, locale, c, withContact }: { t: Dict; locale: L
               ))}
             </select>
           </label>
-          <label className="field"><span>{f.locale}</span>
-            <select name="preferred_locale" className="input" defaultValue={c?.preferred_locale ?? "en"}>
-              <option value="en">{t.enums.locale.en}</option>
-              <option value="bg">{t.enums.locale.bg}</option>
-            </select>
-          </label>
         </div>
       </fieldset>
 

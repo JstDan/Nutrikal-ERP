@@ -123,10 +123,8 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
         subtitle={<span className="flex flex-wrap items-center gap-2"><Chip tone={poTone(po.status)}>{P.statuses[po.status]}</Chip>{formatDate(locale, po.order_date)}</span>}
         actions={lines.length > 0 && (
           <>
-            <ProformaPdfButton model={pdf("en")} label={P.pdfEn} errorText={P.downloadFailed} />
-            <ProformaPdfButton model={pdf("bg")} label={P.pdfBg} errorText={P.downloadFailed} />
-            {isAdmin && <ProformaPdfButton model={pdf("en", true)} label={P.pdfEnNoPrices} errorText={P.downloadFailed} />}
-            {isAdmin && <ProformaPdfButton model={pdf("bg", true)} label={P.pdfBgNoPrices} errorText={P.downloadFailed} />}
+            <ProformaPdfButton models={{ bg: pdf("bg"), en: pdf("en") }} langText={t.common.docLang} label={P.pdfDownload} errorText={P.downloadFailed} />
+            {isAdmin && <ProformaPdfButton variant="outline" models={{ bg: pdf("bg", true), en: pdf("en", true) }} langText={t.common.docLang} label={P.pdfNoPrices} errorText={P.downloadFailed} />}
           </>
         )}
       />
