@@ -1,6 +1,7 @@
 // The document of an invoice or note, the same for the team and in the customer panel.
 import { fmt, formatDate, formatNumber, formatPrice, getDict } from "@/lib/i18n";
 import { docChrome } from "@/lib/doc-chrome";
+import { lineIn, vatBasisIn } from "@/lib/doc-translate";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 
 type Party = Record<string, string | boolean | null>;
@@ -72,7 +73,7 @@ export function invoiceModel(x: InvoiceDoc, lines: InvoiceDocLine[], logo: strin
     },
     head: [P.description, P.quantity, P.unitPrice, P.amount],
     rows: lines.map((r) => ({
-      description: r.capsules ? fmt(P.withCapsules, { name: r.description, n: formatNumber(l, r.capsules) }) : r.description,
+      description: r.capsules ? fmt(P.withCapsules, { name: r.description, n: formatNumber(l, r.capsules) }) : lineIn(r.description, l),
       note: r.offer_no ? fmt(P.accordingTo, { no: r.offer_no }) : null,
       quantity: formatNumber(l, Number(r.quantity)),
       unitPrice: money(Number(r.unit_price)),
@@ -83,7 +84,8 @@ export function invoiceModel(x: InvoiceDoc, lines: InvoiceDocLine[], logo: strin
       [fmt(P.vat, { pct: formatNumber(l, vatPct) }), money(vat)],
       [asProforma ? P.total : D.total, money(total)],
     ],
-    vatNote: x.vat_basis ?? (vatPct === 0 ? P.zeroVat : null),
+    // The texts the system writes follow the language of the copy (owner, Nov 2026)
+    vatNote: x.vat_basis ? vatBasisIn(x.vat_basis, l) : vatPct === 0 ? P.zeroVat : null,
     bank: isNote ? { heading: "", lines: [] } : {
       heading: D.payment,
       lines: direct
