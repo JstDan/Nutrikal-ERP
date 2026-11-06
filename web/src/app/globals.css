@@ -203,7 +203,10 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
   display: flex; flex-direction: column; min-width: 0; overflow: hidden;
   background: #ffffff; color: #222831; border: 1px solid #dde1e8; border-radius: 4px; font-size: 14px; line-height: 1.5;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  /* Text wraps inside its column; a word longer than the column (e-mail, URL, IBAN) breaks there (owner, Nov 2026) */
+  overflow-wrap: anywhere;
 }
+.doc :where(.doc-row, .doc-total, .doc-total-due, .doc-meta, .doc-strip, .doc-end, .doc-sign) > * { min-width: 0; }
 .doc-band { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 22px 20px; background: #222831; color: #ffffff; }
 .doc-band-plain { background: #ffffff; color: #222831; border-bottom: 1px solid #dde1e8; }
 .doc-band-plain .doc-title { color: #222831; }
