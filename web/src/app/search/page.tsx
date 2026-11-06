@@ -5,9 +5,17 @@ import { fmt } from "@/lib/i18n";
 import { Empty, PageHeader } from "@/components/ui";
 
 type Hit = { href: string; code: string; name: string; note: string | null };
-type Group = "clients" | "projects" | "orders" | "offers" | "formulas" | "items" | "lots" | "invoices" | "production";
+type Group = "clients" | "projects" | "orders" | "catalog" | "offers" | "formulas" | "items" | "lots" | "invoices" | "production";
 
 const LIMIT = 8;
+
+/**
+ * A product code matches however it is typed: case, spaces, dashes and dots do not count,
+ * so "ntl th101", "TH-101" and "NTL-TH101" all find NTL-TH101 (owner, Nov 2026).
+ */
+const code = (col: string) =>
+  `(regexp_replace(lower(${col}), '[^a-z0-9]', '', 'g') like regexp_replace(lower($1), '[^a-z0-9%]', '', 'g')
+     and regexp_replace(lower($1), '[^a-z0-9]', '', 'g') <> '')`;
 
 /**
  * One search over the main records. Every query runs as the signed-in user, so each role finds only
@@ -28,13 +36,27 @@ const QUERIES: Record<Group, string> = {
              from sales_order_overview o
             where o.code ilike $1 or o.client ilike $1
             order by o.code desc limit ${LIMIT}`,
+  // Catalogue products (the open catalogue and the calculator's catalogue formulas) by code or name
+  catalog: `select href, code, name, note from (
+               select '/catalog/' || p.id as href, p.code, case when $2 = 'bg' then coalesce(p.name_bg, p.name) else p.name end as name,
+                      null::text as note
+                 from catalog_products p
+                where p.code ilike $1 or ${code("p.code")} or p.name ilike $1 or p.name_bg ilike $1
+               union all
+               select '/calculator/catalog' as href, c.code, c.name, c.category as note
+                 from calc_catalog_products c
+                where (c.code ilike $1 or ${code("c.code")} or c.name ilike $1)
+                  and not exists (select 1 from catalog_products p where p.code = c.code)
+             ) x order by code limit ${LIMIT}`,
   offers: `select '/offers/calc/' || o.id as href, o.offer_no as code, coalesce(nullif(o.company_name, ''), o.receiver_name) as name, o.product_name as note
              from calc_offers o
             where o.offer_no ilike $1 or o.company_name ilike $1 or o.receiver_name ilike $1 or o.product_name ilike $1
+               or ${code("coalesce(o.data -> 'catalog' ->> 'code', '')")}
             order by o.created_at desc limit ${LIMIT}`,
   formulas: `select '/formulas/' || f.id as href, f.code, case when $2 = 'bg' then coalesce(f.name_bg, f.name) else f.name end as name, c.legal_name as note
                from formulas f left join clients c on c.id = f.client_id
               where f.code ilike $1 or f.name ilike $1 or f.name_bg ilike $1
+                 or exists (select 1 from catalog_products cp where cp.formula_id = f.id and (cp.code ilike $1 or ${code("cp.code")}))
               order by f.code desc limit ${LIMIT}`,
   items: `select '/inventory/items/' || i.id as href, i.sku as code, case when $2 = 'bg' then coalesce(i.name_bg, i.name) else i.name end as name, null as note
             from items i

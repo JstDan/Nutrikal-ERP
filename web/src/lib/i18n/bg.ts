@@ -108,7 +108,7 @@ export const bg: Dict = {
     hint: "Пиши в полето за търсене горе.",
     resultsFor: "Резултати за „{q}“",
     none: "Нищо не е намерено.",
-    groups: { clients: "Клиенти", projects: "Проекти", orders: "Поръчки", offers: "Оферти", formulas: "Рецепти", items: "Артикули", lots: "Партиди", invoices: "Фактури", production: "Производствени поръчки" },
+    groups: { clients: "Клиенти", projects: "Проекти", orders: "Поръчки", catalog: "Продукти от каталога", offers: "Оферти", formulas: "Рецепти", items: "Артикули", lots: "Партиди", invoices: "Фактури", production: "Производствени поръчки" },
   },
   dashboard: {
     todo: {

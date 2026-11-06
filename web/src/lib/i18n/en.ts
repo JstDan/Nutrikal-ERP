@@ -106,7 +106,7 @@ export const en = {
     hint: "Type in the search field at the top.",
     resultsFor: "Results for “{q}”",
     none: "Nothing found.",
-    groups: { clients: "Clients", projects: "Projects", orders: "Orders", offers: "Offers", formulas: "Recipes", items: "Items", lots: "Lots", invoices: "Invoices", production: "Manufacturing orders" },
+    groups: { clients: "Clients", projects: "Projects", orders: "Orders", catalog: "Catalogue products", offers: "Offers", formulas: "Recipes", items: "Items", lots: "Lots", invoices: "Invoices", production: "Manufacturing orders" },
   },
   dashboard: {
     todo: {
