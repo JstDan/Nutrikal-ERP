@@ -3690,5 +3690,36 @@ await ok('shortage: Доставки counts a request only up to the real shorta
   eq((await one('production', 'select purchase_request_still_short($1) as q', [extra.id])).q, null, 'production gets nothing');
 });
 
+console.log('\nAI assistant links');
+// The fixed queries of web/src/lib/ai/tools.ts, read from the file so the test follows the code
+const aiQueries = Object.fromEntries([...readFileSync(join(here, '..', 'web', 'src', 'lib', 'ai', 'tools.ts'), 'utf8').replace(/\r\n/g, '\n')
+  .matchAll(/^  (\w+): \(a?\) => \[\s*`([\s\S]*?)`/gm)].map(([, name, sql]) => [name, sql.replace(/\$\{LIMIT\}/g, '25')]));
+await ok('every query of the assistant runs for Admin', async () => {
+  eq(Object.keys(aiQueries).length > 10, true, 'queries found');
+  for (const [name, sql] of Object.entries(aiQueries)) {
+    const n = Math.max(0, ...[...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1])));
+    try { await as('admin', sql, Array.from({ length: n }, (_, i) => (name === 'eu_health_claims' && i === 1 ? 'authorised' : ''))); }
+    catch (e) { throw new Error(`${name}: ${e.message}`); }
+  }
+});
+await ok('an order gives the links of its next steps, by its own payments', async () => {
+  const rows = await as('admin', `select so.code, order_paid_in_two(so.id) as two, so.deposit_received_on, so.balance_received_on, so.status
+                                    from sales_orders so where so.status not in ('draft', 'unpaid', 'cancelled') and so.deposit_received_on is not null`);
+  eq(rows.length > 0, true, 'a paid order exists');
+  for (const r of rows) {
+    const d = await one('admin', aiQueries.order_details, [r.code]);
+    eq(d.link.startsWith('/orders/'), true, 'order link');
+    eq(!!d.links.advance_invoice, r.two, `${r.code} advance`);
+    eq(!!d.links.invoice, !r.two, `${r.code} full`);
+    eq(!!d.links.final_invoice, r.two && !!r.balance_received_on, `${r.code} final`);
+    eq(d.links.advance_invoice ?? d.links.invoice, `${d.link}/invoice?purpose=${r.two ? 'advance' : 'full'}`, 'invoice link');
+  }
+  const unpaid = await as('admin', `select code from sales_orders where status = 'unpaid' limit 1`);
+  if (unpaid[0]) {
+    const d = await one('admin', aiQueries.order_details, [unpaid[0].code]);
+    eq(d.links.advance_invoice ?? d.links.invoice ?? null, null, 'no invoice link before the payment');
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

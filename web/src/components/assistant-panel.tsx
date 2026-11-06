@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { openPanelConversation } from "@/app/assistant-actions";
 import { streamAnswer } from "@/lib/ai/stream";
 import { ProposalCard, type ChatLine, type ChatProposal } from "@/components/assistant-chat";
+import { AssistantText } from "@/components/assistant-text";
 import type { Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
@@ -170,7 +171,7 @@ export function AssistantPanel({ models, configured, locale, text, keepsNothing 
           </div>
         ) : (
           <div key={m.id} className="flex min-w-0 flex-col gap-2 text-sm leading-relaxed">
-            <p className="m-0 whitespace-pre-line break-words">{m.content}</p>
+            <AssistantText text={m.content} className="m-0 whitespace-pre-line break-words" onNavigate={() => setOpen(false)} />
             {proposals.filter((p) => answerOf(p) === m.id).map((p) => <ProposalCard key={p.id} p={p} locale={locale} A={A} />)}
           </div>
         ))}

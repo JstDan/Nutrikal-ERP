@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { deleteConversation, saveProposal } from "@/app/assistant-actions";
 import { streamAnswer } from "@/lib/ai/stream";
 import { ActionForm } from "@/components/action-form";
+import { AssistantText } from "@/components/assistant-text";
 import { fmt, formatDate, formatNumber, formatPrice, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
@@ -190,7 +191,7 @@ export function AssistantChat({ conversations, current, messages, proposals, mod
             </div>
           ) : (
             <div key={m.id} className="flex min-w-0 flex-col gap-3 text-[15px] leading-relaxed">
-              <p className="m-0 whitespace-pre-line break-words">{m.content}</p>
+              <AssistantText text={m.content} className="m-0 whitespace-pre-line break-words" />
               {proposals.filter((p) => answerOf(p) === m.id).map((p) => <ProposalCard key={p.id} p={p} locale={locale} A={A} />)}
               <div className="flex flex-wrap items-center gap-3 text-xs text-ink-2">
                 {m.model && <span>{m.model}</span>}
