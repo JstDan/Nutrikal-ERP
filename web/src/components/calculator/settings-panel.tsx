@@ -144,6 +144,8 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
           {text("company_id", s.companyId)}
           {text("company_vat", s.companyVat)}
           {text("company_address", s.companyAddress, "sm:col-span-2")}
+          {text("company_name_bg", s.companyNameBg, "sm:col-span-2")}
+          {text("company_address_bg", s.companyAddressBg, "sm:col-span-2")}
           {text("company_email", s.companyEmail, "sm:col-span-2")}
         </div>
       </div>
@@ -230,6 +232,9 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
       <div className="flex flex-col gap-4 border-t border-mist pt-5">
         <Field label={s.terms} htmlFor="terms-text">
           <textarea id="terms-text" rows={4} value={draft.terms_text} onChange={(e) => set({ terms_text: e.target.value })} className="input" />
+        </Field>
+        <Field label={s.termsBg} htmlFor="terms-text-bg">
+          <textarea id="terms-text-bg" rows={4} value={draft.terms_text_bg} onChange={(e) => set({ terms_text_bg: e.target.value })} className="input" lang="bg" />
         </Field>
       </div>
 

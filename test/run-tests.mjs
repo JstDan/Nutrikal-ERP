@@ -3821,5 +3821,20 @@ await ok('the refused client is still there', async () => {
   eq((await as('admin', `select 1 from clients where id = $1`, [dcOther])).length, 1, 'kept');
 });
 
+// ----- Company name and address in Bulgarian for BG documents (owner, Nov 2026)
+await ok('the Bulgarian company name and address are set', async () => {
+  const b = (await one('admin', `select company_bg() as b`)).b;
+  eq(b.name, 'НУТРИКАЛ ЕООД', 'name');
+  eq(Object.keys(b).sort().join(','), 'address,name', 'only name and address');
+});
+await ok('a client account reads only the Bulgarian name through company_bg()', async () => {
+  eq((await one('clientA', `select company_bg() as b`)).b.name, 'НУТРИКАЛ ЕООД', 'name');
+  eq((await as('clientA', `select 1 from calc_settings`).catch(() => [])).length, 0, 'no settings row');
+});
+await fails('sales cannot change the Bulgarian company name', async () => {
+  const n = (await as('sales', `update calc_settings set company_name_bg = 'X' returning 1`)).length;
+  if (!n) throw new Error('not allowed');
+}, 'not allowed');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

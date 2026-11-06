@@ -84,6 +84,10 @@ export interface Settings {
   company_id: string;
   company_vat: string;
   company_address: string;
+  /** The company in Bulgarian, for documents downloaded in Bulgarian. */
+  company_name_bg: string;
+  company_address_bg: string;
+  terms_text_bg: string;
   company_email: string;
   company_phone: string;
   /** Payment block on the PDF offer. */
@@ -113,6 +117,9 @@ export const DEFAULT_SETTINGS: Settings = {
   company_id: 'BG202245000',
   company_vat: 'BG202245000',
   company_address: '133 Knyaz Boris I Blvd., 9000 Varna, Bulgaria',
+  company_name_bg: 'НУТРИКАЛ ЕООД',
+  company_address_bg: 'бул. Княз Борис I 133, 9000 Варна, България',
+  terms_text_bg: 'Цените са за готови за продажба продукти. Минималното количество се потвърждава при поръчка.',
   company_email: 'sales@nutrikal.com',
   company_phone: '',
   bank_iban: 'BG04FINV91501017654214 (EUR)',
