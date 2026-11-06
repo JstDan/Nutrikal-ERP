@@ -3860,5 +3860,101 @@ await ok('no item has a minimum stock any more', async () => {
   eq((await one('admin', `select admin_dashboard(current_date - 30, current_date) as d`)).d.stock.low_count, undefined, 'no low stock on the dashboard');
 });
 
+// ----- Boards like Trello (owner, Nov 2026): members and Admin see a board; the team only
+const bd = (await one('sales', `select create_board('Продажби ноември', 'green', array['За правене', 'В процес', 'Готово'], $1::uuid[]) as id`, [[U.designer]])).id;
+const bdLists = await as('sales', `select id, name from board_lists where board_id = $1 order by position`, [bd]);
+await ok('a new board has its lists, six labels and the creator and invited people as members', async () => {
+  eq(bdLists.map((l) => l.name).join(), 'За правене,В процес,Готово', 'lists');
+  eq((await as('sales', `select 1 from board_labels where board_id = $1`, [bd])).length, 6, 'labels');
+  eq((await as('sales', `select count(*)::int as n from board_members where board_id = $1`, [bd]))[0].n, 2, 'members');
+});
+const bdCard = (await one('sales', `insert into board_cards (list_id, title, position, due_on) values ($1, 'Обади се на клиента', 1, current_date) returning id, board_id, created_by`, [bdLists[0].id]));
+await ok('a card takes the board of its list and its creator', async () => {
+  eq(bdCard.board_id, bd, 'board'); eq(bdCard.created_by, U.sales, 'creator');
+});
+await ok('Admin sees every board; the accountant reads it; a member sees it', async () => {
+  eq((await as('admin', `select 1 from board_cards where id = $1`, [bdCard.id])).length, 1, 'admin');
+  eq((await session('accountant', `select 1 from board_cards where id = $1`, [bdCard.id])).length, 1, 'accountant');
+  eq((await as('designer', `select 1 from board_cards where id = $1`, [bdCard.id])).length, 1, 'designer member');
+});
+await ok('someone not invited sees nothing of the board', async () => {
+  eq((await as('bookkeeper', `select 1 from boards where id = $1`, [bd])).length, 0, 'board');
+  eq((await as('bookkeeper', `select 1 from board_cards where id = $1`, [bdCard.id])).length, 0, 'card');
+});
+await fails('someone not invited cannot add a card', () => as('bookkeeper', `insert into board_cards (list_id, title) values ($1, 'x')`, [bdLists[0].id]), 'row-level security');
+await ok('production and a client see no table of the boards and make no board', async () => {
+  for (const t of ['boards', 'board_members', 'board_lists', 'board_labels', 'board_cards', 'board_card_members', 'board_card_labels',
+                   'board_checklist_items', 'board_comments', 'board_files']) {
+    for (const who of ['production', 'clientA']) eq((await as(who, `select 1 from ${t}`)).length, 0, `${who} ${t}`);
+  }
+  eq((await as('production', `select * from board_people()`)).length, 0, 'no people list');
+});
+await fails('production cannot create a board', () => as('production', `select create_board('x', 'blue', array['a'])`), 'Not allowed');
+await fails('a client cannot create a board', () => as('clientA', `select create_board('x', 'blue', array['a'])`), 'Not allowed');
+await fails('the accountant cannot change a card (read-only)', () => session('accountant', `update board_cards set title = 'x' where id = $1`, [bdCard.id]), 'read-only');
+await fails('production cannot be invited to a board', () => as('sales', `insert into board_members (board_id, user_id) values ($1, $2)`, [bd, U.production]), 'Nutrikal team');
+await fails('a client account cannot be invited to a board', () => as('sales', `insert into board_members (board_id, user_id) values ($1, $2)`, [bd, U.clientA]), 'Nutrikal team');
+await fails('only members of the board are put on its cards', () => as('sales', `insert into board_card_members (card_id, user_id) values ($1, $2)`, [bdCard.id, U.bookkeeper]), 'Only members');
+await ok('putting someone on a card tells them; a mention and a comment tell the card people', async () => {
+  await as('sales', `insert into board_card_members (card_id, user_id) values ($1, $2)`, [bdCard.id, U.designer]);
+  const n = await as('designer', `select kind, link from notifications where kind like 'board_%' order by id`);
+  eq(n.map((x) => x.kind).join(), 'board_assigned', 'assigned');
+  eq(n[0].link, `/boards/${bd}?card=${bdCard.id}`, 'link');
+  await as('sales', `insert into board_comments (card_id, body, mentions) values ($1, 'Виж @Test designer', $2::uuid[])`, [bdCard.id, [U.designer, U.bookkeeper]]);
+  const m = await as('designer', `select kind from notifications where kind like 'board_%' order by id`);
+  eq(m.map((x) => x.kind).join(), 'board_assigned,board_mention', 'mention, no second notice');
+  eq((await as('bookkeeper', `select 1 from notifications where kind like 'board_%'`)).length, 0, 'a non-member is not mentioned');
+  await as('admin', `insert into board_members (board_id, user_id) values ($1, $2)`, [bd, U.admin]).catch(() => {});
+});
+await ok('a comment is edited only by its author, who stays the author', async () => {
+  const c = (await one('sales', `select id from board_comments where card_id = $1`, [bdCard.id])).id;
+  eq((await as('designer', `update board_comments set body = 'Чужд' where id = $1 returning 1`, [c])).length, 0, 'not the author');
+  const r = await one('sales', `update board_comments set body = 'Поправено', author_id = $2 where id = $1 returning body, author_id, edited_at`, [c, U.designer]);
+  eq(r.body, 'Поправено', 'body'); eq(r.author_id, U.sales, 'author kept'); if (!r.edited_at) throw new Error('edited_at');
+});
+await ok('done records who ticked it; a label of another board is refused', async () => {
+  const r = await one('designer', `update board_cards set done_at = now() where id = $1 returning done_by`, [bdCard.id]);
+  eq(r.done_by, U.designer, 'done by');
+  await as('designer', `update board_cards set done_at = null where id = $1`, [bdCard.id]);
+  const other = (await one('admin', `select create_board('Admin', 'grey', array['A']) as id`)).id;
+  const lb = (await one('admin', `select id from board_labels where board_id = $1 limit 1`, [other])).id;
+  await fails('  label of another board', () => as('sales', `insert into board_card_labels (card_id, label_id) values ($1, $2)`, [bdCard.id, lb]), 'another board');
+});
+await ok('the due reminder goes once to the card people, again only for a new date', async () => {
+  await db.exec('reset role');
+  const n1 = (await db.query('select board_due_notify() as n')).rows[0].n;
+  const n2 = (await db.query('select board_due_notify() as n')).rows[0].n;
+  eq(n1, 1, 'first run'); eq(n2, 0, 'not twice');
+  await as('sales', `update board_cards set due_on = current_date + 1 where id = $1`, [bdCard.id]);
+  await db.exec('reset role');
+  eq((await db.query('select board_due_notify() as n')).rows[0].n, 1, 'new date');
+  eq((await as('designer', `select 1 from notifications where kind = 'board_due'`)).length, 2, 'designer told');
+});
+await fails('users cannot run the due reminder themselves', () => as('admin', 'select board_due_notify()'), 'permission denied');
+await ok('leaving a board takes the person off its cards; the last member stays', async () => {
+  await as('designer', `delete from board_members where board_id = $1 and user_id = auth.uid()`, [bd]);
+  eq((await as('sales', `select 1 from board_card_members where card_id = $1`, [bdCard.id])).length, 0, 'off the card');
+  eq((await as('designer', `select 1 from boards where id = $1`, [bd])).length, 0, 'no longer sees it');
+  const solo = (await one('sales', `select create_board('Лично', 'blue', array['A']) as id`)).id;
+  await fails('  last member', () => as('sales', `delete from board_members where board_id = $1`, [solo]), 'at least one member');
+});
+await ok('a card moved to another board loses the labels of the old one', async () => {
+  const other = (await one('sales', `select create_board('Друго', 'red', array['Входящи']) as id`)).id;
+  const otherList = (await one('sales', `select id from board_lists where board_id = $1`, [other])).id;
+  const lb = (await one('sales', `select id from board_labels where board_id = $1 limit 1`, [bd])).id;
+  await as('sales', `insert into board_card_labels (card_id, label_id) values ($1, $2)`, [bdCard.id, lb]);
+  const r = await one('sales', `update board_cards set list_id = $2 where id = $1 returning board_id`, [bdCard.id, otherList]);
+  eq(r.board_id, other, 'moved'); eq((await as('sales', `select 1 from board_card_labels where card_id = $1`, [bdCard.id])).length, 0, 'labels gone');
+});
+await fails('a card cannot be moved to a board one is not a member of', async () => {
+  const adminList = (await one('admin', `select l.id from board_lists l join boards b on b.id = l.board_id where b.name = 'Admin'`)).id;
+  await as('sales', `update board_cards set list_id = $2 where id = $1`, [bdCard.id, adminList]);
+}, 'row-level security');
+await ok('a board is deleted by its creator with everything on it', async () => {
+  eq((await as('designer', `delete from boards where id = $1 returning 1`, [bd])).length, 0, 'not by others');
+  eq((await as('sales', `delete from boards where id = $1 returning 1`, [bd])).length, 1, 'creator');
+  eq((await as('admin', `select 1 from board_lists where board_id = $1`, [bd])).length, 0, 'lists gone');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

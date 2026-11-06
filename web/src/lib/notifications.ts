@@ -43,6 +43,10 @@ export function notificationText(n: NotificationRow, t: Dict, locale: Locale): s
       return fmt(K.client_message, { client: s("client"), code: s("code") || "—" });
     case "catalog_enquiry":
       return fmt(K.catalog_enquiry, { company: s("company"), no: s("no") });
+    case "board_assigned": case "board_mention": case "board_comment":
+      return fmt(K[n.kind], { by: s("by"), card: s("card"), board: s("board") });
+    case "board_due":
+      return fmt(p.overdue ? K.board_overdue : K.board_due, { card: s("card"), board: s("board"), due: formatDate(locale, s("due")) });
     case "materials_short":
       return fmt(K.materials_short, { by: s("by"), item, order: s("order") });
     default:

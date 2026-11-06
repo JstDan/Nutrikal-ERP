@@ -52,6 +52,13 @@ export async function AppShell({ children }: { children: ReactNode }) {
           ],
         },
         {
+          title: t.nav.work,
+          items: [
+            { href: "/my-tasks", label: t.nav.myTasks },
+            { href: "/boards", label: t.nav.boards },
+          ],
+        },
+        {
           title: t.nav.communication,
           items: [
             ...(user.role === "admin" || user.role === "sales" ? [{ href: "/client-messages", label: t.nav.clientMessages, badge: clientUnread }] : []),
@@ -94,7 +101,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   // Designer: the client work only
   const shown = user.access === "designer"
-    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/chat", "/clients", "/orders"].includes(i.href ?? "")) })).filter((g) => g.items.length)
+    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/chat", "/clients", "/orders", "/my-tasks", "/boards"].includes(i.href ?? "")) })).filter((g) => g.items.length)
     : groups;
 
   return (
