@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { drawDocShell, loadAssets, loadImage } from '@/lib/calculator/pdf';
+import { footStrip, PdfFlow, PdfLayout, TABLE_RULES, type Rgb, type TextStyle } from '@/lib/pdf-layout';
 
 // Proforma, invoice or purchase order as a PDF file (downloaded in the browser). All text comes in the model,
 // already in the client's language; Roboto is used throughout because it has Cyrillic letters.
@@ -35,7 +36,7 @@ const CYRILLIC = /[Ѐ-ӿ]/;
 
 async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
   // Number formatting uses narrow/no-break spaces; the embedded font has plain spaces only.
-  const m: ProformaPdfModel = JSON.parse(JSON.stringify(model).replace(/[   ]/g, ' '));
+  const m: ProformaPdfModel = JSON.parse(JSON.stringify(model).replace(/[   ]/g, ' '));
   const [{ fonts, brandLogo, docPhoto }, customLogo] = await Promise.all([loadAssets(), loadImage(m.logoDataUrl)]);
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
   // Poppins like the site; it has no Cyrillic letters, so documents in Bulgarian use Roboto.
@@ -46,62 +47,87 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
   doc.addFileToVFS(`${FONT}-Bold.ttf`, cyrillic ? fonts.robotoBold : fonts.poppinsBold);
   doc.addFont(`${FONT}-Bold.ttf`, FONT, 'bold');
 
+  // Every text stands in its own column and wraps there (lib/pdf-layout.ts); nothing is cut or set smaller.
+  const lay = new PdfLayout(doc, (weight) => [FONT, weight === 'regular' ? 'normal' : 'bold']);
+  const st = (size: number, bold = false, color: Rgb = INK, leading?: number, spacing?: number): TextStyle => ({ size, weight: bold ? 'bold' : 'regular', color, leading, spacing });
+  const last = (next: number, style: TextStyle) => next - lay.lineHeight(style);
+
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const L = 25;
   const R = pageW - 25;
-  const write = (text: string, x: number, y: number, o: { bold?: boolean; size?: number; color?: [number, number, number]; align?: 'left' | 'right' | 'center'; spacing?: number } = {}) => {
-    doc.setFont(FONT, o.bold ? 'bold' : 'normal');
-    doc.setFontSize(o.size ?? 9);
-    doc.setTextColor(...(o.color ?? INK));
-    doc.setCharSpace(o.spacing ?? 0);
-    doc.text(text, x, y, { align: o.align ?? 'left' });
-    doc.setCharSpace(0);
-  };
-  const label = (text: string, x: number, y: number) => write(text.toUpperCase(), x, y, { bold: true, size: 7, color: MUTED, spacing: 0.4 });
-  /** Wrapped lines; returns the y below the block. */
-  const block = (lines: string[], x: number, y: number, width: number, first?: { bold: boolean }) => {
-    lines.forEach((line, i) => {
-      doc.setFont(FONT, i === 0 && first?.bold ? 'bold' : 'normal');
-      doc.setFontSize(i === 0 && first?.bold ? 10 : 9);
-      for (const part of doc.splitTextToSize(line, width) as string[]) {
-        write(part, x, y, { bold: i === 0 && first?.bold, size: i === 0 && first?.bold ? 10 : 9, color: i === 0 ? INK : MUTED });
-        y += 4.6;
-      }
-    });
-    return y;
-  };
+  const W = R - L;
+  const colW = (W - 10) / 2;
+  const labelStyle = st(7, true, MUTED, 1.35, 0.4);
+  const label = (text: string, x: number, y: number, width: number) => lay.text(text.toUpperCase(), x, y, width, labelStyle);
 
-  // Number and dates in rows on the dark top; the white sheet starts under them
-  doc.setFontSize(8.5);
+  // The strip at the foot of every page; the body ends above it
+  const stripStyle = st(7, false, MUTED);
+  const strip = (draw: boolean) => footStrip(lay, {
+    left: m.base ?? '',
+    center: 'nutrikal.com',
+    right: (i, n) => (m.pageOf ? m.pageOf.replace('{i}', String(i)).replace('{n}', String(n)) : ''),
+  }, { x: 15, width: pageW - 30, bottom: 284, padX: L - 15, minHeight: 9, fill: CANVAS, style: stripStyle, draw });
+  const stripTop = strip(false);
+  const bottom = stripTop - 4;
+
+  // The dark top, measured first: logo and contacts on the left, the title on the right, then number and dates
+  const titleStyle = st(20, true, WHITE, 1.15);
+  const contactStyle = st(8, false, WHITE, 1.42);
+  const metaStyle = st(8.5, false, WHITE);
+  const metaHead = st(8.5, true, WHITE);
+  const logoRight = 15 + 52 + 6;
+  const titleW = pageW - 15 - logoRight;
+  const titleLines = lay.wrap(m.title.toUpperCase(), titleW, titleStyle);
+  const titleLast = 25 + (titleLines.length - 1) * lay.lineHeight(titleStyle);
+  const contactW = Math.min(titleW, (pageW - 30) * 0.6);
+  const contactLines = lay.wrap(m.contact ?? [], contactW, contactStyle);
+  // Contacts start under the title when it takes more than one line, so the two never meet
+  const contactY = Math.max(30.5, titleLast + 5.5);
+  const contactLast = contactLines.length ? contactY + (contactLines.length - 1) * lay.lineHeight(contactStyle) : 25;
+
+  // Number and dates in rows; an item too long for a row wraps inside it
+  const full = pageW - 30;
   const items = m.meta.map((line) => {
     const at = line.indexOf(': ');
     const head = at > 0 ? `${line.slice(0, at)}: ` : '';
     const value = at > 0 ? line.slice(at + 2) : line;
+    doc.setFontSize(8.5);
     doc.setFont(FONT, 'bold');
-    const headW = doc.getTextWidth(head);
+    const headW = Math.min(doc.getTextWidth(head), full / 2);
+    const lines = lay.wrap(value, full - headW, metaStyle);
     doc.setFont(FONT, 'normal');
-    return { head, value, headW, width: headW + doc.getTextWidth(value) };
+    doc.setFontSize(8.5);
+    const width = headW + Math.max(0, ...lines.map((l) => doc.getTextWidth(l)));
+    return { head, headW, lines, width };
   });
   const rows: (typeof items)[] = [[]];
   let used = 0;
   for (const item of items) {
-    if (used > 0 && used + item.width > pageW - 30) {
+    if (used > 0 && used + item.width > full) {
       rows.push([]);
       used = 0;
     }
     rows[rows.length - 1].push(item);
     used += item.width + 10;
   }
-  const SHEET = 44 + rows.length * 6;
+  const metaLh = lay.lineHeight(metaStyle);
+  const metaTop = Math.max(42, titleLast + 9, contactLast + 7.5);
+  const rowY: number[] = [];
+  let my = metaTop;
+  for (const row of rows) {
+    rowY.push(my);
+    my += Math.max(1, ...row.map((x) => x.lines.length)) * metaLh + (6 - metaLh);
+  }
+  const SHEET = my + 2;
   drawDocShell(doc, SHEET, docPhoto);
   rows.forEach((row, r) => {
-    const free = pageW - 30 - row.reduce((sum, x) => sum + x.width, 0);
+    const free = full - row.reduce((sum, x) => sum + x.width, 0);
     const gap = row.length > 1 ? free / (row.length - 1) : 0;
     let x = 15;
     for (const item of row) {
-      if (item.head) write(item.head, x, 42 + r * 6, { bold: true, size: 8.5, color: WHITE });
-      write(item.value, x + item.headW, 42 + r * 6, { size: 8.5, color: WHITE });
+      if (item.head) lay.text(item.head.trim(), x, rowY[r], item.headW + 1, metaHead);
+      lay.lines(item.lines, x + item.headW, rowY[r], item.width - item.headW, metaStyle);
       x += item.width + gap;
     }
   });
@@ -118,32 +144,39 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
     const w = 52;
     doc.addImage(brandLogo.dataUrl, 'PNG', 15, 22 - (w * brandLogo.height / brandLogo.width) / 2, w, w * brandLogo.height / brandLogo.width);
   }
-  // A long title (the final proforma) is set smaller, clear of the logo; the others stay at 20
-  write(m.title.toUpperCase(), pageW - 15, 25, { bold: true, size: m.title.length > 24 ? 14 : 20, color: WHITE, align: 'right' });
-  (m.contact ?? []).forEach((line, i) => write(line, 15, 30.5 + i * 4, { size: 8, color: WHITE }));
+  lay.lines(titleLines, logoRight, 25, titleW, titleStyle, 'right');
+  lay.lines(contactLines, 15, contactY, contactW, contactStyle);
 
-  let y = SHEET + 2;
+  const flow = new PdfFlow(doc, SHEET + 11, 18, bottom);
 
-  // Supplier / client
-  y += 9;
-  const colW = (R - L - 10) / 2;
-  label(m.seller.heading, L, y);
-  label(m.buyer.heading, L + colW + 10, y);
-  const y1 = block(m.seller.lines, L, y + 5, colW, { bold: true });
-  const y2 = block(m.buyer.lines, L + colW + 10, y + 5, colW, { bold: true });
-  y = Math.max(y1, y2) + 5;
+  // Supplier / client: two columns, each wrapping in its own width
+  const firstStyle = st(10, true, INK, 1.3);
+  const restStyle = st(9, false, MUTED, 1.45);
+  const party = (p: { heading: string; lines: string[] }, x: number) => {
+    let y = last(label(p.heading, x, flow.y, colW), labelStyle) + 5;
+    const [first, ...rest] = p.lines;
+    if (first) y = lay.text(first, x, y, colW, firstStyle);
+    return lay.text(rest, x, y, colW, restStyle);
+  };
+  const partiesH = Math.max(
+    ...[m.seller, m.buyer].map((p) => lay.lineHeight(labelStyle) + 5 + lay.height(p.lines.slice(0, 1), colW, firstStyle) + lay.height(p.lines.slice(1), colW, restStyle)),
+  );
+  flow.ensure(partiesH);
+  flow.y = Math.max(party(m.seller, L), party(m.buyer, L + colW + 10)) + 5;
 
-  // Lines: hairlines only
+  // Lines: hairlines only; the head repeats on each page, a row never splits over two
   autoTable(doc, {
-    startY: y,
-    margin: { left: L, right: pageW - R, top: 18, bottom: 26 },
+    startY: flow.y,
+    margin: { left: L, right: pageW - R, top: 18, bottom: pageH - bottom },
     theme: 'plain',
+    rowPageBreak: TABLE_RULES.rowPageBreak,
+    showHead: TABLE_RULES.showHead,
     head: [(m.noPrices ? m.head.slice(0, 2) : m.head).map((h) => h.toUpperCase())],
     body: m.rows.map((r) => {
       const description = r.note ? `${r.description}\n${r.note}` : r.description;
       return m.noPrices ? [description, r.quantity] : [description, r.quantity, r.unitPrice, r.amount];
     }),
-    styles: { font: FONT, fontSize: 9, textColor: INK, cellPadding: { top: 2.4, bottom: 2.4, left: 0, right: 1 }, overflow: 'linebreak' },
+    styles: { font: FONT, fontSize: 9, textColor: INK, cellPadding: { top: 2.4, bottom: 2.4, left: 0, right: 1.5 }, overflow: TABLE_RULES.overflow },
     headStyles: { font: FONT, fontStyle: 'bold', fontSize: 7, textColor: MUTED },
     columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: m.noPrices ? 40 : 26, halign: 'right' }, 2: { cellWidth: 30, halign: 'right' }, 3: { cellWidth: 32, halign: 'right', fontStyle: 'bold' } },
     didParseCell: (data) => {
@@ -156,89 +189,96 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
       doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
     },
   });
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
+  flow.y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
 
-  const ensure = (h: number) => {
-    if (y + h > pageH - 26) {
-      doc.addPage();
-      y = 18;
-    }
+  // Totals (right): the name wraps in its column, the value keeps its own; the amount due under an ink rule
+  const totalsX = R - 84;
+  const totalStyle = st(9, false, MUTED);
+  const dueStyle = st(11, true, INK);
+  const totalRow = (name: string, value: string, style: TextStyle, valueStyle: TextStyle) => {
+    doc.setFont(FONT, valueStyle.weight === 'bold' ? 'bold' : 'normal');
+    doc.setFontSize(valueStyle.size);
+    const valueW = Math.min(doc.getTextWidth(value), 84 - 20);
+    return [
+      { x: totalsX, width: 84 - valueW - 4, text: name, style },
+      { x: R - valueW, width: valueW, text: value, style: valueStyle, align: 'right' as const },
+    ];
   };
-
-  // Totals (right); the amount due on an ink bar
-  if (m.totals.length) ensure(m.totals.length * 6 + 8);
-  m.totals.forEach(([name, value], i) => {
-    const last = i === m.totals.length - 1;
-    if (last) {
+  const totalRows = m.totals.map(([name, value], i) => {
+    const due = i === m.totals.length - 1;
+    const cells = totalRow(name, value, due ? dueStyle : totalStyle, due ? dueStyle : st(9));
+    return { due, cells, height: lay.rowHeight(cells) };
+  });
+  const totalsH = totalRows.reduce((s, r) => s + r.height + (r.due ? 7 : 2), 0);
+  if (totalRows.length) flow.ensure(totalsH + 2);
+  for (const r of totalRows) {
+    if (r.due) {
       doc.setDrawColor(...INK);
       doc.setLineWidth(0.3);
-      doc.line(R - 84, y, R, y);
-      write(name, R - 84, y + 6, { bold: true, size: 11 });
-      write(value, R, y + 6, { bold: true, size: 11, align: 'right' });
-      y += 11;
+      doc.line(totalsX, flow.y, R, flow.y);
+      flow.y = lay.row(r.cells, flow.y + 6) - lay.lineHeight(dueStyle) + 5;
     } else {
-      write(name, R - 84, y + 3, { size: 9, color: MUTED });
-      write(value, R, y + 3, { size: 9, align: 'right' });
-      y += 5.5;
+      flow.y = lay.row(r.cells, flow.y + 3) - lay.lineHeight(totalStyle) + 2.5;
     }
-  });
+  }
+  /** Text over pages, a line at a time, in the full width. */
+  const flowText = (text: string | string[], style: TextStyle, gapBefore: number) => {
+    const lines = lay.wrap(text, W, style);
+    if (!lines.length) return;
+    flow.y += gapBefore;
+    flow.ensure(lay.lineHeight(style) * Math.min(2, lines.length));
+    for (const line of lines) {
+      flow.ensure(lay.lineHeight(style));
+      flow.y = lay.lines([line], L, flow.y, W, style);
+    }
+  };
   if (m.vatNote) {
-    ensure(8);
-    y = block([m.vatNote], L, y + 1, R - L) + 1;
+    flowText(m.vatNote, st(9, false, INK, 1.6), 1);
+    flow.y += 1;
   }
-
-  if (m.notes) {
-    ensure(10);
-    y = block(m.notes.split('\n'), L, y + 2, R - L);
-  }
+  if (m.notes) flowText(m.notes.split('\n'), st(9, false, MUTED, 1.6), 2);
 
   // What closes the document stands at the foot of its last page, above the strip
-  const STRIP = 9;
-  const stripTop = 284 - STRIP;
   const hasBank = !!m.bank.heading;
-  doc.setFont(FONT, 'normal');
-  doc.setFontSize(8.5);
-  const closing = m.footer ? doc.splitTextToSize(m.footer, hasBank ? colW : R - L) as string[] : [];
-  const closeH = Math.max(hasBank ? 6 + m.bank.lines.length * 4.6 : 0, closing.length * 4.2);
-  const signH = m.sign ? 20 : 0;
+  const bankStyle = st(9, false, INK, 1.6);
+  const footStyle = st(8.5, false, MUTED, 1.4);
+  const signStyle = st(8, false, MUTED);
+  const footW = hasBank ? colW : W;
+  const bankLines = hasBank ? lay.wrap(m.bank.lines, colW, bankStyle) : [];
+  const bankHead = hasBank ? lay.wrap(m.bank.heading.toUpperCase(), colW, labelStyle) : [];
+  const closing = m.footer ? lay.wrap(m.footer, footW, footStyle) : [];
+  const closeH = Math.max(
+    hasBank ? bankHead.length * lay.lineHeight(labelStyle) + 2 + bankLines.length * lay.lineHeight(bankStyle) : 0,
+    closing.length * lay.lineHeight(footStyle),
+  );
+  const signText = (m.sign ?? []).map((t) => lay.wrap(t, colW, signStyle));
+  const signH = m.sign ? 16.5 + Math.max(...signText.map((l) => l.length)) * lay.lineHeight(signStyle) : 0;
   const footH = (closeH ? closeH + 7 : 0) + signH;
-  if (y + footH + 4 > stripTop - 4) {
-    doc.addPage();
-    y = 18;
-  }
+  if (flow.y + footH + 4 > stripTop - 4) doc.addPage();
   if (closeH) {
     const top = stripTop - 5 - footH;
     doc.setDrawColor(...MIST);
     doc.setLineWidth(0.15);
     doc.line(L, top, R, top);
     if (hasBank) {
-      label(m.bank.heading, L, top + 6);
-      m.bank.lines.forEach((line, i) => write(line, L, top + 11 + i * 4.6));
+      const y = lay.lines(bankHead, L, top + 6, colW, labelStyle);
+      lay.lines(bankLines, L, last(y, labelStyle) + 5, colW, bankStyle);
     }
-    closing.forEach((line, i) => write(line, hasBank ? L + colW + 10 : L, top + (hasBank ? 6 : 5) + i * 4.2, { size: 8.5, color: MUTED }));
+    lay.lines(closing, hasBank ? L + colW + 10 : L, top + (hasBank ? 6 : 5), footW, footStyle);
   }
   if (m.sign) {
-    const line = stripTop - 11;
+    const line = stripTop - 5 - signH + 14;
     doc.setDrawColor(...INK);
     doc.setLineWidth(0.25);
-    m.sign.forEach((text, i) => {
+    m.sign.forEach((_, i) => {
       const x = L + i * (colW + 10);
       doc.line(x, line, x + colW, line);
-      write(text, x, line + 4.5, { size: 8, color: MUTED });
+      lay.lines(signText[i], x, line + 4.5, colW, signStyle);
     });
   }
 
   // The strip on every page
-  const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
-    doc.setPage(i);
-    doc.setFillColor(...CANVAS);
-    doc.rect(15, stripTop, pageW - 30, STRIP, 'F');
-    if (m.base) write(m.base, L, stripTop + 5.6, { size: 7, color: MUTED });
-    write('nutrikal.com', pageW / 2 + 22, stripTop + 5.6, { size: 7, color: MUTED, align: 'center' });
-    if (m.pageOf) write(m.pageOf.replace('{i}', String(i)).replace('{n}', String(pages)), R, stripTop + 5.6, { size: 7, color: MUTED, align: 'right' });
-  }
-
+  strip(true);
   return doc;
 }
 

@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { docPlace } from '@/lib/doc-chrome';
 import autoTable from 'jspdf-autotable';
+import { footStrip, PdfFlow, PdfLayout, TABLE_RULES, type FontFor, type Rgb, type TextStyle, type Weight } from '@/lib/pdf-layout';
 import { fmt } from '@/lib/i18n';
 import { hasAluminiumCap, type CalcResult, type OfferLine } from './calc';
 import { formatDate, formatNumber, parseNum } from './numbers';
@@ -118,8 +119,6 @@ const MUTED: [number, number, number] = [74, 81, 96];
 const LINE: [number, number, number] = [221, 225, 232];
 const HEAD_BG: [number, number, number] = [244, 245, 247];
 const CYRILLIC = /[Ѐ-ӿ]/;
-
-type Weight = 'regular' | 'semibold' | 'bold';
 
 const money = (n: number) => n.toFixed(2);
 const packagingPlural: Record<ProductType, string> = {
@@ -264,19 +263,11 @@ export function offerFileName(form: Pick<OfferForm, 'offer' | 'invoice' | 'recei
 const FINE_PRINT = 6.5;
 const imageFormat = (img: PdfImage) => (img.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG');
 
-/** An offer always stands on one page: the body shrinks step by step until it fits. */
+/**
+ * The offer. Every text stands in its own column and wraps there (lib/pdf-layout.ts); nothing is set smaller to
+ * fit: a body longer than one page continues on the next, payment terms and the thanks close the last page.
+ */
 export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null = null): jsPDF {
-  let last: jsPDF | null = null;
-  for (const scale of [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65]) {
-    const { doc, fits } = drawOffer(m, fonts, docPhoto, scale);
-    if (fits) return doc;
-    last = doc;
-  }
-  return last!;
-}
-
-function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, scale: number): { doc: jsPDF; fits: boolean } {
-  const z = (n: number) => n * scale;
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
   const register = (file: string, data: string, family: string, style: string) => {
     doc.addFileToVFS(file, data);
@@ -293,33 +284,62 @@ function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, s
   }
 
   /** Poppins like the template; Roboto for text with Cyrillic (Poppins has no Cyrillic glyphs). */
-  const fontFor = (weight: Weight, text = ''): [string, string] => {
+  const fontFor: FontFor = (weight, text = '') => {
     if (CYRILLIC.test(text)) return ['Roboto', weight === 'regular' ? 'normal' : 'bold'];
     if (weight === 'semibold') return ['PoppinsSemiBold', 'normal'];
     return ['Poppins', weight === 'bold' ? 'bold' : 'normal'];
   };
-  const write = (
-    text: string,
-    x: number,
-    y: number,
-    opts: { weight?: Weight; size?: number; color?: [number, number, number]; align?: 'left' | 'right' | 'center' } = {},
-  ) => {
-    doc.setFont(...fontFor(opts.weight ?? 'regular', text));
-    doc.setFontSize(opts.size ?? 9);
-    doc.setTextColor(...(opts.color ?? TEXT));
-    doc.text(text, x, y, { align: opts.align ?? 'left' });
-    return doc.getTextWidth(text);
-  };
+  const lay = new PdfLayout(doc, fontFor);
+  const st = (size: number, weight: Weight = 'regular', color: Rgb = TEXT, leading?: number): TextStyle => ({ size, weight, color, leading });
+  const last = (next: number, style: TextStyle) => next - lay.lineHeight(style); // baseline of the last line drawn
 
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const L = 25;
   const R = pageW - 25;
+  const W = R - L;
   const COL2 = pageW / 2 + 3;
-  const SHEET = 52;
+  const leftW = COL2 - L - 6;
+  const rightW = R - COL2;
+
+  // The strip at the foot of every page; the body ends above it
+  const stripStyle = st(7, 'regular', MUTED);
+  const company = [m.supplier.name, m.supplier.identificationNo && `${PDF.identificationNo}: ${m.supplier.identificationNo}`, docPlace(m.supplier.address)].filter(Boolean).join(' · ');
+  const strip = (draw: boolean) => footStrip(lay, {
+    left: m.footerText.trim() || company,
+    center: (m.websites.length ? m.websites : ['nutrikal.com']).join(' · '),
+    right: (n, pages) => fmt(PDF.page, { n, m: pages }),
+  }, { x: 15, width: pageW - 30, bottom: 284, padX: L - 15, minHeight: 7, fill: HEAD_BG, style: stripStyle, draw });
+  const stripTop = strip(false);
+  const bottom = stripTop - 6;
+
+  // 1. The dark top: logo, title, contacts and the facts (number, date, valid until). Measured first: the sheet starts under it.
+  const WHITE: Rgb = [255, 255, 255];
+  const titleStyle = st(22, 'bold', WHITE, 1.15);
+  const contactStyle = st(8, 'regular', WHITE, 1.42);
+  const factStyle = st(9, 'regular', WHITE);
+  const factHeadStyle = st(9, 'semibold', WHITE);
+  const titleX = 15 + 52 + 6;
+  const titleLines = lay.wrap(PDF.offer.toUpperCase(), pageW - 15 - titleX, titleStyle);
+  const contactY = Math.max(31, 25 + (titleLines.length - 1) * lay.lineHeight(titleStyle) + 6);
+  const contactLines = lay.wrap(m.headerContact, (pageW - 30) * 0.62, contactStyle);
+  const contactLast = contactLines.length ? contactY + (contactLines.length - 1) * lay.lineHeight(contactStyle) : 26;
+  const facts: [string, string][] = [[PDF.number, m.offerNo], [`${PDF.date}:`, formatDate(m.offerDate)], ...(m.validUntil ? [[`${PDF.validUntil}:`, formatDate(m.validUntil)] as [string, string]] : [])];
+  const factW = (pageW - 30 - 8 * (facts.length - 1)) / facts.length;
+  const factCells = facts.map(([head, value]) => {
+    doc.setFont(...fontFor('semibold', head));
+    doc.setFontSize(9);
+    const headW = doc.getTextWidth(`${head} `);
+    const lines = lay.wrap(value, Math.max(10, factW - headW), factStyle);
+    doc.setFont(...fontFor('regular', value));
+    const valueW = Math.max(0, ...lines.map((l) => doc.getTextWidth(l)));
+    return { head, headW, lines, width: Math.min(factW, headW + valueW) };
+  });
+  const factsY = Math.max(44, contactLast + 7);
+  const factsLast = factsY + (Math.max(1, ...factCells.map((f) => f.lines.length)) - 1) * lay.lineHeight(factStyle);
+  const SHEET = Math.max(52, factsLast + 8);
   drawDocShell(doc, SHEET, docPhoto);
 
-  // 1. Header on the dark top: logo, title, number and date
   if (m.customLogo || m.brandLogo) {
     const img = (m.customLogo ?? m.brandLogo)!;
     const ratio = Math.min(52 / img.width, 15 / img.height);
@@ -327,226 +347,211 @@ function drawOffer(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null, s
     const h = img.height * ratio;
     doc.addImage(img.dataUrl, imageFormat(img), 15, 26 - h, w, h, m.customLogo ? undefined : 'brand');
   } else {
-    write(m.supplier.name.toUpperCase(), 15, 26, { weight: 'bold', size: 15, color: [255, 255, 255] });
+    lay.text(m.supplier.name.toUpperCase(), 15, 26, 52, st(15, 'bold', WHITE));
   }
-  write(PDF.offer.toUpperCase(), pageW - 15, 25, { weight: 'bold', size: 22, align: 'right', color: [255, 255, 255] });
-  m.headerContact.forEach((line, i) => write(line, 15, 31 + i * 4, { size: 8, color: [255, 255, 255] }));
-  // Number, date and how long it stands, spread over the dark top
-  const facts: [string, string][] = [[PDF.number, m.offerNo], [PDF.date.endsWith(':') ? PDF.date : `${PDF.date}:`, formatDate(m.offerDate)], ...(m.validUntil ? [[`${PDF.validUntil}:`, formatDate(m.validUntil)] as [string, string]] : [])];
-  const fact = (head: string, value: string, x: number, align: 'left' | 'center' | 'right') => {
-    doc.setFontSize(9);
-    doc.setFont(...fontFor('semibold', head));
-    const headW = doc.getTextWidth(`${head} `);
-    doc.setFont(...fontFor('regular', value));
-    const width = headW + doc.getTextWidth(value);
-    const left = align === 'left' ? x : align === 'right' ? x - width : x - width / 2;
-    write(head, left, 44, { weight: 'semibold', size: 9, color: [255, 255, 255] });
-    write(value, left + headW, 44, { size: 9, color: [255, 255, 255] });
-  };
-  facts.forEach(([head, value], i) => fact(head, value, i === 0 ? 15 : i === facts.length - 1 ? pageW - 15 : pageW / 2, i === 0 ? 'left' : i === facts.length - 1 ? 'right' : 'center'));
+  lay.lines(titleLines, titleX, 25, pageW - 15 - titleX, titleStyle, 'right');
+  lay.lines(contactLines, 15, contactY, (pageW - 30) * 0.62, contactStyle);
+  factCells.forEach((f, i) => {
+    const colX = 15 + i * (factW + 8);
+    const align = i === 0 ? 'left' : i === facts.length - 1 ? 'right' : 'center';
+    const left = align === 'left' ? colX : align === 'right' ? colX + factW - f.width : colX + (factW - f.width) / 2;
+    lay.text(f.head, left, factsY, f.headW + 1, factHeadStyle);
+    lay.lines(f.lines, left + f.headW, factsY, f.width - f.headW, factStyle);
+  });
 
-  // 2. Who it is for and who made it: only what is filled in
-  const party = (title: string, x: number, rows: string[]) => {
-    let py = SHEET + 11;
-    write(title, x, py, { weight: 'semibold', size: z(9) });
-    py += z(5.2);
-    for (const row of rows.filter(Boolean)) {
-      write(row, x, py, { size: z(9) });
-      py += z(4.6);
-    }
-    return py;
+  const flow = new PdfFlow(doc, SHEET + 11, 18, bottom);
+
+  // 2. Who it is for and who made it: each in its own column, wrapping there
+  const partyHead = st(9, 'semibold');
+  const partyRow = st(9, 'regular', TEXT, 1.45);
+  const party = (title: string, x: number, width: number, rows: string[]) => {
+    const y = lay.text(title, x, flow.y, width, partyHead);
+    return lay.text(rows.filter(Boolean), x, last(y, partyHead) + 5.2, width, partyRow);
   };
-  const yc = party(PDF.customer, L, [m.customer.name, m.customer.contactPerson === m.customer.name ? '' : m.customer.contactPerson, m.customer.addressLines.join(', ')]);
-  const ys = party(PDF.supplier, COL2, [m.supplier.name, m.contact.name, [m.contact.phone, m.contact.email].filter(Boolean).join(' · ')]);
+  const yc = party(PDF.customer, L, leftW, [m.customer.name, m.customer.contactPerson === m.customer.name ? '' : m.customer.contactPerson, m.customer.addressLines.join(', ')]);
+  const ys = party(PDF.supplier, COL2, rightW, [m.supplier.name, m.contact.name, [m.contact.phone, m.contact.email].filter(Boolean).join(' · ')]);
+  flow.y = Math.max(yc, ys) + 9;
 
   // 3. No price lines, totals or bank details on the offer – prices are in the sales prices table.
   const cellFont = (text: string, weight: Weight) => {
     const [font, fontStyle] = fontFor(weight, text);
     return { font, fontStyle: fontStyle as 'normal' | 'bold' };
   };
-  let y = Math.max(yc, ys) + z(9);
-
-  // Payment terms and the thanks stand at the foot of the page, above the strip; the body ends above them
-  doc.setFont(...fontFor('regular', m.paymentTerms));
-  doc.setFontSize(z(9));
-  const payment = m.paymentTerms ? doc.splitTextToSize(m.paymentTerms, COL2 - L - 8) as string[] : [];
-  doc.setFontSize(z(8.5));
-  const thanks = doc.splitTextToSize(PDF.thanks, R - COL2) as string[];
-  const closeH = Math.max(payment.length ? z(6) + payment.length * z(4.4) : 0, thanks.length * z(4.2));
-  const closeTop = 277 - 7 - closeH;
-  const bottomLimit = closeTop - 8;
-
-  const ensureSpace = (needed: number) => {
-    if (y + needed > bottomLimit) {
-      doc.addPage();
-      y = 18;
+  /** Wrapped lines over pages, one line at a time. */
+  const flowText = (lines: string[], style: TextStyle, width = W) => {
+    const lh = lay.lineHeight(style);
+    for (const line of lay.wrap(lines, width, style)) {
+      flow.ensure(lh);
+      flow.y = lay.lines([line], L, flow.y, width, style);
     }
-  };
-
-  // 4. Product row, composition, then the prices and what they cover as a block of their own
-  const textLines = (lines: string[], base = 9.5, color = TEXT) => {
-    const size = z(base);
-    doc.setFontSize(size);
-    for (const line of lines) {
-      doc.setFont(...fontFor('regular', line));
-      for (const part of doc.splitTextToSize(line, R - L) as string[]) {
-        ensureSpace(size * 0.53);
-        write(part, L, y, { size, color });
-        y += size * 0.53;
-      }
-    }
-  };
-  const heading = (title: string) => {
-    write(title, L, y, { weight: 'semibold', size: z(10.5) });
-    y += z(2.5);
-  };
-  const block = (title: string, lines: string[], size = 9.5, color = TEXT) => {
-    if (!lines.length) return;
-    ensureSpace(z(14));
-    heading(title);
-    y += z(3);
-    textLines(lines, size, color);
-    y += z(5);
   };
   const underline = (cell: { x: number; y: number; width: number; height: number }) => {
     doc.setDrawColor(...LINE);
     doc.setLineWidth(0.25);
     doc.line(cell.x, cell.y + cell.height, cell.x + cell.width, cell.y + cell.height);
   };
-  // The product row, under a dark rule
-  ensureSpace(z(22));
-  const packX = L + (R - L) * 0.5;
-  write(PDF.product, L, y, { weight: 'semibold', size: z(9) });
-  write(PDF.pack, packX, y, { weight: 'semibold', size: z(9), align: 'center' });
-  write(PDF.format, R, y, { weight: 'semibold', size: z(9), align: 'right' });
-  y += z(2.5);
+
+  // 4. The product row under a dark rule: product, pack and format, each in its own column
+  const headStyle = st(9, 'semibold');
+  const valueStyle = st(9.5, 'regular', TEXT, 1.4);
+  const codeStyle = st(7.5, 'regular', MUTED);
+  const cols = [
+    { x: L, width: W * 0.4 - 5 },
+    { x: L + W * 0.4, width: W * 0.25 - 5 },
+    { x: L + W * 0.65, width: W * 0.35 },
+  ];
+  const heads = [PDF.product, PDF.pack, PDF.format].map((text, i) => ({ ...cols[i], text, style: headStyle }));
+  const values = [m.productName, m.pack, m.format].map((text, i) => ({ ...cols[i], text, style: valueStyle }));
+  const codeH = m.productCode ? 4 : 0;
+  flow.ensure(lay.rowHeight(heads) + 8.5 + Math.max(lay.rowHeight(values), lay.height(m.productName, cols[0].width, valueStyle) + codeH) + 10);
+  flow.y = last(lay.row(heads, flow.y), headStyle) + 2.5;
   doc.setDrawColor(...NAVY);
   doc.setLineWidth(0.3);
-  doc.line(L, y, R, y);
-  y += z(6);
-  doc.setFont(...fontFor('regular', m.productName));
-  doc.setFontSize(z(9.5));
-  const nameLines = doc.splitTextToSize(m.productName, (R - L) * 0.36) as string[];
-  nameLines.forEach((line, i) => write(line, L, y + i * z(4.4), { size: z(9.5) }));
-  write(m.pack, packX, y, { size: z(9.5), align: 'center' });
-  write(m.format, R, y, { size: z(9.5), align: 'right' });
-  y += (nameLines.length - 1) * z(4.4);
-  if (m.productCode) {
-    y += z(4);
-    write(m.productCode, L, y, { size: z(7.5), color: MUTED });
-  }
-  y += z(3.5);
+  doc.line(L, flow.y, R, flow.y);
+  flow.y += 6;
+  const top = flow.y;
+  let lastLine = top;
+  values.forEach((c, i) => {
+    let end = last(lay.text(c.text, c.x, top, c.width, c.style), c.style);
+    if (i === 0 && m.productCode) end = last(lay.text(m.productCode, c.x, end + 4, c.width, codeStyle), codeStyle);
+    lastLine = Math.max(lastLine, end);
+  });
+  flow.y = lastLine + 3.5;
   doc.setDrawColor(...LINE);
   doc.setLineWidth(0.15);
-  doc.line(L, y, R, y);
-  y += z(7);
+  doc.line(L, flow.y, R, flow.y);
+  flow.y += 7;
 
   if (m.doseRows.length) {
     // One clean list; from seven ingredients three columns, row by row
     const threeColumns = m.doseRows.length > 6;
-    const nameW = (R - L - 10) / 3 - 16;
-    ensureSpace(z(16));
-    write(fmt(PDF.amountPerDose, { portion: m.dosePortion }), L, y, { weight: 'semibold', size: z(8.5) });
-    y += z(2);
+    const AMT = 19;
+    const nameW = (W - 10) / 3 - AMT;
+    const titleStyle9 = st(8.5, 'semibold');
+    const title = fmt(PDF.amountPerDose, { portion: m.dosePortion });
+    flow.ensure(lay.height(title, W, titleStyle9) + 12);
+    flow.y = last(lay.text(title, L, flow.y, W, titleStyle9), titleStyle9) + 2;
     autoTable(doc, {
-      startY: y,
-      margin: { left: L, right: pageW - R, top: 15, bottom: pageH - bottomLimit },
+      startY: flow.y,
+      margin: { left: L, right: pageW - R, top: 18, bottom: pageH - bottom },
       theme: 'plain',
+      rowPageBreak: TABLE_RULES.rowPageBreak,
       body: threeColumns
         ? Array.from({ length: Math.ceil(m.doseRows.length / 3) }, (_, i) => {
             const [a, b, c] = m.doseRows.slice(i * 3, i * 3 + 3);
             return [a.name, a.amount, '', b?.name ?? '', b?.amount ?? '', '', c?.name ?? '', c?.amount ?? ''];
           })
         : m.doseRows.map((r) => [r.name, r.amount]),
-      styles: { font: 'Poppins', fontSize: z(8), textColor: TEXT, cellPadding: { top: z(1.1), bottom: z(1.1), left: 0, right: 0 }, overflow: 'linebreak' },
+      styles: { font: 'Poppins', fontSize: 8, textColor: TEXT, cellPadding: { top: 1.1, bottom: 1.1, left: 0, right: 1 }, overflow: TABLE_RULES.overflow },
       columnStyles: threeColumns
-        ? { 0: { cellWidth: nameW }, 1: { cellWidth: 16, halign: 'right' }, 2: { cellWidth: 5 }, 3: { cellWidth: nameW }, 4: { cellWidth: 16, halign: 'right' }, 5: { cellWidth: 5 }, 6: { cellWidth: nameW }, 7: { cellWidth: 16, halign: 'right' } }
-        : { 0: { cellWidth: R - L - 25 }, 1: { cellWidth: 25, halign: 'right' } },
+        ? { 0: { cellWidth: nameW }, 1: { cellWidth: AMT, halign: 'right' }, 2: { cellWidth: 5 }, 3: { cellWidth: nameW }, 4: { cellWidth: AMT, halign: 'right' }, 5: { cellWidth: 5 }, 6: { cellWidth: nameW }, 7: { cellWidth: AMT, halign: 'right' } }
+        : { 0: { cellWidth: W - 28 }, 1: { cellWidth: 28, halign: 'right' } },
       didParseCell: (data) => {
         const text = data.cell.text.join(' ');
         if (CYRILLIC.test(text)) Object.assign(data.cell.styles, cellFont(text, 'regular'));
       },
       didDrawCell: (data) => { if (data.cell.text.join('') && !(threeColumns && data.column.index % 3 === 2)) underline(data.cell); },
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + z(6);
+    flow.y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
   }
   // Notes: under the table, or with their own heading when the table is switched off.
-  if (m.doseRows.length) {
-    if (m.noteLines.length) {
-      textLines(m.noteLines);
-      y += z(5);
+  const noteStyle = st(9.5, 'regular', TEXT, 1.4);
+  if (m.noteLines.length) {
+    if (!m.doseRows.length) {
+      const h = st(10.5, 'semibold');
+      flow.ensure(lay.lineHeight(h) + 3 + lay.lineHeight(noteStyle) * 2);
+      flow.y = last(lay.text(PDF.note, L, flow.y, W, h), h) + 5.5;
     }
-  } else {
-    block(PDF.note, m.noteLines);
+    flowText(m.noteLines, noteStyle);
+    flow.y += 5;
   }
+
+  // Payment terms and the thanks close the last page, above the strip
+  const payHead = st(9, 'semibold');
+  const payStyle = st(9, 'regular', TEXT, 1.39);
+  const thanksStyle = st(8.5, 'regular', MUTED, 1.4);
+  const payment = m.paymentTerms ? lay.wrap(m.paymentTerms, leftW - 2, payStyle) : [];
+  const payTitle = lay.wrap(PDF.paymentTerms, leftW - 2, payHead);
+  const thanks = lay.wrap(PDF.thanks, rightW, thanksStyle);
+  const closeH = Math.max(
+    payment.length ? payTitle.length * lay.lineHeight(payHead) + 1 + payment.length * lay.lineHeight(payStyle) : 0,
+    thanks.length * lay.lineHeight(thanksStyle),
+  );
+  const closeTop = stripTop - 7 - closeH;
+
   // Prices as cards, then what they cover and the small print; this block sits apart, half of the free room above it
-  const covers = (text: string) => {
-    doc.setFont(...fontFor('regular', text));
-    doc.setFontSize(z(8));
-    return doc.splitTextToSize(text, COL2 - L - 8) as string[];
-  };
-  const includedLines = covers(PDF.includedText);
-  const notIncludedLines = covers(PDF.notIncludedText);
-  doc.setFont(...fontFor('regular', m.terms));
-  doc.setFontSize(FINE_PRINT);
-  const finePrint = doc.splitTextToSize([m.terms, PDF.moreTerms].filter(Boolean).join(' '), R - L) as string[];
+  const coverHead = st(8, 'semibold');
+  const coverStyle = st(8, 'regular', MUTED, 1.35);
+  const included = lay.wrap(PDF.includedText, leftW - 2, coverStyle);
+  const notIncluded = lay.wrap(PDF.notIncludedText, rightW, coverStyle);
+  const coversH = lay.lineHeight(coverHead) + Math.max(included.length, notIncluded.length) * lay.lineHeight(coverStyle) + 4;
+  const fineStyle = st(FINE_PRINT, 'regular', MUTED, 1.27);
+  const finePrint = lay.wrap([m.terms, PDF.moreTerms].filter(Boolean).join(' '), W, fineStyle);
   const prices = m.salesPrices ?? [];
   const PER_ROW = 5;
-  const cardRows = Math.ceil(prices.length / PER_ROW);
-  const cardH = z(17);
-  const pricesH = cardRows ? cardRows * (cardH + 3) + z(7) : 0;
-  const coversH = z(4.2) + Math.max(includedLines.length, notIncludedLines.length) * z(3.8) + z(4);
-  const free = bottomLimit - y - pricesH - coversH - finePrint.length * 2.9;
-  y += Math.max(z(4), free / 2);
-  ensureSpace(pricesH + coversH + finePrint.length * 2.9);
-  if (cardRows) {
-    const cardW = (R - L - 4 * (Math.max(Math.min(prices.length, PER_ROW), 3) - 1)) / Math.max(Math.min(prices.length, PER_ROW), 3);
-    prices.forEach((p, i) => {
-      const x = L + (i % PER_ROW) * (cardW + 4);
-      const top = y + Math.floor(i / PER_ROW) * (cardH + 3);
-      doc.setFillColor(...HEAD_BG);
-      doc.roundedRect(x, top, cardW, cardH, 0.8, 0.8, 'F');
-      write(fmt(PDF.fromUnits, { n: formatNumber(p.units, 0) }), x + 4, top + z(6.5), { size: z(8.5), color: MUTED });
-      write(`€${money(p.price)}`, x + 4, top + z(13), { weight: 'bold', size: z(13) });
-    });
-    y += cardRows * (cardH + 3) + z(2.5);
-    write(PDF.pricesNote, L, y, { size: z(7.5), color: MUTED });
-    y += z(7);
-  }
-  const cover = (title: string, lines: string[], x: number) => {
-    write(title, x, y, { weight: 'semibold', size: z(8) });
-    lines.forEach((part, i) => write(part, x, y + z(4.2) + i * z(3.8), { size: z(8), color: MUTED }));
-  };
-  cover(PDF.included, includedLines, L);
-  cover(PDF.notIncluded, notIncludedLines, COL2);
-  y += coversH;
-  finePrint.forEach((line) => {
-    write(line, L, y, { size: FINE_PRINT, color: MUTED });
-    y += 2.9;
+  const perRow = Math.max(Math.min(prices.length, PER_ROW), 3);
+  const cardW = (W - 4 * (perRow - 1)) / perRow;
+  const cardLabel = st(8.5, 'regular', MUTED, 1.3);
+  const cardPrice = st(13, 'bold', TEXT, 1.2);
+  const cardRows = Array.from({ length: Math.ceil(prices.length / PER_ROW) }, (_, r) => {
+    const cards = prices.slice(r * PER_ROW, r * PER_ROW + PER_ROW).map((p) => ({
+      label: lay.wrap(fmt(PDF.fromUnits, { n: formatNumber(p.units, 0) }), cardW - 8, cardLabel),
+      price: lay.wrap(`€${money(p.price)}`, cardW - 8, cardPrice),
+    }));
+    const labelH = Math.max(...cards.map((c) => c.label.length)) * lay.lineHeight(cardLabel);
+    const priceH = Math.max(...cards.map((c) => c.price.length)) * lay.lineHeight(cardPrice);
+    return { cards, labelH, height: Math.max(17, 4 + labelH + 1.5 + priceH + 1.5) };
   });
+  const noteH = cardRows.length ? lay.height(PDF.pricesNote, W, st(7.5)) : 0;
+  const pricesH = cardRows.reduce((s, r) => s + r.height + 3, 0) + (cardRows.length ? 2.5 + noteH + 4.5 : 0);
+  const keptH = pricesH + coversH; // cards and covers stay together; the small print may run on
+  const tailH = keptH + finePrint.length * lay.lineHeight(fineStyle);
+  const room = closeTop - 8 - flow.y - tailH;
+  if (room >= 4) flow.y += Math.max(4, room / 2);
+  else {
+    flow.y += 4;
+    flow.ensure(keptH);
+  }
+  cardRows.forEach((row) => {
+    row.cards.forEach((c, i) => {
+      const x = L + i * (cardW + 4);
+      doc.setFillColor(...HEAD_BG);
+      doc.roundedRect(x, flow.y, cardW, row.height, 0.8, 0.8, 'F');
+      const labelY = flow.y + 4 + lay.ascent(cardLabel);
+      lay.lines(c.label, x + 4, labelY, cardW - 8, cardLabel);
+      lay.lines(c.price, x + 4, flow.y + 4 + row.labelH + 1.5 + lay.ascent(cardPrice), cardW - 8, cardPrice);
+    });
+    flow.y += row.height + 3;
+  });
+  if (cardRows.length) {
+    flow.y += 2.5;
+    flow.y = lay.text(PDF.pricesNote, L, flow.y, W, st(7.5, 'regular', MUTED)) + 4.5;
+  }
+  const coverTop = flow.y;
+  const cover = (title: string, lines: string[], x: number, width: number) =>
+    lay.lines(lines, x, last(lay.text(title, x, coverTop, width, coverHead), coverHead) + 4.2, width, coverStyle);
+  cover(PDF.included, included, L, leftW - 2);
+  cover(PDF.notIncluded, notIncluded, COL2, rightW);
+  flow.y = coverTop + coversH;
+  for (const line of finePrint) {
+    flow.ensure(lay.lineHeight(fineStyle));
+    flow.y = lay.lines([line], L, flow.y, W, fineStyle);
+  }
 
+  // The close at the foot of the last page; a new page when the body reaches it
+  if (flow.y > closeTop - 8) doc.addPage();
   doc.setDrawColor(...LINE);
   doc.setLineWidth(0.15);
   doc.line(L, closeTop - 5, R, closeTop - 5);
   if (payment.length) {
-    write(PDF.paymentTerms, L, closeTop, { weight: 'semibold', size: z(9) });
-    payment.forEach((line, i) => write(line, L, closeTop + z(5) + i * z(4.4), { size: z(9) }));
+    const y = lay.lines(payTitle, L, closeTop, leftW - 2, payHead);
+    lay.lines(payment, L, last(y, payHead) + 5, leftW - 2, payStyle);
   }
-  thanks.forEach((line, i) => write(line, COL2, closeTop + i * z(4.2), { size: z(8.5), color: MUTED }));
+  lay.lines(thanks, COL2, closeTop, rightW, thanksStyle);
 
-  // 5. Footer strip on every page
-  const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
-    doc.setPage(i);
-    doc.setFillColor(...HEAD_BG);
-    doc.rect(15, 277, pageW - 30, 7, 'F');
-    const company = [m.supplier.name, m.supplier.identificationNo && `${PDF.identificationNo}: ${m.supplier.identificationNo}`, docPlace(m.supplier.address)].filter(Boolean).join(' · ');
-    write(m.footerText.trim() || company, L, 281.6, { size: 7, color: MUTED });
-    write((m.websites.length ? m.websites : ['nutrikal.com']).join(' · '), pageW / 2 + 22, 281.6, { size: 7, color: MUTED, align: 'center' });
-    write(fmt(PDF.page, { n: i, m: pages }), R, 281.6, { size: 7, color: MUTED, align: 'right' });
-  }
-
-  return { doc, fits: pages === 1 };
+  // 5. The strip on every page
+  strip(true);
+  return doc;
 }
 
 // ---------------------------------------------------------------------------
