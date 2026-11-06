@@ -131,7 +131,7 @@ export function CatalogCompany({ text, locale }: { text: Dict["publicCatalog"]; 
           <div className="flex min-w-0 flex-col gap-2 pt-2">
             <p className="m-0 text-sm text-ink-2">{T.brands}</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${SITE}/brands.webp`} alt={T.brandsAlt} loading="lazy" className="w-full rounded-lg bg-[#fff]" />
+            <img src={`${SITE}/brands-hd.webp`} alt={T.brandsAlt} loading="lazy" className="w-full rounded-lg bg-[#fff]" />
           </div>
         </div>
       </section>
