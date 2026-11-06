@@ -23,6 +23,7 @@ export interface ProformaPdfModel {
   sign?: [string, string];                 // the two lines to sign
   base?: string;                           // the strip at the foot
   pageOf?: string;                         // "Page {i} of {n}"
+  noPrices?: boolean;                      // only description and quantity, no totals
 }
 
 const INK: [number, number, number] = [34, 40, 49];
@@ -137,11 +138,14 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
     startY: y,
     margin: { left: L, right: pageW - R, top: 18, bottom: 26 },
     theme: 'plain',
-    head: [m.head.map((h) => h.toUpperCase())],
-    body: m.rows.map((r) => [r.note ? `${r.description}\n${r.note}` : r.description, r.quantity, r.unitPrice, r.amount]),
+    head: [(m.noPrices ? m.head.slice(0, 2) : m.head).map((h) => h.toUpperCase())],
+    body: m.rows.map((r) => {
+      const description = r.note ? `${r.description}\n${r.note}` : r.description;
+      return m.noPrices ? [description, r.quantity] : [description, r.quantity, r.unitPrice, r.amount];
+    }),
     styles: { font: FONT, fontSize: 9, textColor: INK, cellPadding: { top: 2.4, bottom: 2.4, left: 0, right: 1 }, overflow: 'linebreak' },
     headStyles: { font: FONT, fontStyle: 'bold', fontSize: 7, textColor: MUTED },
-    columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 26, halign: 'right' }, 2: { cellWidth: 30, halign: 'right' }, 3: { cellWidth: 32, halign: 'right', fontStyle: 'bold' } },
+    columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: m.noPrices ? 40 : 26, halign: 'right' }, 2: { cellWidth: 30, halign: 'right' }, 3: { cellWidth: 32, halign: 'right', fontStyle: 'bold' } },
     didParseCell: (data) => {
       if (data.section === 'head' && data.column.index > 0) data.cell.styles.halign = 'right';
     },
@@ -162,7 +166,7 @@ async function buildProformaPdf(model: ProformaPdfModel): Promise<jsPDF> {
   };
 
   // Totals (right); the amount due on an ink bar
-  ensure(m.totals.length * 6 + 8);
+  if (m.totals.length) ensure(m.totals.length * 6 + 8);
   m.totals.forEach(([name, value], i) => {
     const last = i === m.totals.length - 1;
     if (last) {

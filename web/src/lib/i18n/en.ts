@@ -428,6 +428,8 @@ export const en = {
     cancelledNote: "This purchase order was cancelled.",
     pdfEn: "PDF in English",
     pdfBg: "PDF in Bulgarian",
+    pdfEnNoPrices: "PDF in English, no prices",
+    pdfBgNoPrices: "PDF in Bulgarian, no prices",
     downloadFailed: "The PDF could not be made. Try again.",
     noLines: "No lines.",
     pdf: {
@@ -446,6 +448,7 @@ export const en = {
       total: "Total (excl. VAT)",
       code: "Code {sku}",
       footer: "Please confirm the order, the price and the delivery date. Every delivery must come with the batch number, the expiry date and a certificate of analysis (COA). Quote the order number on the invoice and the delivery note.",
+      footerNoPrices: "Please confirm the order and the delivery date. Every delivery must come with the batch number, the expiry date and a certificate of analysis (COA). Quote the order number on the invoice and the delivery note.",
     },
   },
   deliveries: {

@@ -70,10 +70,12 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
   const total = lines.reduce((a, x) => a + Number(x.quantity) * Number(x.unit_price ?? 0), 0);
 
   // The PDF for the supplier, in English or Bulgarian
-  const pdf = (l: Locale): ProformaPdfModel => {
+  // Admin can also download it without prices (unit price, amount and total left out; owner, Nov 2026)
+  const pdf = (l: Locale, noPrices = false): ProformaPdfModel => {
     const D = getDict(l).purchaseOrders.pdf;
     return {
-      fileName: `${po.code}-${l}.pdf`,
+      fileName: `${po.code}-${l}${noPrices ? "-no-prices" : ""}.pdf`,
+      noPrices,
       title: D.title,
       meta: [`${D.number} ${po.code}`, `${D.date}: ${formatDate(l, po.order_date)}`],
       seller: {
@@ -97,11 +99,11 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
         unitPrice: x.unit_price != null ? formatPrice(l, x.unit_price, po.currency, 2) : "—",
         amount: x.unit_price != null ? money(Number(x.quantity) * Number(x.unit_price), l) : "—",
       })),
-      totals: [[D.total, money(total, l)]],
+      totals: noPrices ? [] : [[D.total, money(total, l)]],
       vatNote: null,
       bank: { heading: "", lines: [] },
       notes: po.notes,
-      footer: D.footer,
+      footer: noPrices ? D.footerNoPrices : D.footer,
       ...docChrome(getDict(l), { name: s?.company_name ?? "", companyId: s?.company_id ?? "", address: s?.company_address ?? "", email: s?.company_email ?? "", phone: s?.company_phone ?? "" }),
       logoDataUrl: s?.logo_data_url ?? null,
     };
@@ -123,6 +125,8 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
           <>
             <ProformaPdfButton model={pdf("en")} label={P.pdfEn} errorText={P.downloadFailed} />
             <ProformaPdfButton model={pdf("bg")} label={P.pdfBg} errorText={P.downloadFailed} />
+            {isAdmin && <ProformaPdfButton model={pdf("en", true)} label={P.pdfEnNoPrices} errorText={P.downloadFailed} />}
+            {isAdmin && <ProformaPdfButton model={pdf("bg", true)} label={P.pdfBgNoPrices} errorText={P.downloadFailed} />}
           </>
         )}
       />
