@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { catalogMinQty, catalogPrice } from "@/lib/calculator/catalogImport";
+import { catalogMinQty, catalogPrice } from "@/lib/calculator/catalogPrice";
 import { ALUMINIUM_LID_EUR, CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, catalogTiersFor, GLASS_JAR_EUR, offerCapsules, packagingExtra, offerServings, standardCapsules } from "@/lib/calculator/catalogCapsules";
 import { catalogToCustom } from "@/lib/calculator/catalogToCustom";
 import { parsePositiveInt } from "@/lib/calculator/numbers";

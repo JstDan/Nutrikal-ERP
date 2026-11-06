@@ -1,4 +1,4 @@
-import { catalogMinQty } from './catalogImport';
+import { catalogMinQty } from './catalogPrice';
 import { CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, standardCapsules } from './catalogCapsules';
 import { isUnmatched } from './catalogToCustom';
 import { parseNum, parsePositiveInt } from './numbers';

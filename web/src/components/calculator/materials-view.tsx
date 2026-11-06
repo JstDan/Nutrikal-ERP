@@ -2,20 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveRegulatoryNote, syncPriceList } from "@/app/calculator/actions";
-import { extractSheetId } from "@/lib/calculator/materialImport";
+import { saveRegulatoryNote, updateRawMaterial } from "@/app/calculator/actions";
+import { parseNum } from "@/lib/calculator/numbers";
 import { matchesQuery } from "@/lib/calculator/search";
-import type { RawMaterial, Settings, SyncRun } from "@/lib/calculator/types";
-import { fmt, formatDate, type Locale } from "@/lib/i18n";
+import type { RawMaterial } from "@/lib/calculator/types";
+import { fmt, type Locale } from "@/lib/i18n";
 import { Chip, Empty } from "@/components/ui";
-import { CalcTextProvider, Notice, Toast, Toggle, useCalcText, useToast, type CalcDict } from "./kit";
+import { AddMaterialDialog } from "./add-material-dialog";
+import { CalcTextProvider, Notice, NumberField, Toast, Toggle, useCalcText, useToast, type CalcDict } from "./kit";
 
 type Props = {
   t: CalcDict;
   locale: Locale;
   materials: RawMaterial[];
-  settings: Settings;
-  lastSync: SyncRun | null;
   isAdmin: boolean;
 };
 
@@ -27,14 +26,16 @@ export function MaterialsView(props: Props) {
   );
 }
 
-const GRID = "grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1fr)_130px_minmax(0,1.2fr)_120px]";
+const GRID = "grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1fr)_130px_minmax(0,1.2fr)_130px]";
 
-function Materials({ materials, settings, lastSync, isAdmin }: Props) {
-  const { t, eur } = useCalcText();
+/** The price list of the calculator. It lives in the database (owner, Nov 2026): Admin changes names, prices and status here. */
+function Materials({ materials, isAdmin }: Props) {
+  const { t } = useCalcText();
   const m = t.materials;
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [adding, setAdding] = useState(false);
   const { toast, show, clear } = useToast();
 
   const filtered = useMemo(
@@ -48,11 +49,16 @@ function Materials({ materials, settings, lastSync, isAdmin }: Props) {
     show("success", fmt(m.noteSaved, { name: x.name }));
     router.refresh();
   };
+  const save = async (x: RawMaterial, patch: Partial<{ name: string; price: number; active: boolean }>) => {
+    const res = await updateRawMaterial(x.id, { name: x.name, price: x.price_eur_per_kg, active: x.active, ...patch });
+    if (!res.ok) return show("error", res.error);
+    show("success", fmt(m.saved, { name: res.data.name }));
+    router.refresh();
+  };
 
   return (
     <div className="flex flex-col gap-5">
-      <SyncCard settings={settings} lastSync={lastSync} onDone={(ok, message) => show(ok ? "success" : "error", message)} />
-      <Notice>{m.managedInSheet}</Notice>
+      <Notice>{isAdmin ? m.managedHere : m.managedHereSales}</Notice>
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="min-w-0 flex-[1_1_280px]">
@@ -61,6 +67,7 @@ function Materials({ materials, settings, lastSync, isAdmin }: Props) {
         </div>
         <Toggle checked={showInactive} onChange={setShowInactive}>{m.showInactive}</Toggle>
         <span className="text-sm text-ink-2">{fmt(m.count, { n: materials.filter((x) => x.active).length })}</span>
+        <button type="button" onClick={() => setAdding(true)} className="btn btn-primary" aria-haspopup="dialog">{m.add}</button>
       </div>
 
       <section aria-label={m.title} className="card px-5 pt-2 pb-3">
@@ -71,33 +78,81 @@ function Materials({ materials, settings, lastSync, isAdmin }: Props) {
           <span>{m.status}</span>
         </div>
         {filtered.length === 0 && <div className="py-4"><Empty>{t.formula.noResults}</Empty></div>}
-        {filtered.map((x) => (
-          <div key={x.id} className={`row ${GRID} border-b border-mist py-3 text-sm last:border-0`}>
-            <span className={`min-w-0 font-medium break-words ${x.active ? "" : "text-ink-2"}`}>{x.name}</span>
-            <span className="text-right tabular-nums">{eur(x.price_eur_per_kg)}</span>
-            <div className="col-span-2 min-w-0 md:col-span-1">
-              {isAdmin ? (
-                <NoteCell material={x} label={`${m.note} – ${x.name}`} onSave={(note) => saveNote(x, note)} />
-              ) : x.regulatory_note ? (
-                <span className="break-words text-amber-ink">⚠ {x.regulatory_note}</span>
-              ) : (
-                <span className="hide-sm text-ink-2">–</span>
-              )}
-            </div>
-            <span className="col-span-2 md:col-span-1">
-              {x.active ? <Chip tone="green">{m.statusActive}</Chip> : <Chip>{m.statusRemoved}</Chip>}
-              {x.manual && <span className="ml-1.5"><Chip tone="amber">{t.formula.manualChip}</Chip></span>}
-            </span>
-          </div>
+        {filtered.map((x) => isAdmin ? (
+          <AdminRow key={x.id} x={x} onSave={(patch) => save(x, patch)} onNote={(note) => saveNote(x, note)} />
+        ) : (
+          <ReadRow key={x.id} x={x} />
         ))}
       </section>
 
+      {adding && (
+        <AddMaterialDialog initialName={query} onClose={() => setAdding(false)}
+          onAdded={(x) => { setAdding(false); show("success", fmt(m.saved, { name: x.name })); }} />
+      )}
       <Toast toast={toast} onClose={clear} closeLabel={t.close} />
     </div>
   );
 }
 
-/** The regulatory note is the only raw-material field editable in the app; it saves when leaving the field. */
+function StatusChip({ active }: { active: boolean }) {
+  const { t } = useCalcText();
+  return active ? <Chip tone="green">{t.materials.statusActive}</Chip> : <Chip>{t.materials.statusInactive}</Chip>;
+}
+
+function ReadRow({ x }: { x: RawMaterial }) {
+  const { eur } = useCalcText();
+  return (
+    <div className={`row ${GRID} border-b border-mist py-3 text-sm last:border-0`}>
+      <span className={`min-w-0 font-medium break-words ${x.active ? "" : "text-ink-2"}`}>{x.name}</span>
+      <span className="text-right tabular-nums">{eur(x.price_eur_per_kg)}</span>
+      <div className="col-span-2 min-w-0 md:col-span-1">
+        {x.regulatory_note ? <span className="break-words text-amber-ink">⚠ {x.regulatory_note}</span> : <span className="hide-sm text-ink-2">–</span>}
+      </div>
+      <span className="col-span-2 md:col-span-1"><StatusChip active={x.active} /></span>
+    </div>
+  );
+}
+
+/** Name and price save when leaving the field; the status button switches at once. */
+function AdminRow({ x, onSave, onNote }: {
+  x: RawMaterial;
+  onSave: (patch: Partial<{ name: string; price: number; active: boolean }>) => void;
+  onNote: (note: string | null) => void;
+}) {
+  const { t, locale } = useCalcText();
+  const m = t.materials;
+  const priceText = (n: number) => String(n).replace(".", locale === "bg" ? "," : ".");
+  const [name, setName] = useState(x.name);
+  const [price, setPrice] = useState(priceText(x.price_eur_per_kg));
+  const [seen, setSeen] = useState(x);
+  if (seen !== x) {
+    setSeen(x);
+    setName(x.name);
+    setPrice(priceText(x.price_eur_per_kg));
+  }
+  const p = parseNum(price);
+
+  return (
+    <div className={`row ${GRID} items-start border-b border-mist py-3 text-sm last:border-0`}>
+      <input aria-label={`${m.name} – ${x.name}`} value={name} maxLength={200} onChange={(e) => setName(e.target.value)}
+        onBlur={() => name.trim() && name.trim() !== x.name ? onSave({ name: name.trim() }) : setName(x.name)}
+        className={`input min-w-0 ${x.active ? "" : "text-ink-2"}`} />
+      <NumberField aria-label={`${m.price} – ${x.name}`} value={price} onChange={setPrice} suffix="€" invalid={p === null || p <= 0}
+        onBlur={() => (p !== null && p > 0 ? p !== x.price_eur_per_kg && onSave({ price: p }) : setPrice(priceText(x.price_eur_per_kg)))} />
+      <div className="col-span-2 min-w-0 md:col-span-1">
+        <NoteCell material={x} label={`${m.note} – ${x.name}`} onSave={onNote} />
+      </div>
+      <div className="col-span-2 flex flex-wrap items-center gap-2 md:col-span-1">
+        <StatusChip active={x.active} />
+        <button type="button" onClick={() => onSave({ active: !x.active })} className="btn btn-outline min-h-11">
+          {x.active ? m.deactivate : m.activate}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The regulatory note saves when leaving the field. */
 function NoteCell({ material, label, onSave }: { material: RawMaterial; label: string; onSave: (note: string | null) => void }) {
   const current = material.regulatory_note ?? "";
   const [value, setValue] = useState(current);
@@ -116,65 +171,5 @@ function NoteCell({ material, label, onSave }: { material: RawMaterial; label: s
       onBlur={() => value.trim() !== current && onSave(value.trim() || null)}
       className={`input min-h-11! py-2.5! ${value ? "text-amber-ink!" : ""}`}
     />
-  );
-}
-
-/** Status of the Google Sheet price-list sync with a manual "Sync" button. */
-function SyncCard({ settings, lastSync, onDone }: { settings: Settings; lastSync: SyncRun | null; onDone: (ok: boolean, message: string) => void }) {
-  const { t, locale } = useCalcText();
-  const s = t.sync;
-  const router = useRouter();
-  const [syncing, setSyncing] = useState(false);
-  const fileId = extractSheetId(settings.google_sheet_url);
-  const when = (iso: string) => formatDate(locale, iso, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-
-  const sync = async () => {
-    setSyncing(true);
-    const res = await syncPriceList();
-    setSyncing(false);
-    if (!res.ok) return onDone(false, `${s.failed}: ${res.error}`);
-    const run = res.data;
-    if (run.status === "success") onDone(true, fmt(s.okShort, { added: run.added, changed: run.changed, removed: run.removed }));
-    else onDone(false, `${s.failed}: ${run.error ?? ""}`);
-    router.refresh();
-  };
-
-  return (
-    <section aria-labelledby="sync-title" className="card flex flex-col gap-4 p-5 sm:p-6">
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-0 flex-[1_1_320px]">
-          <h2 id="sync-title" className="m-0 text-lg font-bold">{s.title}</h2>
-          <p className="mt-1 mb-0 text-[13px] text-ink-2">{s.hint}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {fileId && (
-            <a href={settings.google_sheet_url} target="_blank" rel="noopener noreferrer" className="btn btn-outline">
-              {s.openSheet} <span aria-hidden="true">↗</span>
-            </a>
-          )}
-          <button type="button" onClick={sync} disabled={syncing || !fileId} className="btn btn-primary">
-            {syncing ? s.syncing : s.syncNow}
-          </button>
-        </div>
-      </div>
-      {!lastSync ? (
-        <p className="m-0 text-sm text-ink-2">{s.never}</p>
-      ) : lastSync.status === "success" ? (
-        <Notice tone="success">
-          <b>{s.last}: {when(lastSync.created_at)} ({s[`source_${lastSync.source}`]})</b>
-          <br />
-          {fmt(s.ok, { added: lastSync.added, changed: lastSync.changed, unchanged: lastSync.unchanged })}
-          {lastSync.invalid > 0 && <><br />{fmt(s.invalidRows, { n: lastSync.invalid })}</>}
-          {lastSync.removed > 0 && <><br />{fmt(s.removed, { n: lastSync.removed })}</>}
-          {lastSync.restored > 0 && <><br />{fmt(s.restored, { n: lastSync.restored })}</>}
-        </Notice>
-      ) : (
-        <Notice tone="error">
-          <b>{s.failed}: {when(lastSync.created_at)} ({s[`source_${lastSync.source}`]})</b>
-          <br />
-          {lastSync.error}
-        </Notice>
-      )}
-    </section>
   );
 }

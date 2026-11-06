@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { offerState, reserveOfferNo, saveOffer, syncIfStale } from "@/app/calculator/actions";
+import { offerState, reserveOfferNo, saveOffer } from "@/app/calculator/actions";
 import { calcInputFromForm, calculate } from "@/lib/calculator/calc";
 import type { CrmClient } from "@/lib/calculator/db";
 import { BASELINE_KEY, createEmptyForm, DRAFT_KEY, duplicateForm, normalizeForm } from "@/lib/calculator/form";
@@ -139,13 +139,6 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
       }
     })();
   }, [initial, loadForm, newOffer, settings, show, t]);
-
-  // Daily 17:00 sync missed (e.g. server was off): sync the price list and the catalog in the background, then reload them.
-  useEffect(() => {
-    void syncIfStale().then((res) => {
-      if (res.ok && res.data) router.refresh();
-    });
-  }, [router]);
 
   // Keep the unsaved form so a page refresh doesn't lose work (not once the offer is created and the page is left).
   useEffect(() => {

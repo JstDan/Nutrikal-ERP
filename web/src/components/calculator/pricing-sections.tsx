@@ -1,7 +1,7 @@
 "use client";
 
 import { marginFromMarkup, unitPriceFor, type CalcResult } from "@/lib/calculator/calc";
-import { catalogMinQty } from "@/lib/calculator/catalogImport";
+import { catalogMinQty } from "@/lib/calculator/catalogPrice";
 import { parseNum } from "@/lib/calculator/numbers";
 import { catalogTierUnitPrice, tierUnitPrice } from "@/lib/calculator/priceOptions";
 import { isCapsule, type ExtraItem, type PriceTier, type ServicePreset } from "@/lib/calculator/types";

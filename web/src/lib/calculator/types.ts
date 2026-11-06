@@ -23,7 +23,7 @@ export interface RawMaterial {
   price_eur_per_kg: number;
   regulatory_note: string | null;
   active: boolean;
-  /** Added by hand in the calculator, not in the price-list sheet. */
+  /** Added from the formula search in the calculator. */
   manual?: boolean;
   updated_at: string;
 }
@@ -36,7 +36,7 @@ export interface CatalogTier {
   price: number;
 }
 
-/** A catalog product from the catalog Google Sheet. */
+/** A catalog product of the calculator (kept in the database; Admin edits it under Catalog). */
 export interface CatalogProduct {
   id: string;
   code: string;
@@ -45,6 +45,8 @@ export interface CatalogProduct {
   /** Smallest step first. */
   tiers: CatalogTier[];
   active: boolean;
+  /** Position in the list. */
+  sort_order?: number;
   /** Capsule products: capsules per serving and the standard capsules per jar the prices are for. Null otherwise. */
   capsules_per_serving: number | null;
   capsules_per_container: number | null;
@@ -97,14 +99,10 @@ export interface Settings {
   service_presets: ServicePreset[];
   logo_data_url: string | null;
   terms_text: string;
-  /** Google Sheet / Drive .xlsx share link the price list is synced from. */
+  /** Former Google Sheet of the price list (synced until Nov 2026; kept, no longer used). */
   google_sheet_url: string;
-  /** True when the link comes from GOOGLE_SHEET_URL on the server (not editable in the app). */
-  google_sheet_from_env?: boolean;
-  /** Google Sheet share link the catalog products are synced from. */
+  /** Former Google Sheet of the catalog products (synced until Nov 2026; kept, no longer used). */
   catalog_sheet_url: string;
-  /** True when the link comes from GOOGLE_CATALOG_SHEET_URL on the server (not editable in the app). */
-  catalog_sheet_from_env?: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -259,34 +257,3 @@ export interface OfferRecord {
 
 export type OfferInput = Omit<OfferRecord, 'id' | 'created_by' | 'created_at' | 'updated_at'> & { id?: string | null };
 
-/** One run of the Google Sheet price-list sync. */
-export interface SyncRun {
-  id: string;
-  created_at: string;
-  source: 'manual' | 'scheduled' | 'auto';
-  status: 'success' | 'error';
-  added: number;
-  changed: number;
-  unchanged: number;
-  invalid: number;
-  missing: number;
-  /** Materials deactivated because they were removed from the sheet. */
-  removed: number;
-  /** Inactive materials reactivated because they are back in the sheet. */
-  restored: number;
-  error: string | null;
-}
-
-/** One run of the catalog sync (catalog Google Sheet → catalog products). */
-export interface CatalogSyncRun {
-  id: string;
-  created_at: string;
-  source: 'manual' | 'scheduled' | 'auto';
-  status: 'success' | 'error';
-  added: number;
-  changed: number;
-  unchanged: number;
-  /** Products deactivated because they were removed from the sheet. */
-  removed: number;
-  error: string | null;
-}

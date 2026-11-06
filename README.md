@@ -164,7 +164,7 @@ The browser tests create a client, contact, project and task, receive and releas
    select id, 'Full Name', email, 'admin', 'bg' from auth.users where email = 'name@nutrikal.com';
    ```
    Roles: `admin`, `sales`, `production`, `developer` (sees and does everything any user can, by acting as them). To block a user: `update profiles set is_active = false where email = '…'`. To set a new password: `update auth.users set encrypted_password = extensions.crypt('new password', extensions.gen_salt('bf')) where email = '…';`
-6. Calculator price list: `GOOGLE_SHEET_URL` (shared "Anyone with the link – Viewer"). It syncs every day at 17:00 Sofia time and with the Sync button. On a long-running server (`next start`) a built-in timer does it; on Vercel the cron jobs in `web/vercel.json` call `/api/cron/price-sync` with `CRON_SECRET` (any other scheduler can call it hourly with the header `Authorization: Bearer <CRON_SECRET>`). If 17:00 was missed, it syncs when the calculator is next opened.
+6. Calculator price list: kept in the database (no Google Sheet since Nov 2026). Admin edits raw materials under Calculator > Raw materials and catalog products under Catalog formulas. The hourly cron route `/api/cron/catalog-purge` (header `Authorization: Bearer <CRON_SECRET>`) removes old catalog chats.
 7. Fill `company_settings` (legal name, VAT, EIK, bank details) and set `number_series.next_number` for invoices.
 
 ## To do (owner, Oct 2026)
