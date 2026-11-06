@@ -3955,6 +3955,36 @@ await ok('a board is deleted by its creator with everything on it', async () => 
   eq((await as('sales', `delete from boards where id = $1 returning 1`, [bd])).length, 1, 'creator');
   eq((await as('admin', `select 1 from board_lists where board_id = $1`, [bd])).length, 0, 'lists gone');
 });
+const tplSpec = {
+  labels: [{ name: 'Спешно', color: 'red' }, { name: 'Чака клиента', color: 'yellow' }],
+  lists: [
+    { name: 'Бриф', cards: [{ title: 'Бриф от клиента', description: 'Какво иска клиентът', checklist: ['Формат', 'Количество'], labels: [2] }] },
+    { name: 'Формула', cards: [] },
+    { name: '  ', cards: [] },
+  ],
+};
+let tplBoard;
+await ok('a board from a template has its lists, labels, cards and checklists', async () => {
+  tplBoard = (await one('sales', `select create_board_from('Проект Акме', 'purple', $1::jsonb, $2::uuid[]) as id`, [JSON.stringify(tplSpec), [U.designer]])).id;
+  eq((await as('sales', `select name from board_lists where board_id = $1 order by position`, [tplBoard])).map((r) => r.name).join(), 'Бриф,Формула', 'lists, empty name skipped');
+  eq((await as('sales', `select name from board_labels where board_id = $1 order by name`, [tplBoard])).map((r) => r.name).join(), 'Спешно,Чака клиента', 'labels');
+  const c = await one('sales', `select id, description from board_cards where board_id = $1`, [tplBoard]);
+  eq(c.description, 'Какво иска клиентът', 'description');
+  eq((await as('sales', `select text from board_checklist_items where card_id = $1 order by position`, [c.id])).map((r) => r.text).join(), 'Формат,Количество', 'checklist');
+  eq((await one('sales', `select l.name from board_card_labels cl join board_labels l on l.id = cl.label_id where cl.card_id = $1`, [c.id])).name, 'Чака клиента', 'label');
+  eq((await as('designer', `select 1 from boards where id = $1`, [tplBoard])).length, 1, 'invited');
+});
+await ok('a board is copied with its open lists, labels, cards and checklists; nothing done stays done', async () => {
+  const c = (await one('sales', `select id from board_cards where board_id = $1`, [tplBoard])).id;
+  await as('sales', `update board_checklist_items set done = true where card_id = $1`, [c]);
+  const copy = (await one('designer', `select copy_board($1, 'Копие') as id`, [tplBoard])).id;
+  eq((await as('designer', `select count(*)::int as n from board_lists where board_id = $1`, [copy]))[0].n, 2, 'lists');
+  eq((await as('designer', `select count(*)::int as n from board_checklist_items i join board_cards c on c.id = i.card_id where c.board_id = $1 and not i.done`, [copy]))[0].n, 2, 'checklist open');
+  eq((await as('designer', `select count(*)::int as n from board_card_labels cl join board_cards c on c.id = cl.card_id where c.board_id = $1`, [copy]))[0].n, 1, 'label');
+  eq((await as('designer', `select user_id from board_members where board_id = $1`, [copy])).map((r) => r.user_id).join(), U.designer, 'only the one who copied');
+});
+await fails('a board one does not see cannot be copied', () => as('bookkeeper', `select copy_board($1, 'x')`, [tplBoard]), 'Board not found');
+await fails('production cannot make a board from a template', () => as('production', `select create_board_from('x', 'blue', '{}'::jsonb)`), 'Not allowed');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
