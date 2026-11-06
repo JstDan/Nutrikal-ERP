@@ -10,6 +10,7 @@ import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { clientTone, orderTone } from "@/lib/status";
 import { ClientFields } from "@/components/client-fields";
+import { DeleteClient } from "@/components/delete-client";
 import { addActivity, addContact, updateClient } from "@/app/actions";
 
 type Client = {
@@ -17,7 +18,7 @@ type Client = {
   vat_number: string | null; company_id: string | null; address_line1: string | null; city: string | null; postal_code: string | null;
   billing_email: string | null; phone: string | null; preferred_locale: "bg" | "en"; currency: string;
   deposit_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
-  credit_limit: string | null; notes: string | null; owner: string | null; registration_address: string | null; website: string | null;
+  credit_limit: string | null; notes: string | null; owner: string | null; owner_id: string | null; registration_address: string | null; website: string | null;
 };
 type Order = { id: string; code: string; status: string; total_packs: number; products: string | null };
 type Contact = { id: string; first_name: string; last_name: string | null; position: string | null; email: string | null; phone: string | null; is_primary: boolean };
@@ -30,6 +31,8 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
   const { user, locale, t } = await requireStaff();
   const d = t.clients.detail;
   const canEdit = user.role === "admin" || user.role === "sales";
+  // Admin deletes any client; Sales and the bookkeeper only their own (delete_client decides; owner, Nov 2026)
+  const mayDelete = (owner: string | null) => user.role === "admin" || ((user.role === "sales" || user.role === "bookkeeper") && owner === user.id);
 
   const data = await withUser(user.id, async (tx) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
@@ -151,6 +154,8 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
               </details>
             )}
           </Card>
+
+          {mayDelete(c.owner_id) && <DeleteClient clientId={c.id} name={c.legal_name} labels={t.clients.delete} />}
         </div>
 
         {/* ----------------------------------------------- right column */}

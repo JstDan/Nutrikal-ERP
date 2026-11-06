@@ -3780,5 +3780,46 @@ for (const who of ['sales', 'bookkeeper', 'production', 'designer', 'clientA']) 
     as(who, `select set_lot_details($1, '2029-01-01', 'X')`, [ldLot.id]));
 }
 
+console.log('\nDeleting a client (Admin any, Sales their own)');
+const dcNew = async (who, name, owner) => (await one(who, `insert into clients (legal_name, owner_id) values ($1, $2) returning id`, [name, owner])).id;
+await ok('sales deletes their own client; contacts and notes go with it; an enquiry stays, unlinked', async () => {
+  const id = await dcNew('sales', 'DC Own Ltd', U.sales);
+  await as('sales', `insert into contacts (client_id, first_name, email) values ($1, 'Ana', 'ana@dc.test')`, [id]);
+  await as('admin', `insert into client_files (client_id, category, file_name, storage_path, uploaded_by) values ($1, 'other', 'a.pdf', 'dc/a.pdf', $2)`, [id, U.admin]);
+  const enq = (await db.query(`select id from catalog_enquiries limit 1`)).rows[0];
+  if (enq) await db.query(`update catalog_enquiries set client_id = $1 where id = $2`, [id, enq.id]);
+  const files = (await one('sales', `select delete_client($1) as f`, [id])).f;
+  eq(files.join(), 'dc/a.pdf', 'file paths returned for Storage');
+  eq((await as('admin', `select 1 from clients where id = $1`, [id])).length, 0, 'gone');
+  eq((await as('admin', `select 1 from contacts where client_id = $1`, [id])).length, 0, 'contacts gone');
+  if (enq) {
+    await db.exec('reset role');
+    eq((await db.query(`select client_id from catalog_enquiries where id = $1`, [enq.id])).rows[0].client_id, null, 'enquiry unlinked');
+  }
+});
+await ok('admin deletes a client of someone else', async () => {
+  const id = await dcNew('sales', 'DC Admin Ltd', U.sales);
+  await as('admin', `select delete_client($1)`, [id]);
+  eq((await as('admin', `select 1 from clients where id = $1`, [id])).length, 0, 'gone');
+});
+await ok('the bookkeeper deletes their own client', async () => {
+  const id = await dcNew('admin', 'DC Book Ltd', U.bookkeeper);
+  await as('bookkeeper', `select delete_client($1)`, [id]);
+  eq((await as('admin', `select 1 from clients where id = $1`, [id])).length, 0, 'gone');
+});
+const dcOther = await dcNew('admin', 'DC Not Yours Ltd', U.admin);
+await fails('sales cannot delete a client they are not responsible for', () => as('sales', `select delete_client($1)`, [dcOther]), 'Only Admin');
+for (const who of ['production', 'designer', 'clientA']) {
+  await fails(`${who} cannot delete a client`, () => as(who, `select delete_client($1)`, [dcOther]));
+}
+await fails('the accountant cannot delete a client (read-only)', () => session('accountant', `select delete_client($1)`, [dcOther]));
+await fails('a client with an order is not deleted', async () => {
+  const c = (await one('admin', `select client_id from sales_orders limit 1`)).client_id;
+  await as('admin', `select delete_client($1)`, [c]);
+}, 'still has');
+await ok('the refused client is still there', async () => {
+  eq((await as('admin', `select 1 from clients where id = $1`, [dcOther])).length, 1, 'kept');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
