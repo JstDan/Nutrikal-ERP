@@ -4013,5 +4013,16 @@ await ok('Admin sets the photo of anyone', async () => {
 });
 await fails('the accountant changes no photo (read-only)', () => session('accountant', 'select set_avatar(auth.uid(), null)'), 'read-only');
 
+// ----- Notifications go away once their page is seen (owner, Nov 2026)
+await ok('seeing a page reads only its own notifications', async () => {
+  await db.exec('reset role');
+  await db.query(`insert into notifications (user_id, kind, link) values ($1, 'chat_mention', '/chat?c=aaa'), ($1, 'chat_mention', '/chat?c=aaab'),
+                   ($1, 'task_mention', '/orders/o1?task=t1'), ($2, 'chat_mention', '/chat?c=aaa')`, [U.sales, U.admin]);
+  eq((await one('sales', 'select mark_notifications_seen($1) as n', ['/chat?c=aaa'])).n, 1, 'only the exact channel');
+  eq((await one('sales', 'select mark_notifications_seen($1) as n', ['/orders/o1'])).n, 0, 'the order page does not read a task mention');
+  eq((await one('sales', 'select mark_notifications_seen($1) as n', ['/orders/o1?task=t1'])).n, 1, 'the task');
+  eq((await one('admin', `select count(*)::int as n from notifications where link = '/chat?c=aaa' and read_at is null`)).n, 1, 'another user untouched');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -12,6 +12,7 @@ import { MobileMenu } from "./mobile-menu";
 import { Wordmark } from "./logo";
 import { UserAvatar } from "./user-avatar";
 import { NotificationBell } from "./notification-bell";
+import { NotificationsSeen } from "./notifications-seen";
 import { AssistantPanel } from "./assistant-panel";
 import { ChatDrawer } from "./chat-drawer";
 import { aiConfigured, aiModels } from "@/lib/ai/gateway";
@@ -139,6 +140,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
               ))}
             </form>
             <ChatDrawer unread={unread} userId={developer?.id ?? user.id} me={developer?.name ?? user.name} isAdmin={user.role === "admin"} partner={isProduction} locale={locale} text={t.chat} gifs={!!process.env.GIPHY_API_KEY} />
+            <NotificationsSeen />
             <NotificationBell userId={user.id} label={t.topbar.notifications} unreadLabel={t.topbar.unread} />
             <ThemeSwitch toDark={t.topbar.toDark} toLight={t.topbar.toLight} saved={savedTheme} />
             {developer && (

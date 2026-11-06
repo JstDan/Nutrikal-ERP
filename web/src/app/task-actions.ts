@@ -38,7 +38,7 @@ const OPS = {
     [uuid(a.task), text(a.body) ?? "", Array.isArray(a.mentions) ? a.mentions.map(uuid).filter(Boolean) : []]],
   editComment: (a: Args) => ["select edit_order_task_comment($1, $2)", [uuid(a.comment), text(a.body)]],
   deleteComment: (a: Args) => ["select delete_order_task_comment($1)", [uuid(a.comment)]],
-  markRead: (a: Args) => ["select mark_order_task_read($1)", [uuid(a.task)]],
+  markRead: (a: Args) => ["select mark_order_task_read($1), mark_notifications_seen('/orders/' || $2 || '?task=' || $1)", [uuid(a.task), uuid(a.order)]],
   refreshMaterials: (a: Args) => ["select refresh_order_materials($1)", [uuid(a.order)]],
   requestMissing: (a: Args) => ["select create_order_shortfall_requests($1) as n", [uuid(a.order)]],
   addColumn: (a: Args) => ["select add_order_task_column($1, $2, $3, $4, $5, $6) as id",

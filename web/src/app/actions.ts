@@ -1283,3 +1283,11 @@ export async function cancelDelivery(_: ActionState, fd: FormData): Promise<Acti
   revalidatePath("/", "layout");
   return { ok: true };
 }
+
+/** Notifications that point to the address just seen are read (an open page, card or channel). */
+export async function markSeen(link: string): Promise<number> {
+  const { user } = await getSession();
+  if (typeof link !== "string" || !link.startsWith("/") || link.length > 300) return 0;
+  const [row] = await q<{ n: number }>(user.id, "select mark_notifications_seen($1) as n", [link]).catch(() => [{ n: 0 }]);
+  return row?.n ?? 0;
+}

@@ -22,8 +22,10 @@ async function writer() {
   return { ...s, writerId: s.developer?.id ?? s.user.id };
 }
 
+/** The channel is read, and the notifications of mentions in it go away. */
 const markRead = (userId: string, channel: string) =>
-  qChat(userId, "insert into chat_reads (channel_id, user_id) values ($1, auth.uid()) on conflict (channel_id, user_id) do update set read_at = now()", [channel]);
+  qChat(userId, "insert into chat_reads (channel_id, user_id) values ($1, auth.uid()) on conflict (channel_id, user_id) do update set read_at = now()", [channel])
+    .then(() => qChat(userId, "select mark_notifications_seen($1)", [`/chat?c=${channel}`]));
 
 /** The last messages with their reactions and files. New ones mark the channel as read. */
 export async function pollChat(channel: string, seen: string | null): Promise<ChatMessage[]> {

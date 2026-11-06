@@ -8,6 +8,7 @@ import { boardOp, deleteBoardFile, deleteBoardPart, uploadBoardFile, type BoardO
 import { between, LABEL_COLORS, LABEL_HEX, type BoardCard, type BoardData, type LabelColor } from "@/lib/boards-shared";
 import { fileExt, linkParts, TASK_FILE_MAX, TASK_FILE_TYPES } from "@/lib/tasks-shared";
 import { SearchSelect } from "@/components/search-select";
+import { useSeen } from "@/components/notifications-seen";
 import { labelText, type FileText } from "@/components/boards/board-view";
 import { UserAvatar } from "@/components/user-avatar";
 
@@ -44,6 +45,7 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
   const names = useMemo(() => new Map([...data.people.map((p) => [p.id, p.full_name] as const), ...data.members.map((m) => [m.user_id, m.full_name] as const)]), [data]);
   const nameOf = (id: string) => names.get(id) ?? "—";
   const boardId = data.board.id;
+  useSeen(`/boards/${boardId}?card=${c.id}`);
 
   const run = (op: BoardOp, args: Record<string, unknown>, after?: (id?: string) => void) =>
     new Promise<boolean>((resolve) => start(async () => {
