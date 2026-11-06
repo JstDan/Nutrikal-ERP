@@ -10,6 +10,7 @@ import { qcTone } from "@/lib/status";
 import { countStock } from "@/app/actions";
 import { SearchSelect } from "@/components/search-select";
 import { LotDetailsForm } from "@/components/lot-details-form";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 type Item = {
   item_id: string; sku: string; name: string; name_bg: string | null; type: string; base_unit: string; shelf_life_months: number | null;
@@ -18,6 +19,7 @@ type Item = {
   incoming: string; next_expected_on: string | null; projected: string;
 };
 type Lot = { lot_id: string; item_id: string; location_id: string; lot_number: string; location: string; quantity: string; qc_status: string; expires_on: string | null; supplier_lot: string | null; is_expired: boolean; unit_cost: string | null };
+type Loc = { id: string; code: string; name: string };
 type Res = { item_id: string; code: string; client: string | null; quantity: string };
 
 // Filter tabs (owner, Oct 2026): raw materials (with excipients and semi-finished goods), packaging, finished goods
@@ -39,6 +41,14 @@ function flag(i: Item, t: Dict, locale: Locale, warnDays: number): { tone: Tone;
   return { tone: "green", text: f.ok };
 }
 
+function locFlag(i: Item, t: Dict, warnDays: number): { tone: Tone; text: string } {
+  const f = t.inventory.flags;
+  if (i.days_left !== null && i.days_left < 0) return { tone: "red", text: f.expired };
+  if (i.days_left !== null && i.days_left <= warnDays) return { tone: "red", text: fmt(f.expiring, { d: i.days_left }) };
+  if (Number(i.usable) <= 0) return { tone: "amber", text: t.inventory.quarantine };
+  return { tone: "green", text: f.ok };
+}
+
 const COLS = "md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_140px] lg:grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))_150px] xl:grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))_150px]";
 
 export default async function InventoryPage({ searchParams }: PageProps<"/inventory">) {
@@ -47,10 +57,34 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const type = (TYPES as readonly string[]).includes(String(sp.type)) ? (sp.type as (typeof TYPES)[number]) : "raw_material";
   const term = typeof sp.q === "string" ? sp.q.trim() : "";
   const canReceive = user.role === "admin";
+  // One warehouse (owner, Nov 2026): its stock only; empty = all of them
+  const loc = typeof sp.loc === "string" && /^[0-9a-f-]{36}$/i.test(sp.loc) ? sp.loc : "";
 
   const data = await withUser(user.id, async (tx) => {
     const warn = (await tx.query<{ d: number }>("select coalesce((select expiry_warning_days from company_settings limit 1), 90) as d")).rows[0].d;
-    const items = (await tx.query<Item>(
+    const locations = (await tx.query<Loc>(
+      "select id, code, name from locations where is_active and type <> 'virtual' order by (code = 'NK-WH') desc, (code = 'G-PRO') desc, name")).rows;
+    const at = locations.some((l) => l.id === loc) ? loc : "";
+    const search = `($2 = '' or i.name ilike '%' || $2 || '%' or i.name_bg ilike '%' || $2 || '%' or i.sku ilike '%' || $2 || '%'
+               or exists (select 1 from stock_balances b join lots lo on lo.id = b.lot_id
+                           where b.item_id = i.id and b.quantity > 0 and ($3::uuid is null or b.location_id = $3::uuid)
+                             and (lo.lot_number ilike '%' || $2 || '%' or lo.supplier_lot ilike '%' || $2 || '%')))`;
+    const items = at ? (await tx.query<Item>(
+      // Stock in the chosen warehouse only; reservations and incoming goods are not kept per warehouse
+      `select i.id as item_id, i.sku, i.name, i.name_bg, i.type, i.base_unit, i.shelf_life_months, i.novel_food_status,
+              b.on_hand::text, b.usable::text, b.quarantine::text, '0' as reserved, b.usable::text as available,
+              null as reorder_level, false as below_reorder_level, b.next_expiry::text, (b.next_expiry - current_date) as days_left,
+              '0' as incoming, null as next_expected_on, b.usable::text as projected
+         from items i
+         join (select item_id, sum(quantity) as on_hand,
+                      coalesce(sum(quantity) filter (where qc_status = 'released' and not is_expired), 0) as usable,
+                      coalesce(sum(quantity) filter (where qc_status = 'quarantine'), 0) as quarantine,
+                      min(expires_on) as next_expiry
+                 from stock_balances where location_id = $3::uuid and quantity > 0 group by item_id) b on b.item_id = i.id
+        where i.type::text = any($1::text[]) and ${search}
+        order by i.type, i.name`,
+      [TAB_TYPES[type], term, at],
+    )).rows : (await tx.query<Item>(
       `select s.item_id, s.sku, s.name, i.name_bg, s.type, s.base_unit, i.shelf_life_months, i.novel_food_status,
               s.on_hand, s.usable, s.quarantine, s.reserved, s.available, s.reorder_level, s.below_reorder_level,
               e.next_expiry::text, (e.next_expiry - current_date) as days_left,
@@ -82,7 +116,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
          left join manufacturing_orders mo on mo.id = r.manufacturing_order_id
         where r.status = 'active' group by r.item_id, mo.code, p.code, c.legal_name order by 2`,
     )).rows;
-    return { warn, items, lots, res };
+    return { warn, items, lots: at ? lots.filter((l) => l.location_id === at) : lots, res, locations, at };
   });
 
   const itemName = (i: Item) => (locale === "bg" && i.name_bg ? i.name_bg : i.name);
@@ -90,14 +124,22 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const needle = term.toLowerCase();
   const lotHit = (l: Lot) => needle !== "" && (l.lot_number.toLowerCase().includes(needle) || (l.supplier_lot ?? "").toLowerCase().includes(needle));
   const q = (n: string, u: string, l: Locale = locale) => formatQty(l, n, u);
+  const at = data.at;
+  const keep = (extra: Record<string, string>) => new URLSearchParams({ ...extra, ...(at && { loc: at }) });
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title={t.inventory.title}
-        subtitle={t.inventory.subtitle}
+        titleAside={
+          <WarehouseSelect label={t.inventory.warehouse} allLabel={t.inventory.allWarehouses} value={at}
+            options={data.locations.map((l) => ({ id: l.id, name: l.name }))}
+            keep={{ type, ...(term && { q: term }) }} />
+        }
+        subtitle={at ? t.inventory.warehouseNote : t.inventory.subtitle}
         actions={canReceive && (
           <>
+            <Link href={`/inventory/transfer${at ? `?from=${at}` : ""}`} className="btn btn-outline">{t.inventory.transfer.button}</Link>
             {user.role === "admin" && <Link href="/inventory/corrections" className="btn btn-outline">{t.nav.corrections}</Link>}
             <Link href="/inventory/items/new" className="btn btn-outline">{t.inventory.newItem}</Link>
             <Link href="/inventory/receive" className="btn btn-primary">{t.inventory.receive}</Link>
@@ -110,7 +152,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
           {TYPES.map((ty) => (
             <Link
               key={ty}
-              href={`/inventory?${new URLSearchParams({ type: ty, ...(term && { q: term }) })}`}
+              href={`/inventory?${keep({ type: ty, ...(term && { q: term }) })}`}
               aria-current={type === ty ? "page" : undefined}
               className={`flex min-h-10 items-center rounded-full border px-3.5 text-[13px] no-underline ${type === ty ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}
             >
@@ -120,6 +162,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
         </nav>
         <form method="get" role="search" className="flex min-w-0 flex-[1_1_220px] justify-end">
           <input type="hidden" name="type" value={type} />
+          {at && <input type="hidden" name="loc" value={at} />}
           <label htmlFor="inv-q" className="sr-only">{t.topbar.search}</label>
           <LiveSearch id="inv-q" defaultValue={term} placeholder={t.inventory.searchPlaceholder} className="input max-w-[320px]" />
         </form>
@@ -129,16 +172,16 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
         <div className={`row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${COLS}`}>
           <span>{t.inventory.item}</span>
           <span className="text-right">{t.inventory.onHand}</span>
-          <span className="hide-md text-right">{t.inventory.reserved}</span>
-          <span className="text-right">{t.inventory.available}</span>
-          <span className="hidden text-right xl:block">{t.inventory.incoming}</span>
+          <span className="hide-md text-right">{at ? t.inventory.quarantine : t.inventory.reserved}</span>
+          <span className="text-right">{at ? t.inventory.usable : t.inventory.available}</span>
+          <span className="hidden text-right xl:block">{at ? "" : t.inventory.incoming}</span>
           <span>{t.inventory.status}</span>
         </div>
         {data.items.length === 0 && <div className="py-4"><Empty>{t.inventory.empty}</Empty></div>}
         {data.items.map((i) => {
-          const f = flag(i, t, locale, data.warn);
+          const f = at ? locFlag(i, t, data.warn) : flag(i, t, locale, data.warn);
           const lots = data.lots.filter((l) => l.item_id === i.item_id);
-          const res = data.res.filter((r) => r.item_id === i.item_id);
+          const res = at ? [] : data.res.filter((r) => r.item_id === i.item_id);
           return (
             <details key={i.item_id} open={lots.some(lotHit)} className="group border-b border-mist last:border-0">
               <summary className={`row cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] py-3.5 text-sm ${COLS} [&::-webkit-details-marker]:hidden`}>
@@ -150,13 +193,13 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                   <div className="pl-4 text-xs text-ink-2">
                     {i.sku}
                     {i.shelf_life_months ? ` · ${fmt(t.inventory.shelfLife, { m: i.shelf_life_months })}` : ""}
-                    <span className="md:hidden"> · {t.inventory.available}: {q(i.available, i.base_unit)}</span>
+                    <span className="md:hidden"> · {at ? t.inventory.usable : t.inventory.available}: {q(i.available, i.base_unit)}</span>
                   </div>
                 </div>
                 <span className="hide-sm text-right">{q(i.on_hand, i.base_unit)}</span>
-                <span className="hide-md text-right">{q(i.reserved, i.base_unit)}</span>
+                <span className="hide-md text-right">{q(at ? i.quarantine : i.reserved, i.base_unit)}</span>
                 <span className="hide-sm text-right font-bold">{q(i.available, i.base_unit)}</span>
-                <span className="hidden text-right xl:block">{Number(i.incoming) > 0 ? q(i.incoming, i.base_unit) : "—"}</span>
+                <span className="hidden text-right xl:block">{at ? "" : Number(i.incoming) > 0 ? q(i.incoming, i.base_unit) : "—"}</span>
                 <Chip tone={f.tone}>{f.text}</Chip>
               </summary>
 

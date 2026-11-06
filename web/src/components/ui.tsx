@@ -22,13 +22,20 @@ export function Dot({ tone }: { tone: Tone }) {
   return <span aria-hidden="true" className={`mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full ${c}`} />;
 }
 
-export function PageHeader({ title, subtitle, actions, crumb }: { title: string; subtitle?: ReactNode; actions?: ReactNode; crumb?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions, crumb, titleAside }: { title: string; subtitle?: ReactNode; actions?: ReactNode; crumb?: ReactNode; titleAside?: ReactNode }) {
   return (
     <div className="flex flex-col gap-3">
       {crumb && <div className="text-[13px] text-ink-2">{crumb}</div>}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="m-0 text-2xl leading-tight font-bold break-words">{title}</h1>
+          {titleAside ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="m-0 text-2xl leading-tight font-bold break-words">{title}</h1>
+              {titleAside}
+            </div>
+          ) : (
+            <h1 className="m-0 text-2xl leading-tight font-bold break-words">{title}</h1>
+          )}
           {subtitle && <p className="mt-1 mb-0 text-sm text-ink-2">{subtitle}</p>}
         </div>
         {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
