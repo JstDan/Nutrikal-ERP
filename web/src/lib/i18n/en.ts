@@ -2069,6 +2069,8 @@ export const en = {
       pricesChanged: "Some raw material prices in this offer differ from the current price list.",
       updatePrices: "Use current prices",
       selectTypeFirst: "Select a product type to choose the default unit (mg for capsules, g for powder).",
+      reorder: "Move {name} – drag, or use the up and down arrow keys",
+      reorderHint: "Drag the handle ⠿ to change the order of the ingredients; the offer lists them in this order.",
     },
     quantity: {
       section: "Quantity per unit",

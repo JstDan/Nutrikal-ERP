@@ -97,6 +97,22 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
     updateRow(key, { materialId: m.id, name: m.name, pricePerKg: m.price_eur_per_kg, regulatoryNote: m.regulatory_note, catalogName: undefined });
     setChanging((s) => (s === key ? null : s));
   };
+  /** Row being dragged by its handle (only the handle starts a drag, so inputs keep working). */
+  const [armed, setArmed] = useState<string | null>(null);
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [overKey, setOverKey] = useState<string | null>(null);
+  /** Moves a row to the place of another one (drag and drop) or by one step (arrow keys). */
+  const moveRow = (key: string, to: number) => {
+    setForm((f) => {
+      const from = f.rows.findIndex((r) => r.key === key);
+      if (from < 0 || to < 0 || to >= f.rows.length || from === to) return f;
+      const rows = [...f.rows];
+      const [row] = rows.splice(from, 1);
+      rows.splice(to, 0, row);
+      return { ...f, rows };
+    });
+  };
+  const endDrag = () => { setArmed(null); setDragKey(null); setOverKey(null); };
   const removeRow = (key: string) => setForm((f) => ({ ...f, rows: f.rows.filter((r) => r.key !== key) }));
   const refreshPrices = () =>
     setForm((f) => ({
@@ -143,6 +159,8 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
           {t.formula.empty}
         </p>
       ) : (
+        <>
+        {form.rows.length > 1 && <p className="m-0 text-xs text-ink-2">{t.formula.reorderHint}</p>}
         <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t.formula.section}>
           {form.rows.map((row, i) => {
             const dup = !!row.materialId && (idCounts.get(row.materialId) ?? 0) > 1;
@@ -154,12 +172,37 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
             return (
               <li
                 key={row.key}
-                className={`grid items-center gap-3 rounded-sm border p-3 [grid-template-areas:'name_name_remove'_'amount_unit_unit'_'price_cost_cost'] grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:[grid-template-areas:'name_amount_unit_price_cost_remove'] md:grid-cols-[minmax(0,1fr)_130px_88px_96px_104px_44px] ${
+                draggable={armed === row.key}
+                onDragStart={(e) => { setDragKey(row.key); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", row.key); }}
+                onDragEnd={endDrag}
+                onDragOver={(e) => { if (dragKey && dragKey !== row.key) { e.preventDefault(); setOverKey(row.key); } }}
+                onDragLeave={() => setOverKey((k) => (k === row.key ? null : k))}
+                onDrop={(e) => { e.preventDefault(); if (dragKey && dragKey !== row.key) moveRow(dragKey, i); endDrag(); }}
+                className={`${dragKey === row.key ? "opacity-50" : ""} ${overKey === row.key ? "outline-2 outline-ink" : ""} grid items-center gap-3 rounded-sm border p-3 [grid-template-areas:'name_name_remove'_'amount_unit_unit'_'price_cost_cost'] grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:[grid-template-areas:'name_amount_unit_price_cost_remove'] md:grid-cols-[minmax(0,1fr)_130px_88px_96px_104px_44px] ${
                   unmatched ? "border-red" : dup ? "border-amber bg-amber-tint/40" : "border-line"
                 }`}
               >
                 <div className="min-w-0 [grid-area:name]">
-                  <div className="text-sm font-semibold break-words">{row.name}</div>
+                  <div className="flex items-start gap-1">
+                    {form.rows.length > 1 && (
+                      <button
+                        type="button"
+                        aria-label={fmt(t.formula.reorder, { name: row.name })}
+                        title={fmt(t.formula.reorder, { name: row.name })}
+                        onPointerDown={() => setArmed(row.key)}
+                        onPointerUp={() => { if (!dragKey) setArmed(null); }}
+                        onKeyDown={(e) => {
+                          if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                          e.preventDefault();
+                          moveRow(row.key, i + (e.key === "ArrowUp" ? -1 : 1));
+                        }}
+                        className="-my-2 -ml-2 flex h-11 w-8 shrink-0 cursor-grab items-center justify-center rounded-sm text-ink-2 select-none hover:bg-mist active:cursor-grabbing"
+                      >
+                        <span aria-hidden="true" className="text-lg leading-none">⠿</span>
+                      </button>
+                    )}
+                    <div className="min-w-0 text-sm font-semibold break-words">{row.name}</div>
+                  </div>
                   {(row.regulatoryNote || dup || removed || manual || unmatched || check) && (
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       {unmatched && <Chip tone="red">{t.formula.notInList}</Chip>}
@@ -238,6 +281,7 @@ export function FormulaSection({ form, setForm, errorFor, touch, materials, resu
             );
           })}
         </ul>
+        </>
       )}
       {rowsError && <p className="m-0 text-xs font-semibold text-red-ink">{rowsError}</p>}
 
