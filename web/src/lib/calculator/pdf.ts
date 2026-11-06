@@ -76,7 +76,7 @@ const PDF_BG: typeof PDF_EN = {
   address: 'Адрес',
   amountPerDose: 'Състав на доза ({portion})',
   included: 'Включено',
-  thanks: 'Благодарим ви, че избрахте Nutrikal. С удоволствие ще изградим вашата марка заедно.',
+  thanks: 'Благодарим ви, че избрахте Нутрикал. С удоволствие ще изградим вашата марка заедно.',
   validUntil: 'Валидна до',
   includedText: 'Производство в предприятие, сертифицирано по GMP и HACCP, опаковка с капачка, печат и поставяне на етикет.',
   notIncluded: 'Не е включено',
@@ -489,8 +489,8 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   flow.y += 7;
 
   if (m.doseRows.length) {
-    // One clean list; from seven ingredients two columns, row by row (owner, Nov 2026)
-    const twoColumns = m.doseRows.length > 6;
+    // One column up to ten ingredients; more than ten in two columns, row by row (owner, Nov 2026)
+    const twoColumns = m.doseRows.length > 10;
     const AMT = 22;
     const GAP = 8;
     const nameW = (W - GAP) / 2 - AMT;
