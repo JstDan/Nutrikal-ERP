@@ -13,6 +13,7 @@ import { VatToggle } from "@/components/vat-toggle";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import { SendDocument } from "@/components/send-document";
 import { loadSendInfo } from "@/lib/sends";
+import { bgInvoiceSeller, loadCompanyBg } from "@/lib/company-bg";
 import { SalesDocument } from "@/components/sales-document";
 import { invoiceModel, type InvoiceDoc, type InvoiceDocLine } from "@/lib/invoice-model";
 
@@ -78,7 +79,8 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
   const vat = draft ? Math.round(subtotal * vatPct) / 100 : Number(x.vat_amount);
 
   // Both languages: the download asks which one (owner, Nov 2026); the page and the e-mail keep the invoice's own
-  const both = { bg: invoiceModel({ ...x, locale: "bg" }, lines, logo, asProforma), en: invoiceModel({ ...x, locale: "en" }, lines, logo, asProforma) };
+  const cbg = await loadCompanyBg(user.id);
+  const both = { bg: invoiceModel({ ...x, locale: "bg", seller: bgInvoiceSeller(x.seller, cbg) }, lines, logo, asProforma), en: invoiceModel({ ...x, locale: "en" }, lines, logo, asProforma) };
   const model = both[l];
 
   const send = draft ? null : await loadSendInfo(user.id, user.name, "invoice", x.id, { orderId: x.order_id, clientId: x.client_id, title: docTitle, no: x.number ?? "", lang: l });

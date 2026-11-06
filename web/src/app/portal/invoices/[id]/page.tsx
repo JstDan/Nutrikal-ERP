@@ -9,6 +9,7 @@ import { q } from "@/lib/db/engine";
 import { invoiceModel, type InvoiceDoc, type InvoiceDocLine } from "@/lib/invoice-model";
 import { validId } from "@/lib/portal";
 import { getPortalSession } from "@/lib/session";
+import { bgInvoiceSeller, loadCompanyBg } from "@/lib/company-bg";
 
 type Row = InvoiceDoc & { logo: string | null; lines: InvoiceDocLine[] };
 
@@ -20,7 +21,8 @@ export default async function PortalInvoicePage({ params }: PageProps<"/portal/i
   const [row] = await q<{ d: Row | null }>(user.id, "select portal_invoice($1) as d", [id]);
   const x = row?.d;
   if (!x) notFound();
-  const both = { bg: invoiceModel({ ...x, locale: "bg" }, x.lines, x.logo, false), en: invoiceModel({ ...x, locale: "en" }, x.lines, x.logo, false) };
+  const cbg = await loadCompanyBg(user.id);
+  const both = { bg: invoiceModel({ ...x, locale: "bg", seller: bgInvoiceSeller(x.seller, cbg) }, x.lines, x.logo, false), en: invoiceModel({ ...x, locale: "en" }, x.lines, x.logo, false) };
   const model = both[x.locale];
   const seller = typeof x.seller.name === "string" ? x.seller.name : "";
   return (

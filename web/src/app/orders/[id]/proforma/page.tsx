@@ -11,6 +11,7 @@ import { SendDocument } from "@/components/send-document";
 import { loadSendInfo } from "@/lib/sends";
 import { proformaModel, type DocSeller, type ProformaDoc, type ProformaLine, type ProformaPay } from "@/lib/order-docs";
 import { calcOfferCapsulesSql } from "@/lib/calculator/catalogCapsules";
+import { bgSeller, loadCompanyBg } from "@/lib/company-bg";
 
 type Doc = ProformaDoc;
 type Line = ProformaLine;
@@ -69,7 +70,8 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
   const l = o.locale === "bg" ? "bg" : "en";
   const withVat = sp.vat === "1" ? true : sp.vat === "0" ? false : Number(o.vat_pct ?? 0) > 0;
   // Both languages: the download asks which one (owner, Nov 2026); the page and the e-mail use the client's
-  const both = { bg: proformaModel({ ...o, locale: "bg" }, lines, s, { vatPct: withVat ? rate : 0, pay, ordered }), en: proformaModel({ ...o, locale: "en" }, lines, s, { vatPct: withVat ? rate : 0, pay, ordered }) };
+  const cbg = await loadCompanyBg(user.id);
+  const both = { bg: proformaModel({ ...o, locale: "bg" }, lines, bgSeller(s, cbg), { vatPct: withVat ? rate : 0, pay, ordered }), en: proformaModel({ ...o, locale: "en" }, lines, s, { vatPct: withVat ? rate : 0, pay, ordered }) };
   const model = both[l];
 
   const send = await loadSendInfo(user.id, user.name, "proforma", id, { orderId: id, title: model.title, no: o.code, lang: l });

@@ -23,7 +23,7 @@ type Line = {
   id: string; item_id: string; sku: string; name: string; name_bg: string | null; base_unit: string;
   quantity: string; unit_price: string | null; delivery_code: string | null;
 };
-type Seller = { company_name: string; company_id: string; company_vat: string; company_address: string; company_email: string; company_phone: string; logo_data_url: string | null };
+type Seller = { company_name: string; company_id: string; company_vat: string; company_address: string; company_email: string; company_phone: string; logo_data_url: string | null; company_name_bg: string; company_address_bg: string };
 type Opt = { id: string; name: string };
 type ItemOpt = { id: string; sku: string; name: string; name_bg: string | null; type: string };
 
@@ -50,7 +50,7 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
          left join expected_deliveries d on d.id = pl.expected_delivery_id
         where pl.purchase_order_id = $1 order by pl.sort_order, i.name`, [id])).rows;
     const seller = (await tx.query<Seller>(
-      "select company_name, company_id, company_vat, company_address, company_email, company_phone, logo_data_url from calc_settings limit 1")).rows[0];
+      "select company_name, company_id, company_vat, company_address, company_email, company_phone, logo_data_url, company_name_bg, company_address_bg from calc_settings limit 1")).rows[0];
     const edit = isAdmin && po.status === "draft"
       ? {
           locations: (await tx.query<Opt>(
@@ -62,7 +62,7 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
     return { po, lines, seller, edit };
   });
   if (!data) notFound();
-  const { po, lines, seller: s, edit } = data;
+  const { po, lines, seller, edit } = data;
 
   const nm = (o: { name: string; name_bg: string | null }, l: Locale = locale) => (l === "bg" && o.name_bg ? o.name_bg : o.name);
   const unitOf = (u: string, l: Locale = locale) => (u === "pcs" ? getDict(l).common.units : u);
@@ -73,6 +73,8 @@ export default async function PurchaseOrderPage({ params }: PageProps<"/deliveri
   // Admin can also download it without prices (unit price, amount and total left out; owner, Nov 2026)
   const pdf = (l: Locale, noPrices = false): ProformaPdfModel => {
     const D = getDict(l).purchaseOrders.pdf;
+    // In Bulgarian the company stands with its Bulgarian name and address (Settings)
+    const s = l === "bg" && seller ? { ...seller, company_name: seller.company_name_bg || seller.company_name, company_address: seller.company_address_bg || seller.company_address } : seller;
     return {
       fileName: `${po.code}-${l}${noPrices ? "-no-prices" : ""}.pdf`,
       noPrices,

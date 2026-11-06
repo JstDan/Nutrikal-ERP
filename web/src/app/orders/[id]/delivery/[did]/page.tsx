@@ -8,6 +8,7 @@ import { SalesDocument } from "@/components/sales-document";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import { SendDocument } from "@/components/send-document";
 import { loadSendInfo } from "@/lib/sends";
+import { bgSeller, loadCompanyBg } from "@/lib/company-bg";
 import { deliveryModel, type DeliveryLine, type DeliveryNote, type DocSeller } from "@/lib/order-docs";
 
 type Note = DeliveryNote;
@@ -42,7 +43,8 @@ export default async function DeliveryNotePage({ params }: PageProps<"/orders/[i
 
   const l = n.locale === "bg" ? "bg" : "en";
   const D = getDict(l).dispatch.doc;
-  const both = { bg: deliveryModel({ ...n, locale: "bg" }, lines, s), en: deliveryModel({ ...n, locale: "en" }, lines, s) };
+  const cbg = await loadCompanyBg(user.id);
+  const both = { bg: deliveryModel({ ...n, locale: "bg" }, lines, bgSeller(s, cbg)), en: deliveryModel({ ...n, locale: "en" }, lines, s) };
   const model = both[l];
 
   const U = ui.dispatch.doc;

@@ -260,6 +260,13 @@ export function toPdfModel(
     ? [inv.registrationAddress.trim(), r.country]
     : [r.address, cityLine, r.country];
 
+  // In Bulgarian the company stands with its Bulgarian name, address and terms (Settings; empty keeps the English)
+  const bg = lang === 'bg';
+  const co = {
+    name: (bg && settings.company_name_bg?.trim()) || settings.company_name,
+    address: (bg && settings.company_address_bg?.trim()) || settings.company_address,
+    terms: ((bg && settings.terms_text_bg?.trim()) || settings.terms_text).trim(),
+  };
   return {
     lang,
     offerNo: form.offer.offerNo,
@@ -272,10 +279,10 @@ export function toPdfModel(
       addressLines: addressLines.map((s) => s.trim()).filter(Boolean),
     },
     supplier: {
-      name: settings.company_name,
+      name: co.name,
       identificationNo: settings.company_id,
       vatNumber: settings.company_vat,
-      address: settings.company_address,
+      address: co.address,
     },
     contact: {
       name: form.contact?.name.trim() ?? '',
@@ -297,9 +304,9 @@ export function toPdfModel(
     pack,
     format,
     noteLines,
-    terms: settings.terms_text.trim(),
+    terms: co.terms,
     footerText: settings.footer_text,
-    headerContact: [[settings.company_email.trim(), settings.company_phone.trim()].filter(Boolean).join(' · '), settings.company_address].filter(Boolean),
+    headerContact: [[settings.company_email.trim(), settings.company_phone.trim()].filter(Boolean).join(' · '), co.address].filter(Boolean),
     validUntil: form.offer.validUntil,
     websites: settings.websites
       .split(',')

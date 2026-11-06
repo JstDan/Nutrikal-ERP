@@ -9,6 +9,7 @@ import { q } from "@/lib/db/engine";
 import { deliveryModel, type DeliveryLine, type DeliveryNote, type DocSeller } from "@/lib/order-docs";
 import { validId } from "@/lib/portal";
 import { getPortalSession } from "@/lib/session";
+import { bgSeller, loadCompanyBg } from "@/lib/company-bg";
 
 type Row = { note: DeliveryNote; seller: DocSeller; lines: DeliveryLine[] };
 
@@ -20,7 +21,8 @@ export default async function PortalDelivery({ params }: PageProps<"/portal/deli
   const [row] = await q<{ d: Row | null }>(user.id, "select portal_delivery($1) as d", [id]);
   const x = row?.d;
   if (!x) notFound();
-  const both = { bg: deliveryModel({ ...x.note, locale: "bg" }, x.lines, x.seller), en: deliveryModel({ ...x.note, locale: "en" }, x.lines, x.seller) };
+  const cbg = await loadCompanyBg(user.id);
+  const both = { bg: deliveryModel({ ...x.note, locale: "bg" }, x.lines, bgSeller(x.seller, cbg)), en: deliveryModel({ ...x.note, locale: "en" }, x.lines, x.seller) };
   const model = both[x.note.locale === "bg" ? "bg" : "en"];
   return (
     <>
