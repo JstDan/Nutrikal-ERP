@@ -898,18 +898,6 @@ export async function issueInvoice(_: ActionState, fd: FormData): Promise<Action
 }
 
 /** A draft invoice with or without VAT (the order's rate, or the company's default). */
-export async function setInvoiceVat(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { user } = await getSession();
-  const id = str(fd, "invoice_id");
-  try {
-    await q(user.id, "select set_invoice_vat($1, $2)", [id, fd.get("with_vat") === "1"]);
-  } catch (e) {
-    return { error: errorText(e) };
-  }
-  revalidatePath(`/invoices/${id}`);
-  return { ok: true };
-}
-
 // ------------------------------------------------------------- production
 export async function createSimulation(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user } = await getSession();

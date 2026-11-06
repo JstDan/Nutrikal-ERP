@@ -138,6 +138,12 @@ export async function saveInvoiceTerms(_: ActionState, fd: FormData): Promise<Ac
     [str(fd, "invoice_id"), num(fd, "vat_pct"), str(fd, "tax_date"), str(fd, "due_date"), str(fd, "method"), str(fd, "notes"), basis]);
 }
 
+/** Any VAT rate on a draft invoice of an order; at 0 % the reason printed (owner, Nov 2026). */
+export async function setInvoiceVatRate(_: ActionState, fd: FormData): Promise<ActionState> {
+  const basis = num(fd, "vat_pct") === 0 ? str(fd, "vat_basis_other") ?? str(fd, "vat_basis") : null;
+  return run("select set_invoice_vat_rate($1, $2, $3)", [str(fd, "invoice_id"), num(fd, "vat_pct"), basis]);
+}
+
 /** A line from the list of services (Settings > Calculator); it can be changed on the draft. */
 export async function addServiceLine(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user, t } = await getSession();

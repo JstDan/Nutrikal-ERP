@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
-import { fmt, formatNumber } from "@/lib/i18n";
+import { fmt, formatNumber, getDict } from "@/lib/i18n";
 import { PrintButton } from "@/components/print-button";
-import { VatToggle } from "@/components/vat-toggle";
+import { ProformaVat } from "@/components/vat-fields";
 import { SalesDocument } from "@/components/sales-document";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import { SendDocument } from "@/components/send-document";
@@ -20,7 +20,7 @@ type Seller = DocSeller;
 
 /**
  * The proforma of an order as the client receives it: the client's language; print or save as PDF from the browser.
- * With or without VAT is ticked here (?vat=1 / ?vat=0; default: the order's VAT).
+ * The VAT rate is set here (?rate=; default: the order's VAT; the older ?vat=1 / ?vat=0 still work), at 0 % with the reason (?vb=).
  * ?final=1: the final payment, once every batch is produced: the units made, transport, less the advance received.
  */
 export default async function ProformaPage({ params, searchParams }: PageProps<"/orders/[id]/proforma">) {
@@ -69,9 +69,18 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
 
   const l = o.locale === "bg" ? "bg" : "en";
   const withVat = sp.vat === "1" ? true : sp.vat === "0" ? false : Number(o.vat_pct ?? 0) > 0;
+  const asked = typeof sp.rate === "string" && sp.rate.trim() !== "" && Number.isFinite(Number(sp.rate)) ? Math.min(100, Math.max(0, Number(sp.rate))) : null;
+  const pct = asked ?? (withVat ? rate : 0);
+  // A reason of the list prints in each language's words; own text as written
+  const vb = pct === 0 && typeof sp.vb === "string" ? sp.vb.trim() : "";
+  const at = getDict(l).invoices.direct.vatBases.findIndex((b) => b.text === vb);
+  const noteIn = (x: "bg" | "en") => (!vb ? null : at >= 0 ? getDict(x).invoices.direct.vatBases[at].text : vb);
   // Both languages: the download asks which one (owner, Nov 2026); the page and the e-mail use the client's
   const cbg = await loadCompanyBg(user.id);
-  const both = { bg: proformaModel({ ...o, locale: "bg" }, lines, bgSeller(s, cbg), { vatPct: withVat ? rate : 0, pay, ordered }), en: proformaModel({ ...o, locale: "en" }, lines, s, { vatPct: withVat ? rate : 0, pay, ordered }) };
+  const both = {
+    bg: proformaModel({ ...o, locale: "bg" }, lines, bgSeller(s, cbg), { vatPct: pct, pay, ordered, vatNote: noteIn("bg") }),
+    en: proformaModel({ ...o, locale: "en" }, lines, s, { vatPct: pct, pay, ordered, vatNote: noteIn("en") }),
+  };
   const model = both[l];
 
   const send = await loadSendInfo(user.id, user.name, "proforma", id, { orderId: id, title: model.title, no: o.code, lang: l });
@@ -84,7 +93,9 @@ export default async function ProformaPage({ params, searchParams }: PageProps<"
         <Link href={`/orders/${id}`} className="btn btn-outline">{ui.orders.proforma.back}</Link>
       </div>
       <div className="print:hidden">
-        <VatToggle checked={withVat} label={fmt(ui.common.withVat, { pct: formatNumber(locale, rate) })} />
+        <ProformaVat pct={pct} basis={vb || null} apply={ui.invoices.direct.vatApply}
+          bases={ui.invoices.direct.vatBases.map((b, i) => ({ label: b.label, text: getDict(l).invoices.direct.vatBases[i].text }))}
+          text={{ vat: fmt(ui.invoices.direct.vatOrder, { pct: formatNumber(locale, rate) }), basis: ui.invoices.direct.vatBasis, basisOther: ui.invoices.direct.vatBasisOther, guide: ui.invoices.direct.vatGuide }} />
       </div>
 
       <SendDocument info={send} model={model} text={ui.send} locale={locale} />

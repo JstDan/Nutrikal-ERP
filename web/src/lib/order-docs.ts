@@ -30,7 +30,7 @@ const address = (x: Buyer) => x.client_registration
  * With pay given it is the final proforma: the units made, transport and, as the last line, the advance at its
  * tax base (without VAT); the totals are counted after it (owner, Nov 2026).
  */
-export function proformaModel(o: ProformaDoc, lines: ProformaLine[], s: DocSeller | undefined, opts: { vatPct: number; pay: ProformaPay | null; ordered: number }): ProformaPdfModel {
+export function proformaModel(o: ProformaDoc, lines: ProformaLine[], s: DocSeller | undefined, opts: { vatPct: number; pay: ProformaPay | null; ordered: number; vatNote?: string | null }): ProformaPdfModel {
   const { vatPct, pay, ordered } = opts;
   const final = !!pay;
   const l: Locale = o.locale === "bg" ? "bg" : "en";
@@ -79,7 +79,7 @@ export function proformaModel(o: ProformaDoc, lines: ProformaLine[], s: DocSelle
       [fmt(P.vat, { pct: formatNumber(l, vatPct) }), money(vat)],
       [P.total, money(subtotal + vat)],
     ],
-    vatNote: vatPct === 0 ? P.zeroVat : null,
+    vatNote: vatPct === 0 ? opts.vatNote || P.zeroVat : null,
     bank: {
       heading: P.bank,
       lines: [`${P.bankName}: ${s?.bank_name ?? ""}`, `IBAN: ${s?.bank_iban ?? ""}`, `BIC: ${s?.bank_bic ?? ""}`, fmt(P.reference, { code: o.code })],

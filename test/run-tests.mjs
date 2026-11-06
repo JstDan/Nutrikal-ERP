@@ -1748,11 +1748,26 @@ await ok('the advance invoice: 50 % of the order, issuing it ticks "Фактур
   await as('sales', 'select set_invoice_vat($1, true)', [tkAdv]);
   v = await one('sales', 'select i.vat_pct::float as pct, l.amount::float as a from invoices i join invoice_lines l on l.invoice_id = i.id where i.id = $1', [tkAdv]);
   eq(`${v.pct}:${v.a}`, '20:675', 'with VAT');
+  // Any rate, and a reason at 0 % (owner, Nov 2026)
+  await as('sales', 'select set_invoice_vat_rate($1, 9, null)', [tkAdv]);
+  v = await one('sales', 'select i.vat_pct::float as pct, i.vat_basis as b, l.amount::float as a from invoices i join invoice_lines l on l.invoice_id = i.id where i.id = $1', [tkAdv]);
+  eq(`${v.pct}:${v.a}:${v.b}`, '9:743.12:null', '9 %');
+  let refused = false;
+  try { await as('sales', 'select set_invoice_vat_rate($1, 0, null)', [tkAdv]); } catch (e) { refused = /basis for 0/.test(e.message); }
+  eq(refused, true, '0 % needs a reason');
+  await as('sales', `select set_invoice_vat_rate($1, 0, 'Reason for zero rate: Art. 28 of the VAT Act.')`, [tkAdv]);
+  v = await one('sales', 'select i.vat_pct::float as pct, i.vat_basis as b from invoices i where i.id = $1', [tkAdv]);
+  eq(`${v.pct}:${v.b}`, '0:Reason for zero rate: Art. 28 of the VAT Act.', 'reason kept');
+  await as('sales', 'select set_invoice_vat_rate($1, 20, null)', [tkAdv]);
+  v = await one('sales', 'select i.vat_pct::float as pct, i.vat_basis as b, l.amount::float as a from invoices i join invoice_lines l on l.invoice_id = i.id where i.id = $1', [tkAdv]);
+  eq(`${v.pct}:${v.a}:${v.b}`, '20:675:null', 'back to 20 %, reason cleared');
   await as('sales', `select issue_invoice($1, next_invoice_number(), current_date)`, [tkAdv]);
   eq(await tkStatus(tkA, 'invoice_advance'), 'done', 'ticked');
 });
 await fails('production cannot set the VAT of an invoice', () => as('production', 'select set_invoice_vat($1, false)', [tkAdv]), 'not allowed');
 await fails('an issued invoice keeps its VAT', () => as('sales', 'select set_invoice_vat($1, false)', [tkAdv]), 'cannot be changed');
+await fails('production cannot set the VAT rate of an invoice', () => as('production', 'select set_invoice_vat_rate($1, 9, null)', [tkAdv]), 'not allowed');
+await fails('an issued invoice keeps its VAT rate', () => as('sales', 'select set_invoice_vat_rate($1, 9, null)', [tkAdv]), 'cannot be changed');
 await ok('admin confirms the final payment: ticked; clearing the date unticks it', async () => {
   await as('admin', 'select confirm_final_payment($1)', [tkA]);
   eq(await tkStatus(tkA, 'payment_final'), 'done', 'done');

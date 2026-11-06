@@ -4,12 +4,12 @@ import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { fmt, formatDate, formatNumber, formatPrice, getDict } from "@/lib/i18n";
 import { issueInvoice } from "@/app/actions";
-import { addInvoicePayment, addServiceLine, copyInvoice, createInvoiceNote, deleteInvoiceNote, deleteInvoicePayment, deleteNoteLine, makeProforma, saveInvoiceTerms, saveNoteLine } from "@/app/batch-actions";
+import { addInvoicePayment, addServiceLine, copyInvoice, createInvoiceNote, deleteInvoiceNote, deleteInvoicePayment, deleteNoteLine, makeProforma, saveInvoiceTerms, saveNoteLine, setInvoiceVatRate } from "@/app/batch-actions";
 import { loadSettings } from "@/lib/calculator/db";
 import { ActionForm } from "@/components/action-form";
 import { Card, Chip, PageHeader } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
-import { VatToggle } from "@/components/vat-toggle";
+import { VatFields } from "@/components/vat-fields";
 import { ProformaPdfButton } from "@/components/proforma-pdf-button";
 import { SendDocument } from "@/components/send-document";
 import { loadSendInfo } from "@/lib/sends";
@@ -68,6 +68,9 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
   const D = doc.invoices.doc;
   const NT = doc.invoices.notes;
   const N = I.notes;
+  // The reasons for 0 % VAT: chosen in the interface's language, printed in the document's
+  const vatBases = W.vatBases.map((b, i) => ({ label: b.label, text: doc.invoices.direct.vatBases[i].text }));
+  const vatText = { vat: W.vat, basis: W.vatBasis, basisOther: W.vatBasisOther, guide: W.vatGuide };
   const isNote = x.kind !== "invoice";
   const docTitle = x.kind === "credit_note" ? NT.credit : x.kind === "debit_note" ? NT.debit : D.title;
   const money = (n: number | string) => formatPrice(l, n, x.currency);
@@ -184,8 +187,8 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
           <Card title={W.terms} id="terms-h">
             <ActionForm action={saveInvoiceTerms} submitLabel={t.common.save} resetOnSuccess={false}>
               <input type="hidden" name="invoice_id" value={x.id} />
+              <VatFields pct={vatPct} basis={x.vat_basis} bases={vatBases} text={vatText} />
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <label className="field"><span>{W.vat}</span><input name="vat_pct" type="number" min={0} max={100} step="any" defaultValue={vatPct} className="input" /></label>
                 <label className="field"><span>{W.taxDate}</span><input name="tax_date" type="date" defaultValue={x.tax_point_date ?? ""} className="input" /></label>
                 <label className="field"><span>{W.due}</span><input name="due_date" type="date" defaultValue={x.due_date ?? ""} className="input" /></label>
                 <label className="field"><span>{W.method}</span>
@@ -193,22 +196,8 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
                     {(["bank", "cash", "card"] as const).map((m) => <option key={m} value={m}>{W.methods[m]}</option>)}
                   </select>
                 </label>
-                {vatPct === 0 && (
-                  <>
-                    <label className="field md:col-span-2"><span>{W.vatBasis} *</span>
-                      <select name="vat_basis" className="input" defaultValue={doc.invoices.direct.vatBases.includes(x.vat_basis ?? "") ? x.vat_basis ?? "" : ""}>
-                        <option value="">—</option>
-                        {doc.invoices.direct.vatBases.map((b) => <option key={b} value={b}>{b}</option>)}
-                      </select>
-                    </label>
-                    <label className="field md:col-span-2"><span>{W.vatBasisOther}</span>
-                      <input name="vat_basis_other" defaultValue={x.vat_basis && !doc.invoices.direct.vatBases.includes(x.vat_basis) ? x.vat_basis : ""} className="input" />
-                    </label>
-                  </>
-                )}
                 <label className="field md:col-span-2"><span>{W.notes}</span><textarea name="notes" defaultValue={x.notes ?? ""} className="input" /></label>
               </div>
-              {vatPct > 0 && <p className="m-0 text-xs text-ink-2">{W.vatBasisHint}</p>}
             </ActionForm>
             <ActionForm action={makeProforma} submitLabel={x.proforma_no ? fmt(W.openProforma, { no: x.proforma_no }) : W.makeProforma} resetOnSuccess={false}>
               <input type="hidden" name="invoice_id" value={x.id} />
@@ -258,8 +247,10 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
           <Card title={isNote ? N.issueTitle : I.issueTitle} id="issue-h">
             <p className="m-0 text-sm text-ink-2">{I.draftNote}</p>
             {!isNote && !direct && (
-              <VatToggle checked={vatPct > 0} invoiceId={x.id}
-                label={fmt(t.common.withVat, { pct: formatNumber(locale, vatPct > 0 ? vatPct : rate) })} />
+              <ActionForm action={setInvoiceVatRate} submitLabel={t.common.save} resetOnSuccess={false}>
+                <input type="hidden" name="invoice_id" value={x.id} />
+                <VatFields pct={vatPct} basis={x.vat_basis} bases={vatBases} text={{ ...vatText, vat: fmt(W.vatOrder, { pct: formatNumber(locale, rate) }) }} />
+              </ActionForm>
             )}
             <ActionForm action={issueInvoice} submitLabel={isNote ? N.issue : I.issue} resetOnSuccess={false}>
               <input type="hidden" name="invoice_id" value={x.id} />
