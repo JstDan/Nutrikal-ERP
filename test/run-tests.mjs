@@ -829,9 +829,8 @@ await ok('production and admin see nothing of the calculator', async () => {
     }
   }
 });
-await ok('sales cannot change a raw material price', async () => {
-  eq((await as('sales', `update calc_raw_materials set price_eur_per_kg = 1 where name = 'Zinc Glycinate' returning id`)).length, 0, 'no row');
-});
+await fails('sales cannot change a raw material price directly (only through calc_update_raw_material)', () =>
+  as('sales', `update calc_raw_materials set price_eur_per_kg = 1 where name = 'Zinc Glycinate'`), 'permission denied');
 await fails('sales cannot add raw materials directly', () =>
   as('sales', `insert into calc_raw_materials (name, price_eur_per_kg) values ('X', 1)`), 'permission denied');
 await ok('only admin edits the regulatory note', async () => {
