@@ -22,8 +22,7 @@ export const AI_TOOLS: ToolDefinition[] = [
     { ...TERM, status: { type: "string", description: "Order status; empty for all" } }),
   tool("order_details", "One sales order by its code (SO-00001): lines, prices, payments and production batches.",
     { code: { type: "string", description: "Order code" } }),
-  tool("find_stock", "Stock of items by name or SKU: available, reorder level, unit.", TERM),
-  tool("low_stock", "Items below their reorder level."),
+  tool("find_stock", "Stock of items by name or SKU: available, unit.", TERM),
   tool("expiring_lots", "Lots close to their expiry date."),
   tool("find_recipes", "Recipes by name or code, with format and latest version status.", TERM),
   tool("recipe_details", "Ingredients and amounts per serving of the latest version of one recipe, by its code (NK-F-0001).",
@@ -99,12 +98,9 @@ const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
        cross join lateral (select so.status not in ('draft', 'unpaid', 'cancelled') as v) paid
       where so.code = $1`, [(a.code ?? "").trim().toUpperCase()]],
   find_stock: (a) => [
-    `select i.sku, i.name, i.name_bg, s.available, s.reorder_level, s.base_unit
+    `select i.sku, i.name, i.name_bg, s.available, s.base_unit
        from item_stock_summary s join items i on i.id = s.item_id
       where $1 = '' or i.name ilike '%' || $1 || '%' or i.name_bg ilike '%' || $1 || '%' or i.sku ilike '%' || $1 || '%' order by i.name limit ${LIMIT}`, [term(a)]],
-  low_stock: () => [
-    `select i.sku, i.name, s.available, s.reorder_level, s.base_unit from item_stock_summary s join items i on i.id = s.item_id
-      where s.below_reorder_level order by i.name limit ${LIMIT}`, []],
   expiring_lots: () => [
     `select lot_number, item_name, days_left, quantity from expiring_lots order by days_left limit ${LIMIT}`, []],
   find_recipes: (a) => [

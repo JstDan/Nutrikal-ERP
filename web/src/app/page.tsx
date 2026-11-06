@@ -23,11 +23,6 @@ export default async function Dashboard() {
         where status in ('confirmed', 'in_production', 'ready')
         order by (status = 'in_production') desc, requested_date nulls last, code`,
     )).rows;
-    const low = (await tx.query<{ item_id: string; name: string; available: string; reorder_level: string; base_unit: string }>(
-      `select s.item_id, case when $1 = 'bg' then coalesce(i.name_bg, s.name) else s.name end as name, s.available, s.reorder_level, s.base_unit
-         from item_stock_summary s join items i on i.id = s.item_id where s.below_reorder_level order by 2`,
-      [locale],
-    )).rows;
     const expiring = (await tx.query<{ lot_id: string; lot_number: string; item_name: string; days_left: number; quantity: string; base_unit: string }>(
       `select e.lot_id, e.lot_number, case when $1 = 'bg' then coalesce(i.name_bg, e.item_name) else e.item_name end as item_name,
               e.days_left, e.quantity, i.base_unit
@@ -43,20 +38,20 @@ export default async function Dashboard() {
         order by a.due_at nulls last limit 8`,
     )).rows;
     const todo = await loadTodo(tx, user.role, locale);
-    return { clients, pipeline, production, low, expiring, quarantine, adjustments, tasks, todo };
+    return { clients, pipeline, production, expiring, quarantine, adjustments, tasks, todo };
   });
 
   const T = t.dashboard.todo;
   const count = (rows: { status: string; n: number }[], s: string) => rows.find((r) => r.status === s)?.n ?? 0;
   const openOrders = PIPELINE.reduce((a, s) => a + count(data.pipeline, s), 0);
   const maxStage = Math.max(1, ...PIPELINE.map((s) => count(data.pipeline, s)));
-  const alertTotal = data.low.length + data.expiring.length + data.quarantine;
+  const alertTotal = data.expiring.length + data.quarantine;
 
   const kpis = [
     { label: t.dashboard.activeClients, value: count(data.clients, "active"), note: `${count(data.clients, "lead")} ${t.dashboard.leads}`, href: "/clients" },
     { label: t.dashboard.openOrders, value: openOrders, note: fmt(t.dashboard.ordersDraft, { n: count(data.pipeline, "unpaid") }), href: "/orders" },
     { label: t.dashboard.inProduction, value: count(data.pipeline, "in_production"), note: fmt(t.dashboard.ordersReady, { n: count(data.pipeline, "ready") }), href: "/orders?status=in_production" },
-    { label: t.dashboard.stockAlerts, value: alertTotal, note: fmt(t.dashboard.alertsBreakdown, { low: data.low.length, exp: data.expiring.length, quar: data.quarantine }), href: "/inventory" },
+    { label: t.dashboard.stockAlerts, value: alertTotal, note: fmt(t.dashboard.alertsBreakdown, { exp: data.expiring.length, quar: data.quarantine }), href: "/inventory" },
   ];
 
   return (
@@ -121,15 +116,6 @@ export default async function Dashboard() {
 
         <Card title={t.dashboard.alerts} id="alerts-h" action={<TextLink href="/inventory">{t.dashboard.toInventory} →</TextLink>}>
           {alertTotal === 0 && data.adjustments === 0 && <Empty>{t.dashboard.noAlerts}</Empty>}
-          {data.low.map((a) => (
-            <div key={a.item_id} className="flex gap-3 text-sm">
-              <Dot tone="amber" />
-              <div className="min-w-0">
-                <div className="font-semibold">{a.name}</div>
-                <div className="text-ink-2">{fmt(t.dashboard.belowReorder, { avail: formatQty(locale, a.available, a.base_unit), level: formatQty(locale, a.reorder_level, a.base_unit) })}</div>
-              </div>
-            </div>
-          ))}
           {data.expiring.map((e) => (
             <div key={e.lot_id} className="flex gap-3 text-sm">
               <Dot tone={e.days_left < 0 ? "red" : "amber"} />

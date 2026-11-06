@@ -4,7 +4,7 @@ import { createItem, updateItem } from "@/app/actions";
 
 export type ItemRecord = {
   id: string; sku: string; type: string; name: string; name_bg: string | null; base_unit: string; latin_name: string | null;
-  novel_food_status: string | null; novel_food_reference: string | null; shelf_life_months: number | null; reorder_level: string | null;
+  novel_food_status: string | null; novel_food_reference: string | null; shelf_life_months: number | null;
   storage_conditions: string | null; allergens: string[]; is_vegan: boolean | null; is_vegetarian: boolean | null;
   regulatory_notes: string | null; notes: string | null; is_active: boolean;
 };
@@ -64,10 +64,6 @@ export function ItemForm({ t, item }: { t: Dict; item?: ItemRecord }) {
         <label className="field"><span>{I.novelFoodRef}</span><input name="novel_food_reference" defaultValue={item?.novel_food_reference ?? ""} className="input" /></label>
         <label className="field"><span>{I.shelfLife}</span>
           <input name="shelf_life_months" type="number" min="1" step="1" defaultValue={item?.shelf_life_months ?? undefined} className="input" />
-        </label>
-        <label className="field"><span>{I.reorderLevel}</span>
-          <input name="reorder_level" type="number" min="0" step="any" defaultValue={item?.reorder_level != null ? Number(item.reorder_level) : undefined} className="input" aria-describedby="reorder-hint" />
-          <small id="reorder-hint" className="text-xs text-ink-2">{I.reorderHint}</small>
         </label>
         <label className="field"><span>{I.storage}</span><input name="storage_conditions" defaultValue={item?.storage_conditions ?? ""} className="input" /></label>
         <label className="field"><span>{I.vegan}</span>

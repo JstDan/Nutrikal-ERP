@@ -108,8 +108,8 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
           shortages: tab === "open"
             ? (await tx.query<Shortage>(
                 `select source, purchase_request_id, request_code, item_id, sku, name, name_bg, base_unit, quantity::text,
-                        reorder_level::text, available::text, supplier_id, unit_price::text
-                   from purchase_shortages order by source = 'request' desc, name`)).rows
+                        available::text, supplier_id, unit_price::text
+                   from purchase_shortages order by name`)).rows
             : [],
         }
       : undefined;

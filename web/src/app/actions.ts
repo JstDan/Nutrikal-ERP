@@ -1060,7 +1060,7 @@ const itemFields = (fd: FormData) => {
   const tri = (k: string) => (str(fd, k) === "true" ? true : str(fd, k) === "false" ? false : null);
   return [
     str(fd, "name"), str(fd, "name_bg"), str(fd, "latin_name"), str(fd, "novel_food_status"), str(fd, "novel_food_reference"),
-    num(fd, "shelf_life_months"), num(fd, "reorder_level"), str(fd, "storage_conditions"),
+    num(fd, "shelf_life_months"), str(fd, "storage_conditions"),
     fd.getAll("allergens").filter((v): v is string => typeof v === "string"), tri("is_vegan"), tri("is_vegetarian"),
     str(fd, "regulatory_notes"), str(fd, "notes"),
   ];
@@ -1072,10 +1072,10 @@ export async function createItem(_: ActionState, fd: FormData): Promise<ActionSt
   try {
     const [row] = await q<{ id: string }>(
       user.id,
-      `insert into items (name, name_bg, latin_name, novel_food_status, novel_food_reference, shelf_life_months, reorder_level,
+      `insert into items (name, name_bg, latin_name, novel_food_status, novel_food_reference, shelf_life_months,
          storage_conditions, allergens, is_vegan, is_vegetarian, regulatory_notes, notes, sku, type, base_unit)
-       values ($1, $2, $3, $4::novel_food_status, $5, $6, $7, $8, $9::eu_allergen[], $10, $11, $12, $13, upper($14),
-         $15::item_type, $16::base_unit)
+       values ($1, $2, $3, $4::novel_food_status, $5, $6, $7, $8::eu_allergen[], $9, $10, $11, $12, upper($13),
+         $14::item_type, $15::base_unit)
        returning id`,
       [...itemFields(fd), str(fd, "sku"), str(fd, "type"), str(fd, "base_unit")],
     );
@@ -1093,10 +1093,10 @@ export async function updateItem(_: ActionState, fd: FormData): Promise<ActionSt
     const rows = await q(
       user.id,
       `update items set name = $1, name_bg = $2, latin_name = $3, novel_food_status = $4::novel_food_status,
-         novel_food_reference = $5, shelf_life_months = $6, reorder_level = $7, storage_conditions = $8,
-         allergens = $9::eu_allergen[], is_vegan = $10, is_vegetarian = $11, regulatory_notes = $12, notes = $13,
-         is_active = $15
-       where id = $14 returning id`,
+         novel_food_reference = $5, shelf_life_months = $6, storage_conditions = $7,
+         allergens = $8::eu_allergen[], is_vegan = $9, is_vegetarian = $10, regulatory_notes = $11, notes = $12,
+         is_active = $14
+       where id = $13 returning id`,
       [...itemFields(fd), str(fd, "item_id"), fd.get("is_active") === "on"],
     );
     if (rows.length === 0) return { error: t.items.readOnly };

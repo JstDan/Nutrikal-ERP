@@ -1,12 +1,12 @@
 import { Card, Empty } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { generatePurchaseOrders } from "@/app/purchase-order-actions";
-import { fmt, formatQty, type Locale } from "@/lib/i18n";
+import { fmt, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
 export type Shortage = {
-  source: "request" | "low_stock"; purchase_request_id: string | null; request_code: string | null; item_id: string;
-  sku: string; name: string; name_bg: string | null; base_unit: string; quantity: string; reorder_level: string | null;
+  source: "request"; purchase_request_id: string | null; request_code: string | null; item_id: string;
+  sku: string; name: string; name_bg: string | null; base_unit: string; quantity: string;
   available: string; supplier_id: string | null; unit_price: string | null;
 };
 
@@ -32,9 +32,7 @@ export function PurchaseShortages({ rows, suppliers, locale, t }: {
                   <span className="min-w-0">
                     <span className="block font-semibold break-words">{nm(r)}</span>
                     <span className="block text-xs text-ink-2">
-                      {r.sku} · {r.source === "request"
-                        ? fmt(P.fromRequest, { code: r.request_code ?? "" })
-                        : fmt(P.lowStock, { available: formatQty(locale, r.available, r.base_unit), min: formatQty(locale, r.reorder_level ?? 0, r.base_unit) })}
+                      {r.sku} · {fmt(P.fromRequest, { code: r.request_code ?? "" })}
                     </span>
                   </span>
                 </label>

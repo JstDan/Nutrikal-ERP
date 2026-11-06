@@ -148,8 +148,8 @@ await ok('production sees the project by code only', async () => {
 console.log('\nItems, suppliers, prices');
 let item, supplierItem;
 await ok('admin creates a raw material', async () => {
-  item = await one('admin', `insert into items (sku, type, name, name_bg, base_unit, novel_food_status, shelf_life_months, reorder_level)
-                                 values ('RM-MGBG', 'raw_material', 'Magnesium bisglycinate', 'Магнезиев бисглицинат', 'kg', 'not_novel', 24, 20)
+  item = await one('admin', `insert into items (sku, type, name, name_bg, base_unit, novel_food_status, shelf_life_months)
+                                 values ('RM-MGBG', 'raw_material', 'Magnesium bisglycinate', 'Магнезиев бисглицинат', 'kg', 'not_novel', 24)
                                  returning id`);
 });
 await fails('raw material without Novel Food status is refused', () =>
@@ -263,10 +263,10 @@ await ok('sales reserves 60 kg for the project', async () => {
 });
 await fails('over-reservation is refused (68 usable, 60 reserved)', () =>
   as('sales', 'select reserve_stock($1, $2, 20)', [item.id, project.id]), 'only 8');
-await ok('stock summary: 68 on hand, 60 reserved, 8 available, below reorder level 20', async () => {
+await ok('stock summary: 68 on hand, 60 reserved, 8 available; no minimum stock (owner, Nov 2026)', async () => {
   const s = await one('admin', 'select * from item_stock_summary where item_id = $1', [item.id]);
   eq(Number(s.on_hand), 68, 'on hand'); eq(Number(s.reserved), 60, 'reserved');
-  eq(Number(s.available), 8, 'available'); eq(s.below_reorder_level, true, 'reorder flag');
+  eq(Number(s.available), 8, 'available'); eq('below_reorder_level' in s || 'reorder_level' in s, false, 'no minimum');
 });
 
 console.log('\nExpiry and production visibility');
@@ -785,7 +785,7 @@ await ok('admin dashboard: completed batches in the period with actual cost, ope
 await ok('admin dashboard figures: money, sales, stock and purchases', async () => {
   const { d } = await one('admin', `select admin_dashboard('2000-01-01', '2100-01-01') as d`);
   for (const k of ['money', 'sales', 'stock', 'purchases']) eq(typeof d[k], 'object', k);
-  eq(Array.isArray(d.money.open) && Array.isArray(d.sales.top_clients) && Array.isArray(d.stock.low) && Array.isArray(d.purchases.open), true, 'lists');
+  eq(Array.isArray(d.money.open) && Array.isArray(d.sales.top_clients) && Array.isArray(d.stock.expiring) && Array.isArray(d.purchases.open), true, 'lists');
   eq(Number(d.stock.value) > 0, true, 'stock value');
 });
 await ok('the admin dashboard is refused to sales (even with the price flag) and production', async () => {
@@ -1425,16 +1425,18 @@ await fails('production cannot see the sources of an order not sent to it', () =
   as('production', 'select * from mo_material_sources($1)', [mo2.id]), 'not allowed');
 
 console.log('\nPurchase orders');
-let poSup, poItem, poId;
+let poSup, poItem, poId, poReq;
 const shortage = async (user = 'admin') => (await as(user, 'select * from purchase_shortages where item_id = $1', [poItem]))[0];
-await ok('an item under its minimum is missing, with its preferred supplier and price', async () => {
+await ok('an open purchase request is missing, with its preferred supplier and price', async () => {
   poSup = (await one('admin', `insert into suppliers (name) values ('PO Test Supplier') returning id`)).id;
-  poItem = (await one('admin', `insert into items (sku, type, name, base_unit, novel_food_status, reorder_level)
-                                values ('PO-RM', 'raw_material', 'PO test material', 'kg', 'not_novel', 10) returning id`)).id;
+  poItem = (await one('admin', `insert into items (sku, type, name, base_unit, novel_food_status)
+                                values ('PO-RM', 'raw_material', 'PO test material', 'kg', 'not_novel') returning id`)).id;
+  poReq = (await one('admin', 'insert into purchase_requests (item_id, quantity) values ($1, 10) returning id', [poItem])).id;
   const si = (await one('admin', 'insert into supplier_items (supplier_id, item_id, is_preferred) values ($1, $2, true) returning id', [poSup, poItem])).id;
   await as('admin', 'insert into supplier_prices (supplier_item_id, price) values ($1, 12)', [si]);
   const s = await shortage();
-  eq(`${s.source}:${Number(s.quantity)}:${s.supplier_id === poSup}:${Number(s.unit_price)}`, 'low_stock:10:true:12', 'shortage');
+  eq(`${s.source}:${Number(s.quantity)}:${s.supplier_id === poSup}:${Number(s.unit_price)}`, 'request:10:true:12', 'shortage');
+  eq('reorder_level' in s, false, 'no minimum column');
 });
 await ok('production does not see missing materials or purchase orders', async () => {
   eq((await as('production', 'select * from purchase_shortages')).length, 0, 'shortages');
@@ -1447,7 +1449,7 @@ await fails('every chosen line needs a supplier', () =>
   as('admin', 'select generate_purchase_orders($1::jsonb)', [JSON.stringify([{ item_id: poItem, quantity: 10 }])]), 'supplier');
 await ok('admin generates a draft purchase order per supplier; the item is no longer missing', async () => {
   const ids = (await one('admin', 'select generate_purchase_orders($1::jsonb) as ids',
-    [JSON.stringify([{ item_id: poItem, quantity: 10, supplier_id: poSup, unit_price: 12 }])])).ids;
+    [JSON.stringify([{ item_id: poItem, quantity: 10, supplier_id: poSup, unit_price: 12, purchase_request_id: poReq }])])).ids;
   eq(ids.length, 1, 'one order'); poId = ids[0];
   const po = await one('admin', 'select code, status, supplier_id from purchase_orders where id = $1', [poId]);
   eq(/^PO-\d{5}$/.test(po.code) && po.status === 'draft' && po.supplier_id === poSup, true, `draft ${po.code}`);
@@ -3835,6 +3837,13 @@ await fails('sales cannot change the Bulgarian company name', async () => {
   const n = (await as('sales', `update calc_settings set company_name_bg = 'X' returning 1`)).length;
   if (!n) throw new Error('not allowed');
 }, 'not allowed');
+
+// ----- No minimum stock (owner, Nov 2026)
+await ok('no item has a minimum stock any more', async () => {
+  eq((await db.query(`select 1 from information_schema.columns where table_schema = 'public'
+                       and column_name in ('reorder_level', 'below_reorder_level')`)).rows.length, 0, 'no column');
+  eq((await one('admin', `select admin_dashboard(current_date - 30, current_date) as d`)).d.stock.low_count, undefined, 'no low stock on the dashboard');
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

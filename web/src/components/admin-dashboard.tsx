@@ -16,8 +16,7 @@ export type DashboardData = {
     top_products: { product: string; product_bg: string | null; packs: Num; net: Num }[];
   };
   stock: {
-    value: Num; by_type: Record<string, Num>; no_cost: number; low_count: number; expiring_value: Num;
-    low: { item_id: string; sku: string; name: string; name_bg: string | null; available: Num; reorder_level: Num; base_unit: string }[];
+    value: Num; by_type: Record<string, Num>; no_cost: number; expiring_value: Num;
     expiring: { lot_id: string; lot_number: string; item_id: string; item_name: string; name_bg: string | null; days_left: number; quantity: Num; base_unit: string; value: Num | null }[];
   };
   purchases: {
@@ -129,18 +128,9 @@ export function DashboardParts({ d, locale, t }: { d: DashboardData; locale: Loc
         <Tiles label={K.title} items={[
           { label: K.value, value: eur(d.stock.value), note: d.stock.no_cost > 0 ? fmt(K.noCost, { n: d.stock.no_cost }) : undefined },
           ...types.filter((x) => Number(d.stock.by_type[x] ?? 0) > 0).map((x) => ({ label: t.enums.itemType[x], value: eur(d.stock.by_type[x]) })),
-          { label: K.low, value: formatNumber(locale, d.stock.low_count), tone: d.stock.low_count > 0 ? "red" as const : undefined },
           { label: K.expiringValue, value: eur(d.stock.expiring_value) },
         ]} />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card title={K.low} id="stock-low-h">
-            {d.stock.low.length === 0 ? <Empty>{K.noLow}</Empty> : d.stock.low.map((x) => (
-              <div key={x.item_id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-mist pb-2 text-sm last:border-0 last:pb-0">
-                <span className="min-w-0 break-words font-semibold">{nm(x)} <span className="text-xs font-normal text-ink-2">{x.sku}</span></span>
-                <span className="text-red-ink">{fmt(K.available, { available: formatQty(locale, x.available, x.base_unit), min: formatQty(locale, x.reorder_level, x.base_unit) })}</span>
-              </div>
-            ))}
-          </Card>
           <Card title={K.expiring} id="stock-exp-h">
             {d.stock.expiring.length === 0 ? <Empty>{K.noExpiring}</Empty> : d.stock.expiring.map((x) => (
               <div key={x.lot_id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-mist pb-2 text-sm last:border-0 last:pb-0">

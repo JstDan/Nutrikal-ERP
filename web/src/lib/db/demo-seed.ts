@@ -84,21 +84,21 @@ export async function seedDemo(db: PGlite) {
     one(ADMIN, `insert into items (sku, type, name, name_bg, base_unit ${extra ? ", " + extra.split("=")[0] : ""})
                     values ($1, $2, $3, $4, $5 ${extra ? ", " + extra.split("=")[1] : ""}) returning id`, [sku, type, name, nameBg, unit]);
 
-  const raw = (sku: string, name: string, nameBg: string, shelf: number, reorder: number) =>
-    one(ADMIN, `insert into items (sku, type, name, name_bg, base_unit, novel_food_status, shelf_life_months, reorder_level, storage_conditions)
-                    values ($1, 'raw_material', $2, $3, 'kg', 'not_novel', $4, $5, 'Dry, below 25 °C') returning id`, [sku, name, nameBg, shelf, reorder]);
+  const raw = (sku: string, name: string, nameBg: string, shelf: number) =>
+    one(ADMIN, `insert into items (sku, type, name, name_bg, base_unit, novel_food_status, shelf_life_months, storage_conditions)
+                    values ($1, 'raw_material', $2, $3, 'kg', 'not_novel', $4, 'Dry, below 25 °C') returning id`, [sku, name, nameBg, shelf]);
 
-  const mg = await raw("RM-MGBG", "Magnesium bisglycinate", "Магнезиев бисглицинат", 24, 20);
-  const the = await raw("RM-LTHE", "L-theanine", "L-теанин", 36, 2);
-  const vitc = await raw("RM-VITC", "Vitamin C (L-ascorbic acid)", "Витамин C (L-аскорбинова киселина)", 36, 20);
-  const zn = await raw("RM-ZNBG", "Zinc bisglycinate", "Цинков бисглицинат", 24, 5);
-  const ash = await raw("RM-ASHW", "Ashwagandha root extract", "Ашваганда, екстракт от корен", 36, 10);
-  const col = await raw("RM-COLB", "Collagen peptides (bovine)", "Колагенови пептиди (говежди)", 36, 100);
+  const mg = await raw("RM-MGBG", "Magnesium bisglycinate", "Магнезиев бисглицинат", 24);
+  const the = await raw("RM-LTHE", "L-theanine", "L-теанин", 36);
+  const vitc = await raw("RM-VITC", "Vitamin C (L-ascorbic acid)", "Витамин C (L-аскорбинова киселина)", 36);
+  const zn = await raw("RM-ZNBG", "Zinc bisglycinate", "Цинков бисглицинат", 24);
+  const ash = await raw("RM-ASHW", "Ashwagandha root extract", "Ашваганда, екстракт от корен", 36);
+  const col = await raw("RM-COLB", "Collagen peptides (bovine)", "Колагенови пептиди (говежди)", 36);
   const mcc = await one(ADMIN, `insert into items (sku, type, name, name_bg, base_unit, novel_food_status, excipient_function, shelf_life_months)
                                     values ('EX-MCC', 'excipient', 'Microcrystalline cellulose', 'Микрокристална целулоза', 'kg', 'not_novel', 'Filler', 60) returning id`);
   await one(ADMIN, `insert into items (sku, type, name, name_bg, base_unit, novel_food_status, excipient_function, shelf_life_months)
                         values ('EX-MGST', 'excipient', 'Magnesium stearate (vegetable)', 'Магнезиев стеарат (растителен)', 'kg', 'not_novel', 'Flow agent', 36) returning id`);
-  const caps = await item("PK-HPMC0", "packaging", "HPMC capsules size 0", "HPMC капсули размер 0", "pcs", "reorder_level, material, capacity, capacity_unit=100000, 'HPMC', 500, 'mg'");
+  const caps = await item("PK-HPMC0", "packaging", "HPMC capsules size 0", "HPMC капсули размер 0", "pcs", "material, capacity, capacity_unit='HPMC', 500, 'mg'");
   const jar = await item("PK-JAR300", "packaging", "PET jar 300 ml + cap", "PET бурканче 300 ml + капачка", "pcs", "capacity, capacity_unit, material=300, 'ml', 'PET'");
 
   const sup = await one(ADMIN, `insert into suppliers (name, country_code, email, is_approved) values ('EuroIngredients GmbH', 'DE', 'orders@euroingredients.example', true) returning id`);
