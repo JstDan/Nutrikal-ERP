@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { fmt } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
-import { boardOp, deleteBoardPart, type BoardOp } from "@/app/board-actions";
+import { boardOp, copyBoard, deleteBoardPart, type BoardOp } from "@/app/board-actions";
 import { BOARD_COLORS, BOARD_HEX, type BoardColor, type BoardData } from "@/lib/boards-shared";
 
 type T = Dict["boards"];
@@ -17,6 +17,7 @@ export function BoardSettings({ data, T, userId, isAdmin, onClose }: { data: Boa
   const [color, setColor] = useState<BoardColor>(b.color);
   const [add, setAdd] = useState("");
   const [confirm, setConfirm] = useState(false);
+  const [copyName, setCopyName] = useState(fmt(T.copyOf, { name: b.name }));
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -85,6 +86,18 @@ export function BoardSettings({ data, T, userId, isAdmin, onClose }: { data: Boa
             </form>
           )}
         </section>
+
+        <form className="flex flex-col gap-2 border-t border-mist pt-4"
+          onSubmit={(e) => { e.preventDefault(); start(async () => { setError(null); const r = await copyBoard(b.id, copyName); if (r?.error) setError(r.error); }); }}>
+          <h3 className="m-0 text-sm font-bold tracking-[1px] uppercase text-ink-2">{T.copyBoard}</h3>
+          <p className="m-0 text-xs text-ink-2">{T.copyHint}</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="field min-w-0 flex-[1_1_220px]"><span>{T.copyName}</span>
+              <input className="input" value={copyName} maxLength={100} required onChange={(e) => setCopyName(e.target.value)} />
+            </label>
+            <button type="submit" className="btn btn-outline" disabled={pending || !copyName.trim()}>{T.copyBoard}</button>
+          </div>
+        </form>
 
         <div className="flex flex-wrap gap-2 border-t border-mist pt-4">
           <button type="button" className="btn btn-outline" disabled={pending}

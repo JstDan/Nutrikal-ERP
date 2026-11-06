@@ -103,16 +103,34 @@ export async function boardOp(boardId: string, op: BoardOp, args: Args): Promise
   }
 }
 
-/** A new board with the default lists; opens it. */
+/** A new board from a ready template (texts in the user's language); opens it. */
 export async function createBoard(fd: FormData): Promise<BoardResult> {
   const { user, t } = await getSession();
   const name = text(fd.get("name"));
   if (!name) return { error: t.boards.nameRequired };
   const members = fd.getAll("member").map(uuid).filter(Boolean);
+  const templates = t.boards.templates as Record<string, { labels: unknown; lists: unknown }>;
+  const tpl = templates[String(fd.get("template") ?? "")] ?? templates.blank;
   let id: string | undefined;
   try {
-    id = (await q<{ id: string }>(user.id, "select create_board($1, $2, $3, $4::uuid[]) as id",
-      [name, color(fd.get("color"), BOARD_COLORS) ?? "blue", [t.boards.defaultLists.todo, t.boards.defaultLists.doing, t.boards.defaultLists.done], members]))[0]?.id;
+    id = (await q<{ id: string }>(user.id, "select create_board_from($1, $2, $3::jsonb, $4::uuid[]) as id",
+      [name, color(fd.get("color"), BOARD_COLORS) ?? "blue", JSON.stringify({ labels: tpl.labels, lists: tpl.lists }), members]))[0]?.id;
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+  revalidatePath("/boards");
+  redirect(`/boards/${id}`);
+}
+
+/** A copy of a board one sees (lists, labels, cards, checklists); opens it. */
+export async function copyBoard(boardId: string, name: string): Promise<BoardResult> {
+  const { user, t } = await getSession();
+  const n = name.trim();
+  if (!uuid(boardId)) return { error: "Unknown board" };
+  if (!n) return { error: t.boards.nameRequired };
+  let id: string | undefined;
+  try {
+    id = (await q<{ id: string }>(user.id, "select copy_board($1, $2) as id", [boardId, n.slice(0, 100)]))[0]?.id;
   } catch (e) {
     return { error: errorText(e) };
   }
