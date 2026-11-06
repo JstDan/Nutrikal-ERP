@@ -2,6 +2,7 @@ import type { Dict } from "./en";
 
 export const bg: Dict = {
   common: {
+    docLang: { title: "На какъв език?", bg: "Изтегли на БГ", en: "Изтегли на EN", cancel: "Отказ" },
     readOnly: "Този акаунт е само за четене",
     readOnlyNote: "Този акаунт е само за четене: можете да виждате, но не и да променяте.",
     save: "Запази",
@@ -184,7 +185,6 @@ export const bg: Dict = {
       billingEmail: "Имейл за фактури",
       phone: "Телефон",
       website: "Уебсайт",
-      locale: "Документи на",
       terms: "Кредит и бележки",
       creditLimit: "Кредитен лимит (EUR)",
       status: "Статус",
@@ -210,7 +210,6 @@ export const bg: Dict = {
       depositThen: "{pct}% аванс · {balance}",
       defaultTerms: "По подразбиране",
       creditLimit: "Кредитен лимит",
-      documentsIn: "Документи на",
       contacts: "Контакти",
       primary: "Основен",
       noContacts: "Няма контакти.",
@@ -437,10 +436,8 @@ export const bg: Dict = {
     cancel: "Откажи заявката",
     sentOn: "Изпратена на {date}. Доставките ѝ са в Доставки.",
     cancelledNote: "Тази заявка е отказана.",
-    pdfEn: "PDF на английски",
-    pdfBg: "PDF на български",
-    pdfEnNoPrices: "PDF на английски, без цени",
-    pdfBgNoPrices: "PDF на български, без цени",
+    pdfDownload: "Изтегли PDF",
+    pdfNoPrices: "PDF без цени",
     downloadFailed: "PDF-ът не можа да се направи. Опитайте пак.",
     noLines: "Няма редове.",
     pdf: {
@@ -1421,7 +1418,6 @@ export const bg: Dict = {
     downloadFailed: "PDF-ът не можа да се създаде. Опитайте пак.",
     print: "Печат",
     toOrder: "Към поръчката",
-    clientLanguage: "Фактурата е на езика на клиента.",
     doc: {
       thanks: "Благодарим ви, че избрахте Nutrikal. Радваме се да работим с вас и да изграждаме марката ви заедно.",
       madeBy: "Съставил",
@@ -2162,7 +2158,6 @@ export const bg: Dict = {
       createOffer: "Създай оферта",
       updateOffer: "Обнови офертата",
       downloadPdf: "Изтегли PDF",
-      pdfLanguage: "PDF офертата е на английски.",
       fixErrors: "Попълнете задължителните полета, преди да създадете офертата.",
       saveFailed: "Офертата не можа да бъде запазена",
       lockedAsNew: "Оферта {no} е в поръчка и вече не може да се променя, затова това вече е нова оферта със собствен номер.",
@@ -2842,7 +2837,7 @@ export const bg: Dict = {
     },
     invoices: {
       title: "Фактури", empty: "Още няма фактури.", due: "Падеж", open: "Неплатени", paid: "Платена",
-      pdf: "Изтегли PDF", print: "Печат", pdfFailed: "PDF файлът не можа да се създаде.",
+      pdf: "Изтегли PDF", print: "Печат", pdfFailed: "PDF файлът не можа да се създаде.", langTitle: "На какъв език?", langBg: "Изтегли на БГ", langEn: "Изтегли на EN", langCancel: "Отказ",
       kinds: { invoice: "Фактура", credit_note: "Кредитно известие", debit_note: "Дебитно известие" },
     },
     support: {

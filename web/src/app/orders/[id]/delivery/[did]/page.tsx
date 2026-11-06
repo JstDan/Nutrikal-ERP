@@ -42,14 +42,15 @@ export default async function DeliveryNotePage({ params }: PageProps<"/orders/[i
 
   const l = n.locale === "bg" ? "bg" : "en";
   const D = getDict(l).dispatch.doc;
-  const model = deliveryModel(n, lines, s);
+  const both = { bg: deliveryModel({ ...n, locale: "bg" }, lines, s), en: deliveryModel({ ...n, locale: "en" }, lines, s) };
+  const model = both[l];
 
   const U = ui.dispatch.doc;
   const send = await loadSendInfo(user.id, user.name, "delivery_note", did, { orderId: id, title: D.title, no: n.code, lang: l });
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2 print:hidden">
-        <ProformaPdfButton model={model} label={U.download} errorText={U.failed} />
+        <ProformaPdfButton models={both} langText={ui.common.docLang} label={U.download} errorText={U.failed} />
         <PrintButton label={U.print} variant="outline" />
         <Link href={`/orders/${id}`} className="btn btn-outline">{U.back}</Link>
       </div>

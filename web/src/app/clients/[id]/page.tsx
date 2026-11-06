@@ -102,7 +102,6 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
                   <Fact label={d.creditLimit}>{c.credit_limit ? formatMoney(locale, c.credit_limit, c.currency) : "—"}</Fact>
                 </>
               )}
-              <Fact label={d.documentsIn}>{t.enums.locale[c.preferred_locale]}</Fact>
               <Fact label={t.clients.form.billingEmail}>{c.billing_email ?? "—"}</Fact>
             </div>
             {(c.address_line1 || c.city) && (

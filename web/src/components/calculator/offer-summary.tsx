@@ -11,6 +11,7 @@ import { CalcTextProvider, InfoLine, Toast, useCalcText, useToast, type CalcDict
 import { ClientSummary } from "./results-section";
 import { SendDocument, type SendInfo } from "@/components/send-document";
 import type { Dict } from "@/lib/i18n/en";
+import { DocLangDialog, type DocLang, type DocLangText } from "@/components/doc-lang-dialog";
 
 type Props = {
   t: CalcDict;
@@ -22,6 +23,8 @@ type Props = {
   reminder: SendInfo | null;
   sendText: Dict["send"];
   reminderTitle: string;
+  /** Download in BG / Download in EN, asked before every download. */
+  langText: DocLangText;
 };
 
 /** Short summary of an offer created in the calculator, with the PDF download. */
@@ -33,23 +36,25 @@ export function OfferSummary(props: Props) {
   );
 }
 
-function Summary({ offer: x, settings, canDelete, send, reminder, sendText, reminderTitle }: Props) {
+function Summary({ offer: x, settings, canDelete, send, reminder, sendText, reminderTitle, langText }: Props) {
   const { t, locale, eur } = useCalcText();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sending, setSending] = useState(false);
+  const [asking, setAsking] = useState(false);
   const { toast, show, clear } = useToast();
   const o = t.offers;
   const c = t.client;
 
   const { form, result } = useMemo(() => fromOfferRecord(x, settings), [x, settings]);
 
-  const pdf = async () => {
+  const pdf = async (lang: DocLang) => {
+    setAsking(false);
     setBusy(true);
     try {
       const { downloadOfferPdf } = await import("@/lib/calculator/pdf");
-      await downloadOfferPdf(form, result, settings);
+      await downloadOfferPdf(form, result, settings, lang);
     } catch (e) {
       show("error", `${t.results.pdfFailed}: ${(e as Error).message}`);
     } finally {
@@ -95,7 +100,6 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
       </section>
 
       <div role="group" aria-label={o.actions} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-        <span className="text-xs text-ink-2 sm:mr-auto">{t.results.pdfLanguage}</span>
         {canDelete && (
           <button type="button" onClick={() => setConfirmDelete(true)} disabled={busy} aria-expanded={confirmDelete} className="btn btn-outline text-red-ink!">
             {t.delete}
@@ -106,7 +110,7 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
         <button type="button" onClick={() => setSending((v) => !v)} aria-expanded={sending} aria-controls="offer-send" className="btn btn-outline">
           {sendText.title}
         </button>
-        <button type="button" onClick={pdf} disabled={busy} className="btn btn-primary">
+        <button type="button" onClick={() => setAsking(true)} disabled={busy} className="btn btn-primary" aria-haspopup="dialog">
           {busy ? "…" : t.results.downloadPdf}
         </button>
       </div>
@@ -126,6 +130,7 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
         <SendDocument info={reminder} text={sendText} locale={locale} title={reminderTitle}
           makePdf={async () => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings)} />
       )}
+      <DocLangDialog open={asking} text={langText} onPick={pdf} onClose={() => setAsking(false)} />
       <Toast toast={toast} onClose={clear} closeLabel={t.close} />
     </div>
   );

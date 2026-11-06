@@ -1,5 +1,6 @@
 export const en = {
   common: {
+    docLang: { title: "Which language?", bg: "Download in BG", en: "Download in EN", cancel: "Cancel" },
     readOnly: "This account only reads",
     readOnlyNote: "This account only reads: you can see, but not change.",
     save: "Save",
@@ -182,7 +183,6 @@ export const en = {
       billingEmail: "Billing email",
       phone: "Phone",
       website: "Website",
-      locale: "Documents in",
       terms: "Credit and notes",
       creditLimit: "Credit limit (EUR)",
       status: "Status",
@@ -208,7 +208,6 @@ export const en = {
       depositThen: "{pct}% deposit · {balance}",
       defaultTerms: "Company defaults",
       creditLimit: "Credit limit",
-      documentsIn: "Documents in",
       contacts: "Contacts",
       primary: "Primary",
       noContacts: "No contacts yet.",
@@ -435,10 +434,8 @@ export const en = {
     cancel: "Cancel the order",
     sentOn: "Sent on {date}. Its deliveries are in Deliveries.",
     cancelledNote: "This purchase order was cancelled.",
-    pdfEn: "PDF in English",
-    pdfBg: "PDF in Bulgarian",
-    pdfEnNoPrices: "PDF in English, no prices",
-    pdfBgNoPrices: "PDF in Bulgarian, no prices",
+    pdfDownload: "Download PDF",
+    pdfNoPrices: "PDF without prices",
     downloadFailed: "The PDF could not be made. Try again.",
     noLines: "No lines.",
     pdf: {
@@ -1419,7 +1416,6 @@ export const en = {
     downloadFailed: "The PDF could not be made. Try again.",
     print: "Print",
     toOrder: "To the order",
-    clientLanguage: "The invoice is in the client's language.",
     doc: {
       thanks: "Thank you for choosing Nutrikal. We are glad to work with you and build your brand together.",
       madeBy: "Prepared by",
@@ -2160,7 +2156,6 @@ export const en = {
       createOffer: "Create offer",
       updateOffer: "Update offer",
       downloadPdf: "Download PDF",
-      pdfLanguage: "The PDF offer is in English.",
       fixErrors: "Complete the required fields before creating the offer.",
       saveFailed: "Could not save the offer",
       lockedAsNew: "Offer {no} is in an order and can no longer be changed, so this is now a new offer with its own number.",
@@ -2840,7 +2835,7 @@ export const en = {
     },
     invoices: {
       title: "Invoices", empty: "No invoices yet.", due: "Due", open: "Open", paid: "Paid",
-      pdf: "Download PDF", print: "Print", pdfFailed: "The PDF could not be made.",
+      pdf: "Download PDF", print: "Print", pdfFailed: "The PDF could not be made.", langTitle: "Which language?", langBg: "Download in BG", langEn: "Download in EN", langCancel: "Cancel",
       kinds: { invoice: "Invoice", credit_note: "Credit note", debit_note: "Debit note" },
     },
     support: {

@@ -14,9 +14,9 @@ import { CAPSULE_SIZE, isCapsule, type OfferForm, type ProductType, type Setting
 // supplier blocks, amount per serving table, sales prices table, excl. VAT note, payment terms, terms, footer).
 // It must NEVER contain raw material prices, cost per dose, fixed costs, markup, margin, profit or the
 // raw material requirement list – only the data passed in OfferPdfModel.
-// The offer document is always in English (clients are mostly abroad), so its text lives here.
+// The offer is downloaded in Bulgarian or English, asked at every download (owner, Nov 2026); its text lives here.
 
-const PDF = {
+const PDF_EN = {
   offer: 'Offer',
   number: 'No',
   date: 'Date',
@@ -50,7 +50,60 @@ const PDF = {
   packaging_capsules_plastic: 'Plastic bottle',
   packaging_powder: 'Doypack (pouch)',
   aluminiumLid: 'with aluminium cap',
+  capsule: 'capsule',
+  capsules: 'capsules',
+  servings: 'servings',
+  oneServing: '1 serving',
+  size: 'size {s} capsules',
+  doypack: 'Doypack',
+  newFormula: 'New formula',
 };
+
+const PDF_BG: typeof PDF_EN = {
+  offer: 'Оферта',
+  number: '№',
+  date: 'Дата',
+  customer: 'Изготвена за',
+  supplier: 'Изготвена от',
+  product: 'Продукт',
+  pack: 'Опаковка',
+  format: 'Формат',
+  identificationNo: 'ЕИК',
+  vatNo: 'ДДС №',
+  contactPerson: 'Лице за контакт',
+  phone: 'Телефон',
+  email: 'Имейл',
+  address: 'Адрес',
+  amountPerDose: 'Състав на доза ({portion})',
+  included: 'Включено',
+  thanks: 'Благодарим ви, че избрахте Nutrikal. С удоволствие ще изградим вашата марка заедно.',
+  validUntil: 'Валидна до',
+  includedText: 'Производство в предприятие, сертифицирано по GMP и HACCP, опаковка с капачка, печат и поставяне на етикет.',
+  notIncluded: 'Не е включено',
+  notIncludedText: 'Дизайн на етикет, изпитване на партидата и сертификат за анализ (COA), транспорт и мита, ДДС.',
+  moreTerms: 'Срокът за изпълнение обикновено е 6-10 седмици след потвърждаване на поръчката, аванса и дизайна. Съответствието с изискванията на пазара, на който ще се продава, е отговорност на клиента. Някои суровини имат собствени минимални количества, които могат да повлияят на цената и срока.',
+  ingredient: 'Съставка',
+  amountPerDoseColumn: 'Количество',
+  note: 'Бележка',
+  paymentTerms: 'Условия за плащане',
+  fromUnits: 'От {n} бр.',
+  pricesNote: 'Цена за брой, EUR, EXW Варна, България, без ДДС.',
+  page: 'Страница {n} от {m}',
+  packaging_capsules_glass: 'Стъклена бутилка',
+  packaging_capsules_plastic: 'Пластмасова бутилка',
+  packaging_powder: 'Дойпак (плик)',
+  aluminiumLid: 'с алуминиева капачка',
+  capsule: 'капсула',
+  capsules: 'капсули',
+  servings: 'дози',
+  oneServing: '1 доза',
+  size: 'капсули размер {s}',
+  doypack: 'Дойпак',
+  newFormula: 'Нова формула',
+};
+
+export type OfferLang = 'bg' | 'en';
+const OFFER_TEXT: Record<OfferLang, typeof PDF_EN> = { en: PDF_EN, bg: PDF_BG };
 
 export interface PdfImage {
   dataUrl: string;
@@ -59,6 +112,8 @@ export interface PdfImage {
 }
 
 export interface OfferPdfModel {
+  /** The language it is downloaded in. */
+  lang: OfferLang;
   offerNo: string;
   offerDate: string;
   customer: {
@@ -133,7 +188,9 @@ export function toPdfModel(
   result: CalcResult,
   settings: Settings,
   images: { customLogo: PdfImage | null; brandLogo: PdfImage | null },
+  lang: OfferLang = 'en',
 ): OfferPdfModel {
+  const PDF = OFFER_TEXT[lang];
   const catalog = form.mode === 'catalog' ? form.catalog : null;
   if (form.mode === 'catalog' && !catalog) throw new Error('Catalog product is required');
   if (!catalog && !form.productType) throw new Error('Product type is required');
@@ -141,7 +198,7 @@ export function toPdfModel(
   const capsule = isCapsule(type);
   const units = parseNum(form.numberOfUnits) ?? 0;
   const perUnit = form.quantityPerUnit;
-  const name = productName(form) || 'New formula';
+  const name = productName(form) || PDF.newFormula;
   const catalogCaps = offerCapsules(form);
 
   const productLine: OfferLine = {
@@ -165,20 +222,20 @@ export function toPdfModel(
   let format: string;
   if (catalog) {
     const catalogServings = offerServings(form);
-    pack = catalogCaps ? [`${catalogCaps} capsules`, ...(catalogServings ? [`${formatNumber(catalogServings, 2)} servings`] : [])].join(', ') : '';
+    pack = catalogCaps ? [`${catalogCaps} ${PDF.capsules}`, ...(catalogServings ? [`${formatNumber(catalogServings, 2)} ${PDF.servings}`] : [])].join(', ') : '';
     format = catalogCaps ? `${PDF[form.jar === 'glass' ? 'packaging_capsules_glass' : 'packaging_capsules_plastic']}${hasAluminiumLid(form) ? ` ${PDF.aluminiumLid}` : ''}` : '';
   } else if (capsule) {
-    pack = `${perUnit} capsules, ${servings} servings`;
-    format = `${PDF[`packaging_${type}`]}${hasAluminiumCap(form) ? ` ${PDF.aluminiumLid}` : ''}, size ${CAPSULE_SIZE.replace('size', '')} capsules`;
+    pack = `${perUnit} ${PDF.capsules}, ${servings} ${PDF.servings}`;
+    format = `${PDF[`packaging_${type}`]}${hasAluminiumCap(form) ? ` ${PDF.aluminiumLid}` : ''}, ${fmt(PDF.size, { s: CAPSULE_SIZE.replace('size', '').trim() })}`;
   } else {
     const net = result.netWeightPerPouchG;
-    pack = [net ? `${formatNumber(net, 0)} g` : '', `${servings} servings`].filter(Boolean).join(', ');
-    format = 'Doypack';
+    pack = [net ? `${formatNumber(net, 0)} g` : '', `${servings} ${PDF.servings}`].filter(Boolean).join(', ');
+    format = PDF.doypack;
   }
-  const portion = (n: number) => `${formatNumber(n, 2)} ${n === 1 ? 'capsule' : 'capsules'}`;
+  const portion = (n: number) => `${formatNumber(n, 2)} ${n === 1 ? PDF.capsule : PDF.capsules}`;
   // A catalog product brings its own serving and composition from the product catalogue
   const dosePortion = catalog
-    ? catalog.capsules_per_serving ? portion(catalog.capsules_per_serving) : catalog.serving_g ? `${formatNumber(catalog.serving_g, 2)} g` : '1 serving'
+    ? catalog.capsules_per_serving ? portion(catalog.capsules_per_serving) : catalog.serving_g ? `${formatNumber(catalog.serving_g, 2)} g` : PDF.oneServing
     : capsule ? portion(caps) : `${formatNumber(doseG, 2)} g`;
   const doseRows = !form.includeComposition
     ? []
@@ -204,6 +261,7 @@ export function toPdfModel(
     : [r.address, cityLine, r.country];
 
   return {
+    lang,
     offerNo: form.offer.offerNo,
     offerDate: form.offer.offerDate,
     customer: {
@@ -268,6 +326,7 @@ const imageFormat = (img: PdfImage) => (img.dataUrl.startsWith('data:image/png')
  * fit: a body longer than one page continues on the next, payment terms and the thanks close the last page.
  */
 export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null = null): jsPDF {
+  const PDF = OFFER_TEXT[m.lang ?? 'en'];
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
   const register = (file: string, data: string, family: string, style: string) => {
     doc.addFileToVFS(file, data);
@@ -640,16 +699,17 @@ export function loadAssets() {
   return assetCache;
 }
 
-async function buildOfferPdf(form: OfferForm, result: CalcResult, settings: Settings): Promise<jsPDF> {
+async function buildOfferPdf(form: OfferForm, result: CalcResult, settings: Settings, lang: OfferLang): Promise<jsPDF> {
   const [{ fonts, brandLogo, docPhoto }, customLogo] = await Promise.all([loadAssets(), loadImage(settings.logo_data_url)]);
-  return createOfferPdf(toPdfModel(form, result, settings, { customLogo, brandLogo }), fonts, docPhoto);
+  return createOfferPdf(toPdfModel(form, result, settings, { customLogo, brandLogo }, lang), fonts, docPhoto);
 }
 
-export async function downloadOfferPdf(form: OfferForm, result: CalcResult, settings: Settings): Promise<void> {
-  (await buildOfferPdf(form, result, settings)).save(offerFileName(form));
+/** The language is asked before every download (Download in BG / Download in EN). */
+export async function downloadOfferPdf(form: OfferForm, result: CalcResult, settings: Settings, lang: OfferLang): Promise<void> {
+  (await buildOfferPdf(form, result, settings, lang)).save(offerFileName(form));
 }
 
-export async function offerPdfBase64(form: OfferForm, result: CalcResult, settings: Settings): Promise<{ base64: string; fileName: string }> {
-  const doc = await buildOfferPdf(form, result, settings);
+export async function offerPdfBase64(form: OfferForm, result: CalcResult, settings: Settings, lang: OfferLang = 'en'): Promise<{ base64: string; fileName: string }> {
+  const doc = await buildOfferPdf(form, result, settings, lang);
   return { base64: doc.output('datauristring').split(',')[1], fileName: offerFileName(form) };
 }

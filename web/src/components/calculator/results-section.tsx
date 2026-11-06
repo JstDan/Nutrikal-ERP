@@ -100,7 +100,6 @@ export function ResultsSection({ form, result: r, valid, busy, onCreate, onInval
         {!valid && <Notice tone="warning">{t.results.fixErrors}</Notice>}
         {/* While the form is incomplete the button stays focusable and clicking it shows what's missing. */}
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-          <span className="text-xs text-ink-2 sm:mr-auto">{t.results.pdfLanguage}</span>
           <button
             type="button"
             onClick={valid ? onCreate : onInvalidAttempt}

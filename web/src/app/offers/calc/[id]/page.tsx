@@ -58,6 +58,7 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
         reminder={reminder}
         sendText={t.send}
         reminderTitle={t.assistant.offerReminder}
+        langText={t.common.docLang}
       />
       {reminder && (
         <div className="max-w-[960px]">
