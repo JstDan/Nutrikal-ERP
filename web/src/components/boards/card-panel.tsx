@@ -48,7 +48,7 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
   const run = (op: BoardOp, args: Record<string, unknown>, after?: (id?: string) => void) =>
     new Promise<boolean>((resolve) => start(async () => {
       setError(null); setMessage(null);
-      const r = await boardOp(boardId, op, { card: c.id, ...args });
+      const r = await boardOp(boardId, op, { card: c.id, ...args }).catch((): { error: string; id?: string } => ({ error: T.stale }));
       if (r.error) { setError(r.error); resolve(false); } else { after?.(r.id); resolve(true); }
     }));
 
@@ -76,6 +76,8 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
   // ---- checklist
   const items = data.checklist.filter((i) => i.card_id === c.id).sort((a, b) => a.position - b.position);
   const [newItem, setNewItem] = useState("");
+  // A tick shows at once; the saved state follows from the server
+  const [ticks, setTicks] = useState<Record<string, boolean>>({});
 
   // ---- files
   const files = data.files.filter((f) => f.card_id === c.id);
@@ -89,7 +91,7 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
       setUploading(f.name);
       const fd = new FormData();
       fd.set("board_id", boardId); fd.set("card_id", c.id); fd.set("file", f);
-      const r = await uploadBoardFile(fd);
+      const r = await uploadBoardFile(fd).catch((): { error: string; id?: string } => ({ error: T.stale }));
       if (r.error) setError(r.error);
     }
     setUploading(null);
@@ -292,9 +294,9 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
               {items.map((i, n) => (
                 <li key={i.id} className="flex items-center gap-1">
                   <label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm">
-                    <input type="checkbox" className="h-5 w-5 shrink-0 accent-ink" checked={i.done} disabled={!canEdit || pending}
-                      onChange={(e) => void run("updateItem", { item: i.id, done: e.target.checked })} />
-                    <span className={`min-w-0 break-words ${i.done ? "text-ink-2 line-through" : ""}`}>{i.text}</span>
+                    <input type="checkbox" className="h-5 w-5 shrink-0 accent-ink" checked={ticks[i.id] ?? i.done} disabled={!canEdit}
+                      onChange={(e) => { const done = e.target.checked; setTicks((x) => ({ ...x, [i.id]: done })); void run("updateItem", { item: i.id, done }); }} />
+                    <span className={`min-w-0 break-words ${(ticks[i.id] ?? i.done) ? "text-ink-2 line-through" : ""}`}>{i.text}</span>
                   </label>
                   {canEdit && n > 0 && <button type="button" aria-label={T.moveUp} className="h-11 w-11 shrink-0 rounded-sm hover:bg-mist"
                     onClick={() => void run("updateItem", { item: i.id, position: between(items[n - 2]?.position, items[n - 1].position) })}>↑</button>}
@@ -330,7 +332,7 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
                     </span>
                     {canEdit && (f.uploaded_by === userId || isAdmin) && (
                       <button type="button" className="btn btn-outline" aria-label={fmt(C.deleteFile, { name: f.name })}
-                        onClick={() => start(async () => { const r = await deleteBoardFile(boardId, f.id); if (r.error) setError(r.error); })}>
+                        onClick={() => start(async () => { const r = await deleteBoardFile(boardId, f.id).catch((): { error: string; id?: string } => ({ error: T.stale })); if (r.error) setError(r.error); })}>
                         {T.delete}
                       </button>
                     )}
@@ -414,7 +416,7 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
                     <span className="text-sm font-semibold">{C.deleteCardConfirm}</span>
                     <span className="flex flex-wrap gap-2">
                       <button type="button" className="btn btn-primary" disabled={pending}
-                        onClick={() => start(async () => { const r = await deleteBoardPart(boardId, "card", c.id); if (r.error) setError(r.error); else onClose(); })}>{C.deleteCard}</button>
+                        onClick={() => start(async () => { const r = await deleteBoardPart(boardId, "card", c.id).catch((): { error: string; id?: string } => ({ error: T.stale })); if (r.error) setError(r.error); else onClose(); })}>{C.deleteCard}</button>
                       <button type="button" className="btn btn-outline" onClick={() => setConfirmDelete(false)}>{T.cancel}</button>
                     </span>
                   </span>

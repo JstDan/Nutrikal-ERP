@@ -21,7 +21,7 @@ export function NewBoardForm({ people, T }: { people: { id: string; full_name: s
   if (!open) return <button type="button" className="btn btn-primary w-fit" onClick={() => setOpen(true)}>{T.newBoard}</button>;
   return (
     <form className="card flex flex-col gap-4 p-4"
-      action={(fd) => start(async () => { setError(null); const r = await createBoard(fd); if (r?.error) setError(r.error); })}>
+      action={(fd) => start(async () => { setError(null); const r = await createBoard(fd).catch((): { error: string; id?: string } => ({ error: T.stale })); if (r?.error) setError(r.error); })}>
       <h2 className="m-0 text-base font-bold">{T.newBoard}</h2>
 
       <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">

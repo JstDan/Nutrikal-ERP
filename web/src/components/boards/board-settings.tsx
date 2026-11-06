@@ -30,7 +30,7 @@ export function BoardSettings({ data, T, userId, isAdmin, onClose }: { data: Boa
 
   const run = (op: BoardOp, args: Record<string, unknown>, after?: () => void) => start(async () => {
     setError(null);
-    const r = await boardOp(b.id, op, args);
+    const r = await boardOp(b.id, op, args).catch((): { error: string; id?: string } => ({ error: T.stale }));
     if (r.error) setError(r.error); else after?.();
   });
   const outside = data.people.filter((p) => !data.members.some((m) => m.user_id === p.id));
@@ -88,7 +88,7 @@ export function BoardSettings({ data, T, userId, isAdmin, onClose }: { data: Boa
         </section>
 
         <form className="flex flex-col gap-2 border-t border-mist pt-4"
-          onSubmit={(e) => { e.preventDefault(); start(async () => { setError(null); const r = await copyBoard(b.id, copyName); if (r?.error) setError(r.error); }); }}>
+          onSubmit={(e) => { e.preventDefault(); start(async () => { setError(null); const r = await copyBoard(b.id, copyName).catch((): { error: string; id?: string } => ({ error: T.stale })); if (r?.error) setError(r.error); }); }}>
           <h3 className="m-0 text-sm font-bold tracking-[1px] uppercase text-ink-2">{T.copyBoard}</h3>
           <p className="m-0 text-xs text-ink-2">{T.copyHint}</p>
           <div className="flex flex-wrap items-end gap-2">
@@ -113,7 +113,7 @@ export function BoardSettings({ data, T, userId, isAdmin, onClose }: { data: Boa
             <p className="m-0 text-sm font-semibold text-red-ink">{T.deleteBoardConfirm}</p>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="btn btn-primary" disabled={pending}
-                onClick={() => start(async () => { const r = await deleteBoardPart(b.id, "board", b.id); if (r?.error) setError(r.error); })}>{T.deleteBoard}</button>
+                onClick={() => start(async () => { const r = await deleteBoardPart(b.id, "board", b.id).catch((): { error: string; id?: string } => ({ error: T.stale })); if (r?.error) setError(r.error); })}>{T.deleteBoard}</button>
               <button type="button" className="btn btn-outline" onClick={() => setConfirm(false)}>{T.cancel}</button>
             </div>
           </div>

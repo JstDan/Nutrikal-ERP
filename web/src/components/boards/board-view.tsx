@@ -24,6 +24,9 @@ type Props = {
 const fromControl = (target: EventTarget) =>
   target instanceof Element && !!target.closest("button, a, summary, details, form, input, select, textarea, label");
 
+/** A choice in a drop-down menu (details) closes it. */
+const closeMenu = (e: { currentTarget: Element }) => e.currentTarget.closest("details")?.removeAttribute("open");
+
 export const labelText = (l: BoardLabel, T: T) => l.name || fmt(T.noLabelName, { color: T.colors[l.color] });
 
 /** A board: filters, lists of cards side by side (wrapping, never sideways), the open card. */
@@ -57,7 +60,7 @@ export function BoardView({ data, locale, userId, isAdmin, canEdit, T, today, in
   const run = (op: BoardOp, args: Record<string, unknown>, after?: (id?: string) => void) =>
     start(async () => {
       setError(null);
-      const r = await boardOp(data.board.id, op, args);
+      const r = await boardOp(data.board.id, op, args).catch((): { error: string; id?: string } => ({ error: T.stale }));
       if (r.error) setError(r.error); else after?.(r.id);
     });
 
@@ -169,7 +172,7 @@ export function BoardView({ data, locale, userId, isAdmin, canEdit, T, today, in
                 onRename={(name) => run("renameList", { list: l.id, name })}
                 onShift={(d) => shiftList(l, d)}
                 onArchive={() => run("archiveList", { list: l.id, on: true })}
-                onDelete={() => start(async () => { const r = await deleteBoardPart(data.board.id, "list", l.id); if (r.error) setError(r.error); })} />
+                onDelete={() => start(async () => { const r = await deleteBoardPart(data.board.id, "list", l.id).catch((): { error: string; id?: string } => ({ error: T.stale })); if (r.error) setError(r.error); })} />
               <ol className="m-0 flex list-none flex-col gap-2 p-0">
                 {visible.map((c) => (
                   <li key={c.id}>
@@ -223,13 +226,13 @@ export function BoardView({ data, locale, userId, isAdmin, canEdit, T, today, in
               <Archived title={T.archivedLists} T={T} canEdit={canEdit} pending={pending}
                 rows={archivedLists.map((l) => ({ id: l.id, name: l.name }))}
                 onRestore={(id) => run("archiveList", { list: id, on: false })}
-                onDelete={(id) => start(async () => { const r = await deleteBoardPart(data.board.id, "list", id); if (r.error) setError(r.error); })} />
+                onDelete={(id) => start(async () => { const r = await deleteBoardPart(data.board.id, "list", id).catch((): { error: string; id?: string } => ({ error: T.stale })); if (r.error) setError(r.error); })} />
             )}
             {archivedCards.length > 0 && (
               <Archived title={T.archivedCards} T={T} canEdit={canEdit} pending={pending}
                 rows={archivedCards.map((c) => ({ id: c.id, name: c.title }))} onOpen={setOpenCard}
                 onRestore={(id) => run("archiveCard", { card: id, on: false })}
-                onDelete={(id) => start(async () => { const r = await deleteBoardPart(data.board.id, "card", id); if (r.error) setError(r.error); })} />
+                onDelete={(id) => start(async () => { const r = await deleteBoardPart(data.board.id, "card", id).catch((): { error: string; id?: string } => ({ error: T.stale })); if (r.error) setError(r.error); })} />
             )}
           </div>
         </details>
@@ -295,10 +298,10 @@ function ListHead({ list, count, T, canEdit, first, last, pending, onDragStart, 
           <summary aria-label={fmt(T.listActions, { name: list.name })}
             className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-sm text-lg font-bold hover:bg-white">⋯</summary>
           <div className="absolute right-0 z-20 mt-1 flex w-60 max-w-[calc(100vw-48px)] flex-col rounded-sm border border-line bg-white p-1 shadow-lg">
-            <button type="button" className={item} onClick={() => setRenaming(true)}>{T.renameList}</button>
-            {!first && <button type="button" className={item} onClick={() => onShift(-1)}>{T.moveLeft}</button>}
-            {!last && <button type="button" className={item} onClick={() => onShift(1)}>{T.moveRight}</button>}
-            <button type="button" className={item} onClick={onArchive}>{T.archiveList}</button>
+            <button type="button" className={item} onClick={(e) => { closeMenu(e); setRenaming(true); }}>{T.renameList}</button>
+            {!first && <button type="button" className={item} onClick={(e) => { closeMenu(e); onShift(-1); }}>{T.moveLeft}</button>}
+            {!last && <button type="button" className={item} onClick={(e) => { closeMenu(e); onShift(1); }}>{T.moveRight}</button>}
+            <button type="button" className={item} onClick={(e) => { closeMenu(e); onArchive(); }}>{T.archiveList}</button>
             {confirm ? (
               <div className="flex flex-col gap-2 p-2">
                 <p className="m-0 text-sm font-semibold">{fmt(T.deleteListConfirm, { name: list.name })}</p>
@@ -378,7 +381,7 @@ function CardFace({ card: c, T, locale, today, canEdit, pending, labels, people,
         {canEdit && (
           <details className={`relative ${people.length ? "" : "ml-auto"}`}>
             <summary className="flex min-h-11 cursor-pointer list-none items-center rounded-sm px-2 text-xs font-semibold text-ink hover:bg-mist">{T.moveCard}</summary>
-            <div className="absolute right-0 z-20 mt-1 flex w-56 max-w-[calc(100vw-48px)] flex-col rounded-sm border border-line bg-white p-1 shadow-lg">
+            <div className="absolute right-0 z-20 mt-1 flex w-56 max-w-[calc(100vw-48px)] flex-col rounded-sm border border-line bg-white p-1 shadow-lg" onClick={closeMenu}>
               {!first && <button type="button" className="min-h-11 rounded-sm px-3 text-left text-sm hover:bg-mist" onClick={() => onShift(-1)}>{T.moveUp}</button>}
               {!last && <button type="button" className="min-h-11 rounded-sm px-3 text-left text-sm hover:bg-mist" onClick={() => onShift(1)}>{T.moveDown}</button>}
               {lists.map((l) => (

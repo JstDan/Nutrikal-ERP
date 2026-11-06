@@ -2893,6 +2893,7 @@ export const en = {
     inviteHint: "Only the people invited (and Admin) see the board.",
     create: "Create board",
     nameRequired: "Enter the name of the board.",
+    stale: "The connection to the server was lost or the page is out of date. Reload the page and try again.",
     notAllowed: "Not allowed, or it is no longer there.",
     readOnly: "You can only read this board.",
     template: "Start from",

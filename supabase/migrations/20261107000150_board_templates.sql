@@ -36,7 +36,7 @@ begin
   end loop;
   if cardinality(v_labels) = 0 then
     insert into public.board_labels (board_id, color)
-    select v_id, c from unnest(array['green', 'yellow', 'orange', 'red', 'purple', 'blue']) c;
+    select v_id, k from unnest(array['green', 'yellow', 'orange', 'red', 'purple', 'blue']) k;
   end if;
 
   for l in select e.value, e.ordinality from jsonb_array_elements(coalesce(p_spec -> 'lists', '[]')) with ordinality e loop
