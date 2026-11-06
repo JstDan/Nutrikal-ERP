@@ -195,9 +195,12 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
     return COUNTRIES.map((c) => ({ code: c, name: names.of(c) ?? c })).sort((a, b) => a.name.localeCompare(b.name, locale));
   }, [locale]);
   const find = term.trim().toLowerCase();
+  // A code matches however it is typed: "ntl th101", "TH-101" and "NTL-TH101" all find NTL-TH101
+  const flat = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const findCode = flat(find);
   const shown = data.products.filter((p) =>
     (!category || inCategory(p, category))
-    && (!find || [p.code, p.name, p.name_en, p.name_bg, p.description, p.description_bg, ...p.ingredients.flatMap((i) => [i.name, i.name_bg])].some((x) => x?.toLowerCase().includes(find))));
+    && (!find || (findCode !== "" && flat(p.code).includes(findCode)) || [p.code, p.name, p.name_en, p.name_bg, p.description, p.description_bg, ...p.ingredients.flatMap((i) => [i.name, i.name_bg])].some((x) => x?.toLowerCase().includes(find))));
   const overview = !category && !find;
   const lines = data.products.filter((p) => basket[p.code]);
   const allValid = lines.every((p) => basket[p.code] >= p.min_qty);

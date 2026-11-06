@@ -50,7 +50,7 @@ function List({ offers, settings, userId, isAdmin, inOrder, langText }: Props) {
   const filtered = useMemo(
     () =>
       offers.filter((x) =>
-        matchesQuery([x.offer_no, x.receiver_name, x.receiver_email, x.company_name, x.product_name].filter(Boolean).join(" "), query),
+        matchesQuery([x.offer_no, x.receiver_name, x.receiver_email, x.company_name, x.product_name, x.data?.catalog?.code].filter(Boolean).join(" "), query),
       ),
     [offers, query],
   );
