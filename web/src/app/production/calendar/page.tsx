@@ -13,7 +13,7 @@ export default async function ProductionCalendarPage({ searchParams }: PageProps
   const { user, locale, t } = await requireRole("admin", "sales");
   const C = t.calendar;
   const sp = await searchParams;
-  const view: CalendarView = sp.view === "month" ? "month" : "week";
+  const view: CalendarView = sp.view === "week" ? "week" : "month";
   const date = validDay(sp.date) ? sp.date : today();
   const range = calendarRange(view, date);
   const items = await q<CalendarItem>(user.id,
