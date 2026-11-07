@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { q, qPublic } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import type { ActionState } from "@/app/actions";
+import { DriveScopeError, uploadPdfToDrive } from "@/lib/drive";
 
 export type ContractResult = { ok?: boolean; error?: string; token?: string };
 const errorText = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
@@ -19,7 +20,7 @@ const OPS = {
   comment: "select add_contract_comment($1, $2) as r",
   sent: "select mark_order_contract_sent($1) as r",
   cancel: "select cancel_order_contract($1) as r",
-  signed: "select mark_order_contract_signed($1) as r",
+  signed: "select mark_order_contract_signed($1, $2) as r",
 } as const;
 export type ContractOp = keyof typeof OPS;
 
@@ -35,12 +36,31 @@ export async function contractOp(orderId: string, op: ContractOp, id: string, te
   const { user } = await getSession();
   if (!uuid(orderId) || !uuid(id) || !OPS[op]) return { error: "Unknown action" };
   const params = op === "make" ? [id, text === "bg" || text === "en" ? text : null, await countryName(id, text === "bg" ? "bg" : "en", user.id)]
-    : op === "save" || op === "comment" ? [id, text ?? ""] : [id];
+    : op === "save" || op === "comment" ? [id, text ?? ""] : op === "signed" ? [id, text?.trim() || null] : [id];
   try {
     const [row] = await q<{ r: string | null }>(user.id, OPS[op], params);
     revalidatePath(`/orders/${orderId}`);
     return { ok: true, token: op === "sent" ? row?.r ?? undefined : undefined };
   } catch (e) {
+    return { error: errorText(e) };
+  }
+}
+
+/** The PDF of the current version into Google Drive, where the eSignature request is made by hand; returns the link. */
+export async function contractToDrive(orderId: string, id: string, base64: string, fileName: string): Promise<ContractResult & { url?: string }> {
+  const { user, t } = await getSession();
+  if (!uuid(orderId) || !uuid(id) || !base64.startsWith("JVBERi0") || base64.length > 15_000_000) return { error: "Unknown file" };
+  // Only someone who may change the contract puts it in Drive (the database checks it before the upload)
+  const [k] = await q<{ ok: boolean }>(user.id, "select has_role('admin', 'sales') and exists (select 1 from order_contracts where id = $1 and status not in ('cancelled', 'signed')) as ok", [id]);
+  if (!k?.ok) return { error: t.boards.notAllowed };
+  try {
+    const f = await uploadPdfToDrive(base64, fileName.replace(/[\\/:*?"<>|\r\n]+/g, "_"));
+    await q(user.id, "select contract_drive_saved($1, $2, $3)", [id, f.id, f.url]);
+    revalidatePath(`/orders/${orderId}`);
+    return { ok: true, url: f.url };
+  } catch (e) {
+    if (e instanceof DriveScopeError) return { error: t.contract.driveScope };
+    if (/not connected/i.test(errorText(e))) return { error: t.contract.driveNotConnected };
     return { error: errorText(e) };
   }
 }

@@ -4,7 +4,8 @@ import { asSystem } from "@/lib/db/engine";
 // newest first, a few pages per run; documents are sent from it (below). GOOGLE_STUB_URL replaces Google's
 // addresses in tests.
 
-export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
+// drive.file: only the files the app itself puts in Drive (contracts for eSignature; owner, Nov 2026)
+export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/drive.file";
 // One run makes at most 50 requests on the Cloudflare Workers free plan (Gmail, Google and the database
 // together): one page of 25 messages, one request each. The job runs every 10 minutes.
 const PAGES_PER_RUN = 1;
@@ -107,9 +108,11 @@ export function toMail(m: Message) {
 const LIVE_MAX = 5;
 const LIVE_BODY = 1500;
 let cachedToken: { value: string; until: number } | null = null;
+/** A token kept from before a reconnect may lack a new permission: the next call asks for a fresh one. */
+export function forgetAccess() { cachedToken = null; }
 let cachedLabels: { names: Record<string, string>; until: number } | null = null;
 
-async function liveAccess(): Promise<string | null> {
+export async function liveAccess(): Promise<string | null> {
   if (cachedToken && cachedToken.until > Date.now()) return cachedToken.value;
   const [state] = await asSystem<{ token_enc: string }>("select token_enc from gmail_job_state()");
   if (!state) return null;

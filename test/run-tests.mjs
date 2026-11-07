@@ -4231,6 +4231,17 @@ await ok('a cancelled contract is gone from the link; a new one is made; Admin m
   eq((await one('admin', 'select status from order_contracts where id = $1', [id2])).status, 'signed', 'signed');
   await fails('  signed is fixed', () => as('admin', 'select save_order_contract($1, $2)', [id2, 'x']), 'does not change');
 });
+await ok('a contract put in Google Drive counts as sent; Admin marks it signed with the link to the signed file', async () => {
+  const id = (await one('sales', `select id from order_contracts where order_id = $1 and status <> 'cancelled'`, [ctOrder])).id;
+  await db.exec('reset role');
+  await db.query(`update order_contracts set status = 'draft', signed_at = null where id = $1`, [id]);
+  await as('sales', 'select contract_drive_saved($1, $2, $3)', [id, 'abc', 'https://drive.google.com/file/d/abc/view']);
+  const k = await one('sales', 'select status, drive_version, version from order_contracts where id = $1', [id]);
+  eq(k.status, 'sent', 'sent'); eq(k.drive_version, k.version, 'version in Drive');
+  await fails('  not a link', () => as('admin', 'select mark_order_contract_signed($1, $2)', [id, 'drive']), 'https');
+  await as('admin', 'select mark_order_contract_signed($1, $2)', [id, 'https://drive.google.com/file/d/signed/view']);
+  eq((await one('sales', 'select signed_url from order_contracts where id = $1', [id])).signed_url, 'https://drive.google.com/file/d/signed/view', 'signed file');
+});
 await ok('Admin edits the template; Sales only reads it', async () => {
   eq((await as('sales', `update contract_templates set body = 'x' where locale = 'en' returning 1`)).length, 0, 'sales');
   eq((await as('admin', `update contract_templates set body = body || ' ' where locale = 'en' returning updated_by`))[0].updated_by, U.admin, 'admin');

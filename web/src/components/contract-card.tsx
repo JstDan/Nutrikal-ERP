@@ -4,13 +4,16 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
-import { contractOp, type ContractOp } from "@/app/contract-actions";
+import { contractOp, contractToDrive, type ContractOp } from "@/app/contract-actions";
 import { contractModel, type ContractRow, type ContractSeller } from "@/lib/contract-model";
 import { SendDocument, type SendInfo } from "@/components/send-document";
 import { ContractBody } from "@/components/contract-body";
 
 type C = Dict["contract"];
-export type CardContract = ContractRow & { id: string; token: string; version: number; accepted_email: string | null; accepted_ip: string | null };
+export type CardContract = ContractRow & {
+  id: string; token: string; version: number; accepted_email: string | null; accepted_ip: string | null;
+  drive_url: string | null; drive_version: number | null; signed_url: string | null;
+};
 export type CardComment = { from_client: boolean; author_name: string; body: string; created_at: string; version: number };
 export type CardVersion = { version: number; created_at: string; accepted: { name: string; at: string } | null };
 
@@ -32,6 +35,8 @@ export function ContractCard({ orderId, k, comments, versions, seller, link, can
   const [comment, setComment] = useState("");
   const [confirm, setConfirm] = useState(false);
   const [preview, setPreview] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [signedUrl, setSignedUrl] = useState("");
   const when = (d: string) => formatDate(locale, d, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
   const run = (op: ContractOp, id: string, text?: string, after?: (token?: string) => void) => start(async () => {
@@ -60,6 +65,18 @@ export function ContractCard({ orderId, k, comments, versions, seller, link, can
     const { contractPdfBase64 } = await import("@/lib/contract-pdf");
     return contractPdfBase64(contractModel(k, seller));
   };
+  // Google eSignature is asked for in Drive by hand: the PDF goes there and opens in a new tab
+  const toDrive = () => {
+    const tab = window.open("about:blank", "_blank");
+    start(async () => {
+      setError(null);
+      const f = await pdf();
+      const r = await contractToDrive(orderId, k.id, f.base64, f.fileName).catch((): { error: string; url?: string } => ({ error: "…" }));
+      if (r.error || !r.url) { tab?.close(); setError(r.error ?? "…"); return; }
+      if (tab) tab.location.href = r.url; else window.open(r.url, "_blank");
+      router.refresh();
+    });
+  };
   const download = () => start(async () => {
     const { downloadContractPdf } = await import("@/lib/contract-pdf");
     await downloadContractPdf(contractModel(k, seller));
@@ -77,7 +94,18 @@ export function ContractCard({ orderId, k, comments, versions, seller, link, can
           {fmt(C.accepted, { name: k.accepted_name ?? "", title: k.accepted_title ? `, ${k.accepted_title}` : "", email: k.accepted_email ?? "", date: when(k.accepted_at), ip: k.accepted_ip ?? "—" })}
         </p>
       )}
-      {k.signed_at && <p className="m-0 rounded-sm bg-green-tint p-3 text-sm text-green-ink">{fmt(C.signedByHand, { date: when(k.signed_at) })}</p>}
+      {k.signed_at && (
+        <p className="m-0 rounded-sm bg-green-tint p-3 text-sm text-green-ink">
+          {fmt(C.signedByHand, { date: when(k.signed_at) })}
+          {k.signed_url && <> · <a href={k.signed_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-green-ink underline">{C.signedFile}</a></>}
+        </p>
+      )}
+      {!fixed && k.drive_url && (
+        <p className="m-0 flex flex-wrap items-center gap-2 text-sm">
+          <a href={k.drive_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-ink underline">{fmt(C.driveOpen, { n: k.drive_version ?? 1 })}</a>
+          {(k.drive_version ?? 0) < k.version && <span className="rounded-full bg-amber-tint px-2 py-0.5 text-xs font-semibold text-amber-ink">{fmt(C.driveOld, { n: k.drive_version ?? 1 })}</span>}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <button type="button" className="btn btn-outline" disabled={pending} onClick={download}>{C.download}</button>
@@ -88,10 +116,20 @@ export function ContractCard({ orderId, k, comments, versions, seller, link, can
         )}
         {canEdit && !fixed && <button type="button" className="btn btn-outline" onClick={() => { setBody(k.body); setEditing(!editing); }}>{C.edit}</button>}
         {canEdit && !fixed && <button type="button" className="btn btn-outline" disabled={pending} onClick={() => run("refresh", k.id)}>{C.refresh}</button>}
-        {canSign && !fixed && <button type="button" className="btn btn-outline" disabled={pending} onClick={() => run("signed", k.id)}>{C.markSigned}</button>}
+        {canEdit && !fixed && <button type="button" className="btn btn-primary" disabled={pending} onClick={toDrive}>{C.drive}</button>}
+        {canSign && !fixed && <button type="button" className="btn btn-outline" aria-expanded={signing} onClick={() => setSigning(!signing)}>{C.markSigned}</button>}
         {canEdit && !confirm && <button type="button" className="btn btn-outline text-red-ink" onClick={() => setConfirm(true)}>{C.cancel}</button>}
       </div>
       <p className="m-0 text-xs break-all text-ink-2">{link}</p>
+      {canEdit && !fixed && <p className="m-0 text-xs text-ink-2">{C.driveHint}</p>}
+      {signing && canSign && !fixed && (
+        <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); run("signed", k.id, signedUrl, () => setSigning(false)); }}>
+          <label className="field min-w-0 flex-[1_1_320px]"><span>{C.signedLink}</span>
+            <input type="url" className="input" placeholder="https://drive.google.com/…" value={signedUrl} onChange={(e) => setSignedUrl(e.target.value)} />
+          </label>
+          <button type="submit" className="btn btn-primary" disabled={pending}>{C.markSigned}</button>
+        </form>
+      )}
       {note && <p role="status" className="m-0 text-sm font-semibold text-green-ink">{note}</p>}
       {error && <p role="alert" className="m-0 text-sm font-semibold text-red-ink">{error}</p>}
       {confirm && (

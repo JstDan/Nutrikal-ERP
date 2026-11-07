@@ -11,7 +11,8 @@ import type { SendInfo } from "@/components/send-document";
 export async function loadContractCard(userId: string, userName: string, orderId: string, orderCode: string) {
   const [k] = await q<CardContract>(userId,
     `select k.id, k.token, k.number, k.locale, k.body, k.schedule, k.status, k.version, k.accepted_at::text, k.accepted_name, k.accepted_title,
-            k.accepted_email, k.accepted_ip, k.signed_at::text, k.created_at::text, c.legal_name as client
+            k.accepted_email, k.accepted_ip, k.signed_at::text, k.created_at::text, c.legal_name as client,
+            k.drive_url, k.drive_version, k.signed_url
        from order_contracts k join sales_orders so on so.id = k.order_id join clients c on c.id = so.client_id
       where k.order_id = $1 and k.status <> 'cancelled'`, [orderId]);
   const [s] = await q<{ name: string; address: string; email: string | null; phone: string | null; company_id: string | null; bg: { name: string; address: string } | null }>(userId,
