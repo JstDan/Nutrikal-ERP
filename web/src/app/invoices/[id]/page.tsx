@@ -16,12 +16,15 @@ import { loadSendInfo } from "@/lib/sends";
 import { bgInvoiceSeller, loadCompanyBg } from "@/lib/company-bg";
 import { SalesDocument } from "@/components/sales-document";
 import { invoiceModel, type InvoiceDoc, type InvoiceDocLine } from "@/lib/invoice-model";
+import { InvoiceCorrection } from "@/components/invoice-correction";
 
 type Invoice = InvoiceDoc;
 type Line = InvoiceDocLine;
 type Note = { id: string; kind: "credit_note" | "debit_note"; status: string; number: string | null; total: string | null };
 type Payment = { id: string; paid_on: string; amount: string; method: "bank" | "cash" | "card"; note: string | null };
 type Seller = { logo_data_url: string | null };
+type Version = { revision: number; reason: string; changed_at: string; name: string | null; number: string | null; issue_date: string | null; total: string | null };
+type Fixed = { revision: number; corrected_at: string | null; corrected_name: string | null };
 
 /** An invoice: a draft is checked and issued here (number and date); an issued one is downloaded or printed. */
 export default async function InvoicePage({ params, searchParams }: PageProps<"/invoices/[id]">) {
@@ -49,10 +52,20 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
     const open = (await tx.query<{ n: string | null }>("select invoice_open_amount($1)::text as n", [id])).rows[0]?.n ?? null;
     const notes = (await tx.query<Note>(
       "select id, kind, status, number, total::text from invoices where corrects_invoice_id = $1 order by created_at", [id])).rows;
-    return { inv, lines, next, logo: seller?.logo_data_url ?? null, rate: Number(rate ?? 20), notes, payments, open };
+    // Corrections of an issued invoice by Admin: the current revision and every earlier version
+    const fixed = (await tx.query<Fixed>(
+      `select i.revision, i.corrected_at::text, p.full_name as corrected_name from invoices i left join profiles p on p.id = i.corrected_by where i.id = $1`, [id])).rows[0];
+    const versions = (await tx.query<Version>(
+      `select v.revision, v.reason, v.changed_at::text, p.full_name as name, v.snapshot -> 'invoice' ->> 'number' as number,
+              v.snapshot -> 'invoice' ->> 'issue_date' as issue_date, v.snapshot -> 'invoice' ->> 'total' as total
+         from invoice_versions v left join profiles p on p.id = v.changed_by where v.invoice_id = $1 order by v.revision desc`, [id])).rows;
+    const raw = (await tx.query<{ id: string; description: string; quantity: string; unit_price: string }>(
+      "select id, description, quantity::text, unit_price::text from invoice_lines where invoice_id = $1 order by sort_order", [id])).rows;
+    return { inv, lines, next, logo: seller?.logo_data_url ?? null, rate: Number(rate ?? 20), notes, payments, open, fixed, versions, raw };
   });
   if (!data) notFound();
-  const { inv: x, lines, next, logo, rate, notes, payments, open } = data;
+  const { inv: x, lines, next, logo, rate, notes, payments, open, fixed, versions, raw } = data;
+  const FX = t.invoiceFix;
   const draft = x.status === "draft";
   // No order: the lines and terms are written here, and payments are recorded here
   const direct = !x.order_id;
@@ -123,6 +136,7 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
           subtitle={
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <Chip tone={draft ? "amber" : "green"}>{draft ? I.statusDraft : I.statusIssued}</Chip>
+              {fixed?.corrected_at && <Chip tone="amber">{fmt(FX.corrected, { date: formatDate(locale, fixed.corrected_at), name: fixed.corrected_name ?? "—" })}</Chip>}
               <span>{[str(b.name), x.order_code].filter(Boolean).join(" · ")}</span>
             </span>
           }
@@ -296,6 +310,34 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
       {reminder && <SendDocument info={reminder} model={model} text={t.send} locale={locale} title={W.reminder} />}
 
       <SalesDocument model={model} lang={l} sellerName={str(s.name)} />
+
+      {!draft && (user.role === "admin" && !user.readOnly || versions.length > 0) && (
+        <div className="print:hidden">
+          <Card title={FX.title} id="invoice-fix-h">
+            {user.role === "admin" && !user.readOnly && (
+              <InvoiceCorrection locale={locale} T={FX} methods={W.methods} inv={{
+                id: x.id, number: x.number ?? "", issue_date: x.issue_date ?? today, tax_point_date: x.tax_point_date, due_date: x.due_date,
+                payment_method: x.payment_method, vat_pct: x.vat_pct, vat_basis: x.vat_basis, locale: x.locale, notes: x.notes, currency: x.currency,
+                buyer: x.buyer as Record<string, unknown>, lines: raw,
+              }} />
+            )}
+            {versions.length > 0 && (
+              <details>
+                <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">{FX.history} · {versions.length}</summary>
+                <ol className="m-0 flex list-none flex-col gap-2 p-0 text-sm">
+                  {versions.map((v) => (
+                    <li key={v.revision} className="border-t border-mist pt-2">
+                      <span className="font-semibold">{fmt(FX.version, { n: v.revision, date: formatDate(locale, v.changed_at, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }), name: v.name ?? "—" })}</span>
+                      <span className="block break-words">{fmt(FX.versionReason, { reason: v.reason })}</span>
+                      <span className="block text-xs text-ink-2">{fmt(FX.versionWas, { number: v.number ?? "—", date: formatDate(locale, v.issue_date), total: v.total ? money(Number(v.total)) : "—" })}</span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
+          </Card>
+        </div>
+      )}
 
       {x.kind === "invoice" && !draft && (
         <div className="print:hidden">

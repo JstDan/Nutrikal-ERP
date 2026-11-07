@@ -111,7 +111,8 @@ export async function deleteNoteLine(fd: FormData) {
 
 export async function deleteInvoiceNote(fd: FormData) {
   const { user } = await getSession();
-  await q(user.id, "select delete_invoice_note($1)", [str(fd, "note_id")]);
+  // Drafts go to the trash (Admin restores them for 30 days)
+  await q(user.id, "select trash_invoice($1)", [str(fd, "note_id")]);
   revalidatePath("/invoices", "layout");
   redirect("/invoices");
 }
@@ -207,4 +208,19 @@ export async function shareCoa(fd: FormData) {
   const { user } = await getSession();
   await q(user.id, "select lot_coa_share($1, $2)", [String(fd.get("lot_id") ?? ""), fd.get("on") === "on"]);
   revalidatePath("/quality");
+}
+
+/** Admin corrects an issued invoice in full (correct_invoice keeps the old version with the reason). */
+export async function correctInvoice(invoiceId: string, head: Record<string, unknown>, lines: Record<string, unknown>[], reason: string): Promise<{ error?: string; n?: number }> {
+  const { user } = await getSession();
+  if (!/^[0-9a-f-]{36}$/i.test(invoiceId)) return { error: "Unknown invoice" };
+  try {
+    const [row] = await q<{ n: number }>(user.id, "select correct_invoice($1, $2::jsonb, $3::jsonb, $4) as n",
+      [invoiceId, JSON.stringify(head), JSON.stringify(lines), reason]);
+    revalidatePath(`/invoices/${invoiceId}`);
+    revalidatePath("/invoices");
+    return { n: row?.n };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message.split("\n")[0] : String(e) };
+  }
 }

@@ -3806,7 +3806,8 @@ await ok('sales deletes their own client; contacts and notes go with it; an enqu
   const enq = (await db.query(`select id from catalog_enquiries limit 1`)).rows[0];
   if (enq) await db.query(`update catalog_enquiries set client_id = $1 where id = $2`, [id, enq.id]);
   const files = (await one('sales', `select delete_client($1) as f`, [id])).f;
-  eq(files.join(), 'dc/a.pdf', 'file paths returned for Storage');
+  eq(files.join(), '', 'files stay in Storage while the client is in the trash');
+  eq((await one('admin', 'select files from trash where entity_id = $1', [id])).files[0].path, 'dc/a.pdf', 'kept with the trash');
   eq((await as('admin', `select 1 from clients where id = $1`, [id])).length, 0, 'gone');
   eq((await as('admin', `select 1 from contacts where client_id = $1`, [id])).length, 0, 'contacts gone');
   if (enq) {
@@ -4038,6 +4039,132 @@ await ok('everything in NK-WH moves to G-PRO through the ledger, reservations to
   eq((await db.query(`select count(*)::int as n from stock_reservations r join locations l on l.id = r.location_id
                        where l.code = 'NK-WH' and r.status = 'active'`)).rows[0].n, 0, 'no reservation left at NK-WH');
 });
+
+// ----- Trash: deleted things stay 30 days and Admin restores them (owner, Nov 2026)
+const trashCount = async (table, col, id) => Number((await db.query(`select count(*)::int as n from ${table} where ${col} = $1`, [id])).rows[0].n);
+let trashOffer;
+await ok('an offer goes to the trash; only Admin sees the trash; Admin restores it as it was', async () => {
+  await db.exec('reset role');
+  trashOffer = (await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, product_name, data, results)
+    values ('NK-TRASH-1', 'Кошче ООД', 'k@x.bg', 'Продукт', '{"offer": {"offerNo": "NK-TRASH-1"}}', '{}') returning id`)).id;
+  await fails('  another salesperson', () => as('bookkeeper', 'select trash_offer($1)', [trashOffer]), 'who made the offer');
+  const t = (await one('sales', 'select trash_offer($1) as id', [trashOffer])).id;
+  eq(await trashCount('calc_offers', 'id', trashOffer), 0, 'gone');
+  eq((await as('sales', 'select 1 from trash')).length, 0, 'sales does not see the trash');
+  eq((await one('admin', 'select kind, label from trash where id = $1', [t])).label, 'NK-TRASH-1 · Кошче ООД · Продукт', 'label');
+  await fails('  sales cannot restore', () => as('sales', 'select trash_restore($1)', [t]), 'Not allowed');
+  eq((await one('admin', 'select trash_restore($1) as k', [t])).k, 'offer', 'restored');
+  const back = (await db.query('select offer_no, created_by, data from calc_offers where id = $1', [trashOffer])).rows[0];
+  eq(back.offer_no, 'NK-TRASH-1', 'same number'); eq(back.created_by, U.sales, 'same author'); eq(back.data.offer.offerNo, 'NK-TRASH-1', 'data');
+  await fails('  restored twice', () => as('admin', 'select trash_restore($1)', [t]), 'Not in the trash');
+});
+await ok('a whole board goes to the trash and comes back with lists, cards, labels, checklists, comments and people', async () => {
+  const id = (await one('sales', `select create_board_from('Кошче табло', 'red', $1::jsonb, $2::uuid[]) as id`, [JSON.stringify(tplSpec), [U.designer]])).id;
+  const card = (await one('sales', `select id from board_cards where board_id = $1`, [id])).id;
+  await as('sales', `insert into board_card_members (card_id, user_id) values ($1, $2)`, [card, U.designer]);
+  await as('designer', `insert into board_comments (card_id, body) values ($1, 'Коментар на дизайнера')`, [card]);
+  const count = async () => (await db.query(`select (select count(*) from board_lists where board_id = $1) l, (select count(*) from board_cards where board_id = $1) c,
+    (select count(*) from board_labels where board_id = $1) lb, (select count(*) from board_card_labels cl join board_cards x on x.id = cl.card_id where x.board_id = $1) cl,
+    (select count(*) from board_checklist_items i join board_cards x on x.id = i.card_id where x.board_id = $1) i,
+    (select count(*) from board_members where board_id = $1) m, (select count(*) from board_card_members cm join board_cards x on x.id = cm.card_id where x.board_id = $1) cm,
+    (select string_agg(author_id::text, ',') from board_comments k join board_cards x on x.id = k.card_id where x.board_id = $1) a`, [id])).rows[0];
+  await db.exec('reset role');
+  const before = JSON.stringify(await count());
+  await fails('  a member who did not make it', () => as('designer', `select trash_board_part('board', $1)`, [id]), 'Only who made');
+  const t = (await one('sales', `select trash_board_part('board', $1) as id`, [id])).id;
+  eq(await trashCount('boards', 'id', id), 0, 'gone');
+  await as('admin', 'select trash_restore($1)', [t]);
+  await db.exec('reset role');
+  eq(JSON.stringify(await count()), before, 'everything back');
+  eq((await db.query('select created_by from boards where id = $1', [id])).rows[0].created_by, U.sales, 'creator kept');
+});
+await ok('a card alone goes to the trash and comes back on its list', async () => {
+  const id = (await one('sales', `select create_board_from('Карта кошче', 'red', $1::jsonb) as id`, [JSON.stringify(tplSpec)])).id;
+  const card = (await one('sales', `select id, list_id from board_cards where board_id = $1`, [id]));
+  const t = (await one('sales', `select trash_board_part('board_card', $1) as id`, [card.id])).id;
+  await as('admin', 'select trash_restore($1)', [t]);
+  eq((await one('sales', 'select list_id from board_cards where id = $1', [card.id])).list_id, card.list_id, 'same list');
+});
+await ok('a client goes to the trash with its contacts and comes back linked to its enquiries', async () => {
+  const c = (await one('sales', `insert into clients (legal_name, country_code, owner_id) values ('Кошче Клиент ЕООД', 'BG', $1) returning id`, [U.sales])).id;
+  await as('sales', `insert into contacts (client_id, first_name) values ($1, 'Иван')`, [c]);
+  await db.exec('reset role');
+  const enq = (await db.query(`insert into catalog_enquiries (client_id, company, email, items) values ($1, 'Кошче', 'q@x.bg', '[]') returning id`, [c]).catch(() => ({ rows: [] }))).rows[0];
+  await as('sales', 'select delete_client($1)', [c]);
+  eq(await trashCount('contacts', 'client_id', c), 0, 'contacts gone');
+  const t = (await one('admin', `select id from trash where entity_id = $1`, [c])).id;
+  await as('admin', 'select trash_restore($1)', [t]);
+  eq(await trashCount('contacts', 'client_id', c), 1, 'contact back');
+  if (enq) eq((await db.query('select client_id from catalog_enquiries where id = $1', [enq.id])).rows[0].client_id, c, 'enquiry linked again');
+});
+await ok('an order before production goes to the trash with its lines and draft invoice; Admin only', async () => {
+  await db.exec('reset role');
+  const o = (await db.query(`insert into sales_orders (code, client_id, currency, status) values ('TRASH-1', $1, 'EUR', 'draft') returning id`, [coA])).rows[0].id;
+  await db.query(`insert into sales_order_lines (order_id, kind, description, quantity, unit_price) values ($1, 'service', 'Етикет', 2, 10)`, [o]);
+  const d = (await db.query(`insert into invoices (order_id, client_id, currency, seller, buyer) values ($1, $2, 'EUR', '{}', '{}') returning id`, [o, coA])).rows[0].id;
+  await db.query(`insert into invoice_lines (invoice_id, kind, description, quantity, unit_price, amount) values ($1, 'service', 'X', 1, 1, 1)`, [d]);
+  await fails('  sales', () => as('sales', 'select trash_order($1)', [o]), 'Not allowed');
+  const t = (await one('admin', 'select trash_order($1) as id', [o])).id;
+  eq(await trashCount('sales_orders', 'id', o), 0, 'order gone'); eq(await trashCount('invoices', 'id', d), 0, 'draft invoice gone');
+  await as('admin', 'select trash_restore($1)', [t]);
+  await db.exec('reset role');
+  eq(await trashCount('sales_order_lines', 'order_id', o), 1, 'line back'); eq(await trashCount('invoice_lines', 'invoice_id', d), 1, 'invoice back');
+});
+await fails('an order with batches is not deleted, only cancelled', async () => {
+  await db.exec('reset role');
+  const o = (await db.query(`select l.order_id from manufacturing_orders m join sales_order_lines l on l.id = m.sales_order_line_id limit 1`)).rows[0].order_id;
+  await as('admin', 'select trash_order($1)', [o]);
+}, 'only be cancelled');
+await fails('an issued invoice is never put in the trash', async () => {
+  await db.exec('reset role');
+  const i = (await db.query(`select id from invoices where status = 'issued' limit 1`)).rows[0].id;
+  await as('admin', 'select trash_invoice($1)', [i]);
+}, 'Admin corrects it');
+await ok('the hourly job empties what is older than 30 days and gives back its files', async () => {
+  await db.exec('reset role');
+  const c = (await db.query(`insert into clients (legal_name, country_code) values ('Стар кош', 'BG') returning id`)).rows[0].id;
+  await db.query(`insert into client_files (client_id, file_name, storage_path) values ($1, 'a.pdf', 'x/y/a.pdf')`, [c]);
+  await as('admin', 'select delete_client($1)', [c]);
+  await db.exec('reset role');
+  await db.query(`update trash set purge_after = now() - interval '1 minute' where entity_id = $1`, [c]);
+  const files = (await db.query('select trash_purge() as f')).rows[0].f;
+  eq(files.map((f) => `${f.bucket}:${f.path}`).join(), 'client-files:x/y/a.pdf', 'files to remove');
+  eq((await db.query('select count(*)::int as n from trash where entity_id = $1', [c])).rows[0].n, 0, 'gone for good');
+});
+await fails('users cannot empty the trash themselves', () => as('admin', 'select trash_purge()'), 'permission denied');
+
+// ----- Issued invoices: Admin corrects them in full, with a reason and the old version kept (owner, Nov 2026)
+await ok('Admin corrects an issued invoice: number, dates, buyer, lines and totals; the old version is kept', async () => {
+  await db.exec('reset role');
+  const i = (await db.query(`select id, number, total from invoices where status = 'issued' and kind = 'invoice' order by issued_at limit 1`)).rows[0];
+  const lines = (await db.query(`select id from invoice_lines where invoice_id = $1 order by sort_order`, [i.id])).rows;
+  const head = { number: '1000009999', issue_date: '2026-11-01', notes: 'Поправена', vat_pct: 20, buyer: { name: 'Нов купувач ООД' } };
+  const newLines = [{ id: lines[0].id, description: 'Поправен ред', quantity: 2, unit_price: 50 }, { description: 'Нов ред', quantity: 1, unit_price: 10 }];
+  await fails('  sales', () => as('sales', 'select correct_invoice($1, $2, $3, $4)', [i.id, head, JSON.stringify(newLines), 'грешка']), 'Not allowed');
+  await fails('  without a reason', () => as('admin', 'select correct_invoice($1, $2, $3, $4)', [i.id, head, JSON.stringify(newLines), ' ']), 'reason');
+  eq((await one('admin', 'select correct_invoice($1, $2, $3, $4) as r', [i.id, head, JSON.stringify(newLines), 'Грешен купувач'])).r, 1, 'revision');
+  await db.exec('reset role');
+  const x = (await db.query('select number, notes, buyer, subtotal, vat_amount, total, revision, corrected_by from invoices where id = $1', [i.id])).rows[0];
+  eq(x.number, '1000009999', 'number'); eq(x.buyer.name, 'Нов купувач ООД', 'buyer');
+  eq(Number(x.subtotal), 110, 'subtotal'); eq(Number(x.vat_amount), 22, 'vat'); eq(Number(x.total), 132, 'total'); eq(x.corrected_by, U.admin, 'by');
+  eq((await db.query('select count(*)::int as n from invoice_lines where invoice_id = $1', [i.id])).rows[0].n, 2, 'lines');
+  const v = (await one('sales', 'select revision, reason, snapshot from invoice_versions where invoice_id = $1', [i.id]));
+  eq(v.reason, 'Грешен купувач', 'reason kept'); eq(v.snapshot.invoice.number, i.number, 'old number kept'); eq(Number(v.snapshot.invoice.total), Number(i.total), 'old total kept');
+});
+await fails('after a correction the invoice is locked again for everyone else', async () => {
+  await db.exec('reset role');
+  const i = (await db.query(`select id from invoices where revision > 0 limit 1`)).rows[0].id;
+  await db.query(`update invoices set total = 1 where id = $1`, [i]);
+}, 'credit or debit note');
+await fails('a correction cannot take a number that is used', async () => {
+  await db.exec('reset role');
+  const [a, b] = (await db.query(`select id, number from invoices where status = 'issued' order by issued_at limit 2`)).rows;
+  await as('admin', 'select correct_invoice($1, $2, $3, $4)', [a.id, { number: b.number }, JSON.stringify([{ description: 'X', quantity: 1, unit_price: 1 }]), 'тест']);
+}, 'already used');
+await fails('production and clients see no versions of invoices', async () => {
+  const n = (await as('production', 'select 1 from invoice_versions')).length + (await as('clientA', 'select 1 from invoice_versions')).length;
+  if (n === 0) throw new Error('none seen');
+}, 'none seen');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

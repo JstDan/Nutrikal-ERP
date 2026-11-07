@@ -19,6 +19,7 @@ import { loadBoard, loadTemplates } from "@/lib/tasks";
 import { TaskBoard } from "@/components/tasks/board";
 import { CancelPayment, ConfirmFinalPayment, ConfirmFirstPayment } from "@/components/tasks/payment-dialog";
 import { supabaseConfigured } from "@/lib/supabase/server";
+import { deleteOrder } from "@/app/trash-actions";
 
 type Overview = { id: string; code: string; status: string; requested_date: string | null; client: string; client_id: string };
 type Line = {
@@ -529,6 +530,22 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             <input type="hidden" name="order_id" value={o.id} />
             <p className="m-0 text-sm text-ink-2">{d.repeatNote}</p>
           </ActionForm>
+        </Fold>
+      )}
+
+      {/* Admin deletes an order before production; it waits in the trash 30 days (the database checks the rest) */}
+      {isAdmin && !user.readOnly && ["draft", "unpaid", "confirmed", "cancelled"].includes(o.status) && (
+        <Fold title={t.orderDelete.title}>
+          <p className="m-0 text-sm text-ink-2">{t.orderDelete.note}</p>
+          <details>
+            <summary className="btn btn-outline w-fit cursor-pointer list-none text-red-ink">{t.orderDelete.button}</summary>
+            <div className="mt-2 flex max-w-[420px] flex-col gap-2 rounded-sm border border-red-line bg-red-tint p-3">
+              <p className="m-0 text-sm font-semibold text-red-ink">{fmt(t.orderDelete.confirm, { code: o.code })}</p>
+              <ActionForm action={deleteOrder} submitLabel={t.orderDelete.button} resetOnSuccess={false}>
+                <input type="hidden" name="order_id" value={o.id} />
+              </ActionForm>
+            </div>
+          </details>
         </Fold>
       )}
     </div>

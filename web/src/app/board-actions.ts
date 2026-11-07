@@ -138,31 +138,13 @@ export async function copyBoard(boardId: string, name: string): Promise<BoardRes
   redirect(`/boards/${id}`);
 }
 
-/** Removes rows that hold files, then their files from Storage (after the rows are gone). */
-async function deleteWithFiles(userId: string, sql: string, params: unknown[], filesSql: string): Promise<boolean> {
-  let paths: string[] = [];
-  const n = await withUser(userId, async (tx) => {
-    paths = (await tx.query<{ storage_path: string }>(filesSql, params)).rows.map((r) => r.storage_path);
-    return (await tx.query(sql, params)).rows.length;
-  });
-  for (const p of paths) await removeFile(BOARD_BUCKET, p).catch(() => {});
-  return n > 0;
-}
-
-/** Deletes a card, a list (with its cards) or the whole board, files included. */
+/** A card, a list (with its cards) or the whole board goes to the trash; Admin restores it for 30 days (files stay until then). */
 export async function deleteBoardPart(boardId: string, part: "card" | "list" | "board", id: string): Promise<BoardResult> {
-  const { user, t } = await getSession();
+  const { user } = await getSession();
   if (!uuid(boardId) || !uuid(id)) return { error: "Unknown action" };
-  const sql = {
-    card: ["delete from board_cards where id = $2 and board_id = $1 returning id",
-      "select f.storage_path from board_files f join board_cards c on c.id = f.card_id where c.id = $2 and c.board_id = $1"],
-    list: ["delete from board_lists where id = $2 and board_id = $1 returning id",
-      "select f.storage_path from board_files f join board_cards c on c.id = f.card_id where c.list_id = $2 and c.board_id = $1"],
-    board: ["delete from boards where id = $1 and id = $2 returning id",
-      "select f.storage_path from board_files f join board_cards c on c.id = f.card_id where c.board_id = $1 and c.board_id = $2"],
-  }[part];
+  const kind = { card: "board_card", list: "board_list", board: "board" }[part];
   try {
-    if (!(await deleteWithFiles(user.id, sql[0], [boardId, id], sql[1]))) return { error: t.boards.notAllowed };
+    await q(user.id, "select trash_board_part($1, $2)", [kind, id]);
   } catch (e) {
     return { error: errorText(e) };
   }

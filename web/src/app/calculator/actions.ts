@@ -70,7 +70,8 @@ export async function saveOffer(input: OfferInput): Promise<CalcResult<OfferReco
 
 export async function deleteOffer(id: string): Promise<CalcResult<boolean>> {
   const res = await run(async (uid) => {
-    const rows = await q<{ id: string }>(uid, "delete from calc_offers where id = $1 returning id", [id]);
+    // To the trash (Admin restores it for 30 days); refused while an order uses it
+    const rows = await q<{ id: string }>(uid, "select trash_offer($1) as id", [id]);
     if (!rows.length) throw new Error("Not allowed or not found");
     return true;
   });

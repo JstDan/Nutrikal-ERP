@@ -23,6 +23,7 @@ export default {
       run("catalog-purge", env, ctx);
       run("portal-mail", env, ctx);
       run("board-due", env, ctx);
+      run("trash-purge", env, ctx);
       return;
     }
     run("gmail-sync", env, ctx);
