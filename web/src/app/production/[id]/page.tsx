@@ -8,6 +8,7 @@ import { ActionForm } from "@/components/action-form";
 import { moveMoDate } from "@/app/calendar-actions";
 import { moTone } from "@/lib/status";
 import { SearchSelect } from "@/components/search-select";
+import { BatchFiles } from "@/components/batch-files";
 import {
   addMoPackaging, cancelMo, moveMoToProduction, orderMoMaterial, releaseMo, removeMoPackaging, requestPurchases, reserveMo, revertMo, saveMo,
   scheduleMo, startProduction,
@@ -396,6 +397,10 @@ export default async function ProductionOrderPage({ params }: PageProps<"/produc
               )}
             </Card>
 
+            <Card title={t.batchFiles.title} id="batch-files-h">
+              <BatchFiles moId={id} userId={user.id} isAdmin={user.role === "admin" && !user.readOnly} canShare={!user.readOnly && (user.role === "admin" || user.role === "sales")}
+                canUpload={!user.readOnly && (user.role === "admin" || user.role === "sales")} locale={locale} t={t} />
+            </Card>
           </div>
         </div>
       </div>

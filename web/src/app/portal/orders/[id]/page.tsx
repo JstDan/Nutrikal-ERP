@@ -38,6 +38,9 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
   const next = P.next[o.status as "confirmed"];
   const [win] = await q<{ w: { from: number; to: number } | null }>(user.id, "select portal_order_window($1) as w", [id]);
   const mine = invoices.filter((i) => i.order_id === id);
+  // Photos and files of the batches that the team chose to show (owner, Nov 2026)
+  const photos = await q<{ id: string; name: string; mime: string | null; created_at: string; batch: string }>(user.id,
+    "select id, name, mime, created_at::text, batch from portal_batch_files($1)", [id]);
   const production = READY.includes(o.status);
 
   return (
@@ -93,6 +96,24 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
               </span>
             </div>
           ))}
+        </Panel>
+      )}
+
+      {photos.length > 0 && (
+        <Panel title={O.photos}>
+          <ul className="m-0 grid list-none gap-3 p-0" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(140px, 100%), 1fr))" }}>
+            {photos.map((f) => (
+              <li key={f.id} className="flex min-w-0 flex-col gap-1">
+                <a href={`/portal/batch-file/${f.id}`} target="_blank" rel="noopener" className="block overflow-hidden rounded-md border border-line bg-canvas">
+                  {f.mime?.startsWith("image/") ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- private files behind a permission check
+                    <img src={`/portal/batch-file/${f.id}`} alt={f.name} loading="lazy" className="block aspect-square w-full object-cover" />
+                  ) : <span className="grid aspect-square w-full place-items-center text-sm font-semibold text-ink">PDF</span>}
+                </a>
+                <span className="truncate text-xs text-ink-2" title={f.name}>{f.batch} · {date(f.created_at)}</span>
+              </li>
+            ))}
+          </ul>
         </Panel>
       )}
 

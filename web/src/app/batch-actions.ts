@@ -4,9 +4,9 @@
 // Every rule is in the database; these only pass the values on as the user.
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { q } from "@/lib/db/engine";
+import { q, withUser } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
-import { LOT_BUCKET, MAX_FILE_BYTES, newDeliveryPath, putFile } from "@/lib/files";
+import { BATCH_BUCKET, LOT_BUCKET, MAX_DESIGN_BYTES, MAX_FILE_BYTES, newDeliveryPath, putFile, removeFile } from "@/lib/files";
 import { loadSettings } from "@/lib/calculator/db";
 import type { ActionState } from "@/app/actions";
 
@@ -223,4 +223,48 @@ export async function correctInvoice(invoiceId: string, head: Record<string, unk
   } catch (e) {
     return { error: e instanceof Error ? e.message.split("\n")[0] : String(e) };
   }
+}
+
+// ------------------------------------------------- photos and files of batches
+/** The partner or the team adds photos (made smaller in the browser) or PDFs to a batch; rows first, then Storage. */
+export async function uploadBatchFiles(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const B = t.batchFiles;
+  const mo = str(fd, "mo_id");
+  const note = str(fd, "note");
+  const files = fd.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!mo || files.length === 0) return { error: B.none };
+  const written: string[] = [];
+  try {
+    await withUser(user.id, async (tx) => {
+      for (const f of files) {
+        const key = newDeliveryPath(mo, f.type);
+        if (!key || f.size > MAX_DESIGN_BYTES) throw new Error(`${B.invalid}: ${f.name}`);
+        await tx.query("insert into batch_files (mo_id, storage_path, name, mime, size, note) values ($1, $2, $3, $4, $5, $6)",
+          [mo, key, f.name.slice(0, 200), f.type, f.size, note?.slice(0, 500) ?? null]);
+        await putFile(BATCH_BUCKET, key, Buffer.from(await f.arrayBuffer()), f.type);
+        written.push(key);
+      }
+    });
+  } catch (e) {
+    for (const key of written) await removeFile(BATCH_BUCKET, key).catch(() => undefined);
+    return { error: errorText(e) };
+  }
+  revalidatePath("/production", "layout");
+  revalidatePath("/factory", "layout");
+  return { ok: true, message: B.uploaded };
+}
+
+export async function deleteBatchFile(fd: FormData) {
+  const { user } = await getSession();
+  const [row] = await q<{ storage_path: string }>(user.id, "delete from batch_files where id = $1 returning storage_path", [str(fd, "file_id")]);
+  if (row) await removeFile(BATCH_BUCKET, row.storage_path).catch(() => undefined);
+  revalidatePath("/production", "layout");
+  revalidatePath("/factory", "layout");
+}
+
+export async function shareBatchFile(fd: FormData) {
+  const { user } = await getSession();
+  await q(user.id, "select share_batch_file($1, $2)", [str(fd, "file_id"), fd.get("on") === "1"]);
+  revalidatePath("/production", "layout");
 }

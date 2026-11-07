@@ -13,6 +13,8 @@ export const DELIVERY_BUCKET = "delivery-docs";
 export const LOT_BUCKET = "lot-documents";
 export const CLIENT_BUCKET = "client-files";
 export const CHAT_BUCKET = "chat-files";
+/** Photos and files of batches: {mo_id}/{uuid}.{ext} (owner, Nov 2026). */
+export const BATCH_BUCKET = "batch-files";
 /** Product pictures of the catalogue: {product_id}/{uuid}.{ext}, shown through /api/catalog-image. */
 export const CATALOG_BUCKET = "catalog-images";
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;

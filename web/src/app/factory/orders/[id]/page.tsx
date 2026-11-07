@@ -8,6 +8,7 @@ import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { moTone } from "@/lib/status";
 import { completeProduction, startProduction } from "@/app/actions";
+import { BatchFiles } from "@/components/batch-files";
 
 type Mo = {
   id: string; code: string; project_code: string; product: string; product_bg: string | null; product_format: string;
@@ -226,6 +227,9 @@ export default async function FactoryOrderPage({ params }: PageProps<"/factory/o
               </div>
             </Card>
           )}
+          <Card title={t.batchFiles.title} id="batch-files-h">
+            <BatchFiles moId={mo.id} userId={user.id} isAdmin={false} canShare={false} canUpload={!user.readOnly} locale={locale} t={t} />
+          </Card>
         </div>
       </div>
     </div>

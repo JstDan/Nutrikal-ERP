@@ -4247,5 +4247,30 @@ await ok('Admin edits the template; Sales only reads it', async () => {
   eq((await as('admin', `update contract_templates set body = body || ' ' where locale = 'en' returning updated_by`))[0].updated_by, U.admin, 'admin');
 });
 
+// ----- Photos and files of batches (owner, Nov 2026)
+let bfMo, bfId;
+await ok('the partner adds a photo to a released batch; the team sees it; the client does not until it is shared', async () => {
+  await db.exec('reset role');
+  bfMo = (await db.query(`select id from manufacturing_orders where mo_is_released(id) limit 1`)).rows[0].id;
+  const path = `${bfMo}/bbbbbbbb-0000-4000-8000-000000000001.jpg`;
+  bfId = (await one('production', `insert into batch_files (mo_id, storage_path, name, mime, size) values ($1, $2, 'Палет.jpg', 'image/jpeg', 1000) returning id, uploaded_by, shared_with_client`, [bfMo, path])).id;
+  eq((await one('admin', 'select uploaded_by from batch_files where id = $1', [bfId])).uploaded_by, U.production, 'by the partner');
+  eq((await as('sales', 'select 1 from batch_files where id = $1', [bfId])).length, 1, 'sales sees it');
+  eq((await as('designer', 'select 1 from batch_files')).length, 0, 'designer does not');
+  eq((await as('clientA', 'select 1 from batch_files')).length, 0, 'client does not');
+});
+await fails('a file path must sit under its batch', () => as('sales', `insert into batch_files (mo_id, storage_path, name, size) values ($1, 'cccccccc-0000-4000-8000-000000000001/bbbbbbbb-0000-4000-8000-000000000002.jpg', 'x', 1)`, [bfMo]), 'Invalid file path');
+await fails('the partner does not share files with clients', () => as('production', 'select share_batch_file($1, true)', [bfId]), 'Not allowed');
+await ok('sales shares it; a client of another order still gets nothing', async () => {
+  await as('sales', 'select share_batch_file($1, true)', [bfId]);
+  eq((await as('clientA', 'select * from portal_batch_file($1)', [bfId])).length, 0, 'not its order');
+});
+await ok('the partner deletes own files, not those of the team', async () => {
+  const p2 = `${bfMo}/bbbbbbbb-0000-4000-8000-000000000003.pdf`;
+  const teamFile = (await one('sales', `insert into batch_files (mo_id, storage_path, name, size) values ($1, $2, 'COA.pdf', 10) returning id`, [bfMo, p2])).id;
+  eq((await as('production', 'delete from batch_files where id = $1 returning id', [teamFile])).length, 0, 'not the team file');
+  eq((await as('production', 'delete from batch_files where id = $1 returning id', [bfId])).length, 1, 'own file');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
