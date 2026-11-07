@@ -1,14 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { getLocale, getOptionalSession } from "@/lib/session";
 import { AppShell } from "@/components/app-shell";
+import { PwaRegister } from "@/components/pwa-register";
 import { CATALOG_THEME_COOKIE, THEME_COOKIE } from "@/lib/theme";
 import { cookies, headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "Nutrikal ERP",
   description: "Nutrikal ERP + CRM — sales, inventory and production",
+  // Installed on a phone it opens full screen with its own icon (owner, Nov 2026)
+  appleWebApp: { capable: true, title: "Nutrikal", statusBarStyle: "black-translucent" },
+  icons: { apple: "/app/apple-touch-icon.png" },
 };
+
+export const viewport: Viewport = { themeColor: "#222831" };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // The open catalogue has no menu and no user, also for someone signed in
@@ -33,6 +39,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body>
+        {!open && <PwaRegister />}
         {session && session.user.role !== "client" ? <AppShell>{children}</AppShell> : children}
       </body>
     </html>

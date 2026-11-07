@@ -26,6 +26,11 @@ export default {
       run("trash-purge", env, ctx);
       return;
     }
+    // Every minute: notifications to phones and computers (Web Push)
+    if (controller.cron === "* * * * *") {
+      run("push", env, ctx);
+      return;
+    }
     run("gmail-sync", env, ctx);
   },
 };

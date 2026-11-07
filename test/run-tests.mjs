@@ -4272,5 +4272,71 @@ await ok('the partner deletes own files, not those of the team', async () => {
   eq((await as('production', 'delete from batch_files where id = $1 returning id', [bfId])).length, 1, 'own file');
 });
 
+// ----- Customer panel: reorder and label approval (owner, Nov 2026)
+let roOrder, roLine, roReq;
+await ok('the client asks for its order again with new quantities; the team is told', async () => {
+  await db.exec('reset role');
+  roOrder = (await db.query(`insert into sales_orders (code, client_id, currency, status) values ('RO-1', $1, 'EUR', 'draft') returning id`, [coA])).rows[0].id;
+  roLine = (await db.query(`insert into sales_order_lines (order_id, kind, description, quantity, unit_price, sort_order) values ($1, 'service', 'Колаген капсули', 1000, 3.2, 0) returning id`, [roOrder])).rows[0].id;
+  await db.query(`insert into sales_order_lines (order_id, kind, description, quantity, unit_price, sort_order) values ($1, 'service', 'Дизайн', 1, 150, 0)`, [roOrder]);
+  await db.query(`update sales_orders set status = 'confirmed' where id = $1`, [roOrder]);
+  roReq = (await one('clientA', 'select portal_reorder($1, $2, $3) as id', [roOrder, JSON.stringify([{ line_id: roLine, quantity: 2500 }]), 'Същото, повече'])).id;
+  eq((await as('clientA', 'select status from portal_reorders($1)', [roOrder]))[0].status, 'new', 'client sees it');
+  eq((await as('sales', `select 1 from notifications where kind = 'client_reorder'`)).length, 1, 'team told');
+});
+await fails('a client cannot reorder another client\x27s order', () => as('clientB', 'select portal_reorder($1, $2, null)', [roOrder, JSON.stringify([{ line_id: roLine, quantity: 1 }])]), 'Order not found');
+await fails('the team does not ask in the client\x27s name', () => as('sales', 'select portal_reorder($1, $2, null)', [roOrder, JSON.stringify([{ line_id: roLine, quantity: 1 }])]), 'Order not found');
+await ok('the team makes the order from it: only the asked line, the asked quantity, the old price', async () => {
+  const id = (await one('sales', 'select make_order_from_reorder($1) as id', [roReq])).id;
+  const lines = await as('sales', 'select description, quantity, unit_price from sales_order_lines where order_id = $1', [id]);
+  eq(lines.length, 1, 'one line'); eq(Number(lines[0].quantity), 2500, 'quantity'); eq(Number(lines[0].unit_price), 3.2, 'price');
+  const r = (await as('clientA', 'select status, new_code from portal_reorders($1)', [roOrder]))[0];
+  eq(r.status, 'done', 'done'); if (!r.new_code) throw new Error('client sees the new order number');
+  await fails('  twice', () => as('sales', 'select make_order_from_reorder($1)', [roReq]), 'already handled');
+});
+let laId;
+await ok('the team sends a label for approval; the client approves it; the label task ticks itself', async () => {
+  await db.exec('reset role');
+  const f = (await db.query(`insert into client_files (client_id, order_id, file_name, storage_path) values ($1, $2, 'label-v2.pdf', 'la/label-v2.pdf') returning id`, [coA, roOrder])).rows[0].id;
+  laId = (await one('designer', 'select request_label_approval($1, $2, $3) as id', [roOrder, f, 'Втора версия'])).id;
+  eq((await db.query('select shared_with_client from client_files where id = $1', [f])).rows[0].shared_with_client, true, 'shared');
+  eq((await as('clientA', 'select status, note from portal_labels($1)', [roOrder]))[0].note, 'Втора версия', 'client sees it');
+  await fails('  changes without a comment', () => as('clientA', 'select portal_label_decide($1, false, $2)', [laId, ' ']), 'what should change');
+  await as('clientA', 'select portal_label_decide($1, true, null)', [laId]);
+  eq((await as('sales', 'select status, decided_name from label_approvals where id = $1', [laId]))[0].status, 'approved', 'approved');
+  eq((await as('designer', `select 1 from notifications where kind = 'label_decision'`)).length, 1, 'designer told');
+  await fails('  answered twice', () => as('clientA', 'select portal_label_decide($1, false, $2)', [laId, 'x']), 'already answered');
+});
+await fails('another client cannot answer the label', () => as('clientB', 'select portal_label_decide($1, true, null)', [laId]), 'Not found');
+await fails('a file of another client is not sent for approval', async () => {
+  await db.exec('reset role');
+  const f = (await db.query(`insert into client_files (client_id, file_name, storage_path) values ($1, 'b.pdf', 'lb/b.pdf') returning id`, [coB])).rows[0].id;
+  await as('sales', 'select request_label_approval($1, $2, null)', [roOrder, f]);
+}, 'not one of this client');
+
+// ----- Phone and desktop notifications (owner, Nov 2026)
+const pushKey = 'B' + 'A'.repeat(86);
+await ok('a device subscribes; only its user sees it; a new notification waits for the push job', async () => {
+  await as('sales', 'select save_push_subscription($1, $2, $3, $4)', ['https://push.example/abc', pushKey, 'authsecret123456', 'Phone']);
+  eq((await as('sales', 'select 1 from push_subscriptions')).length, 1, 'own');
+  eq((await as('admin', 'select 1 from push_subscriptions')).length, 0, 'not of others');
+  await db.exec('reset role');
+  await db.query(`insert into notifications (user_id, kind, link) values ($1, 'chat_mention', '/chat?c=push')`, [U.sales]);
+  const jobs = (await db.query('select * from push_jobs()')).rows.filter((j) => j.link === '/chat?c=push');
+  eq(jobs.length, 1, 'one job'); eq(jobs[0].endpoint, 'https://push.example/abc', 'to the device');
+  await db.query('select push_done($1::bigint[], $2::uuid[], $3::uuid[])', [[jobs[0].notification_id], [], [jobs[0].subscription_id]]);
+  eq((await db.query('select * from push_jobs()')).rows.filter((j) => j.link === '/chat?c=push').length, 0, 'pushed once');
+});
+await ok('the same device signed in by another user goes to them; a gone device is forgotten', async () => {
+  await as('designer', 'select save_push_subscription($1, $2, $3, $4)', ['https://push.example/abc', pushKey, 'authsecret123456', 'Phone']);
+  eq((await as('sales', 'select 1 from push_subscriptions')).length, 0, 'moved');
+  const id = (await one('designer', 'select id from push_subscriptions')).id;
+  await db.exec('reset role');
+  await db.query('select push_done($1::bigint[], $2::uuid[], $3::uuid[])', [[], [id], []]);
+  eq((await as('designer', 'select 1 from push_subscriptions')).length, 0, 'forgotten');
+});
+await fails('users cannot run the push job', () => as('admin', 'select * from push_jobs()'), 'permission denied');
+await fails('a subscription needs an https address', () => as('sales', 'select save_push_subscription($1, $2, $3, $4)', ['http://x', pushKey, 'authsecret123456', '']), 'check');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

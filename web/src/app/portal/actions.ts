@@ -42,3 +42,29 @@ export async function changePortalPassword(_: ActionState, fd: FormData): Promis
   const { error } = await (await supabaseServer()).auth.updateUser({ password });
   return error ? { error: A.failed } : { ok: true, message: A.saved };
 }
+
+/** The client asks for one of its orders again (portal_reorder checks it is its own). */
+export async function portalReorder(orderId: string, lines: { line_id: string; quantity: number }[], note: string): Promise<ActionState> {
+  const { user, t } = await getPortalSession();
+  if (user.role !== "client") return { error: t.portal.reorder.none };
+  try {
+    await q(user.id, "select portal_reorder($1, $2::jsonb, $3)", [orderId, JSON.stringify(lines), note]);
+  } catch {
+    return { error: t.portal.reorder.none };
+  }
+  revalidatePath(`/portal/orders/${orderId}`);
+  return { ok: true, message: t.portal.reorder.sent };
+}
+
+/** The client approves a label or asks for changes (portal_label_decide checks it is its own). */
+export async function portalLabelDecide(orderId: string, id: string, approve: boolean, comment: string): Promise<ActionState> {
+  const { user, t } = await getPortalSession();
+  if (user.role !== "client") return { error: t.portal.labels.what };
+  try {
+    await q(user.id, "select portal_label_decide($1, $2, $3)", [id, approve, comment]);
+  } catch {
+    return { error: t.portal.labels.what };
+  }
+  revalidatePath(`/portal/orders/${orderId}`);
+  return { ok: true };
+}

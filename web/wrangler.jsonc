@@ -13,7 +13,7 @@
 	// Hourly: old catalog chats removed (catalog-purge) and status mail;
 	// every 10 minutes: Gmail (worker.ts)
 	"triggers": {
-		"crons": ["0 * * * *", "5,15,25,35,45,55 * * * *"]
+		"crons": ["0 * * * *", "5,15,25,35,45,55 * * * *", "* * * * *"]
 	},
 	// Pooled connection to the Supabase database (engine.ts)
 	"hyperdrive": [

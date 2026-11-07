@@ -45,6 +45,10 @@ export function notificationText(n: NotificationRow, t: Dict, locale: Locale): s
       return fmt(K.catalog_enquiry, { company: s("company"), no: s("no") });
     case "board_assigned": case "board_mention": case "board_comment":
       return fmt(K[n.kind], { by: s("by"), card: s("card"), board: s("board") });
+    case "client_reorder":
+      return fmt(K.client_reorder, { client: s("client"), code: s("code") });
+    case "label_decision":
+      return fmt(K.label_decision, { client: s("client"), file: s("file"), code: s("code"), result: p.approved ? K.labelApproved : K.labelChanges });
     case "contract_comment":
       return fmt(K.contract_comment, { name: s("name"), client: s("client"), no: s("no") });
     case "contract_accepted":

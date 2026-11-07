@@ -4,6 +4,7 @@ import { formatDate } from "@/lib/i18n";
 import { Empty, PageHeader } from "@/components/ui";
 import { markNotificationsRead } from "@/app/actions";
 import { notificationText, type NotificationRow } from "@/lib/notifications";
+import { PushToggle } from "@/components/push-toggle";
 
 export default async function NotificationsPage() {
   const { user, locale, t } = await getSession();
@@ -21,6 +22,10 @@ export default async function NotificationsPage() {
           <form action={markNotificationsRead}><button type="submit" className="btn btn-outline">{N.markAll}</button></form>
         )}
       />
+      <section aria-labelledby="push-h" className="card flex flex-col gap-2 px-5 py-4">
+        <h2 id="push-h" className="m-0 text-base font-bold">{t.push.title}</h2>
+        <PushToggle publicKey={process.env.VAPID_PUBLIC_KEY?.trim() || null} T={t.push} />
+      </section>
       <section aria-label={N.title} className="card px-5 py-2">
         {rows.length === 0 && <div className="py-4"><Empty>{N.empty}</Empty></div>}
         <ul className="m-0 list-none p-0">

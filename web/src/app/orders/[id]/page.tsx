@@ -22,6 +22,7 @@ import { supabaseConfigured } from "@/lib/supabase/server";
 import { deleteOrder } from "@/app/trash-actions";
 import { loadContractCard } from "@/lib/contracts";
 import { ContractCard } from "@/components/contract-card";
+import { OrderClientRequests } from "@/components/order-client-requests";
 
 type Overview = { id: string; code: string; status: string; requested_date: string | null; client: string; client_id: string };
 type Line = {
@@ -421,6 +422,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             canSign={isAdmin && !user.readOnly} canEdit={!user.readOnly} send={contract.send} sendText={t.send} C={t.contract} locale={locale} />
         </Fold>
       )}
+      <OrderClientRequests orderId={o.id} clientId={o.client_id} userId={user.id} locale={locale} t={t}
+        canHandle={!user.readOnly && (user.role === "admin" || user.role === "sales")}
+        canSendLabels={!user.readOnly && (user.role === "admin" || user.role === "sales" || user.access === "designer")} />
       <ClientFiles clientId={o.client_id} orderId={o.id} userId={user.id} isAdmin={isAdmin} canShare={!user.readOnly && (user.role === "admin" || user.role === "sales")} locale={locale} t={t} />
 
       {(user.role === "admin" || user.role === "sales") && <ClientMessages clientId={o.client_id} orderId={o.id} userId={user.id} canWrite={!user.readOnly} locale={locale} t={t} />}

@@ -39,6 +39,8 @@ const de: PortalText = {
     batches: "Chargen", units: "Stück", produced: "Hergestellt", expires: "Mindestens haltbar bis", coa: "Analysenzertifikat", released: "Freigegeben", inReview: "In der Qualitätsprüfung", photos: "Fotos und Dateien aus der Produktion",
     shipments: "Sendungen", tracking: "Sendungsverfolgung", noTracking: "Noch keine Sendungsnummer", documents: "Dokumente", invoices: "Rechnungen", messages: "Nachrichten zu dieser Bestellung",
   },
+  reorder: { title: "Erneut bestellen", intro: "Bestellen Sie diese Produkte erneut in den gewünschten Mengen. Wir bestätigen die Bestellung und die Preise.", quantity: "Menge", note: "Hinweis (optional)", send: "Anfrage senden", sent: "Anfrage gesendet. Wir bestätigen sie in Kürze.", list: "Ihre Anfragen", asked: "Gesendet", done: "Bestellung erstellt: {code}", declined: "Nicht möglich: {reason}", waiting: "Wartet auf uns", none: "Geben Sie mindestens eine Menge ein." },
+  labels: { title: "Etiketten zur Freigabe", open: "Datei öffnen", approve: "Freigeben", changes: "Änderungen anfordern", what: "Was soll geändert werden?", send: "Senden", pending: "Wartet auf Ihre Antwort", approved: "Freigegeben", changesAsked: "Änderungen angefordert", note: "Unser Hinweis: {note}", comment: "Ihr Kommentar: {comment}", answered: "Beantwortet am {date} von {name}" },
   steps: { confirmed: "Bestellung bestätigt", deposit: "Anzahlung erhalten", production: "In Produktion", ready: "Versandbereit", dispatched: "Versendet" },
   docs: {
     title: "Dokumente", intro: "Produktdokumente, die unser Team mit Ihnen geteilt hat.", empty: "Noch keine Dokumente.",
@@ -90,6 +92,8 @@ const fr: PortalText = {
     batches: "Lots", units: "unités", produced: "Fabriqué le", expires: "À consommer de préférence avant", coa: "Certificat d'analyse", released: "Libéré", inReview: "En contrôle qualité", photos: "Photos et fichiers de la production",
     shipments: "Expéditions", tracking: "Suivi", noTracking: "Pas encore de numéro de suivi", documents: "Documents", invoices: "Factures", messages: "Messages sur cette commande",
   },
+  reorder: { title: "Commander à nouveau", intro: "Demandez à nouveau ces produits dans les quantités souhaitées. Nous confirmons la commande et les prix.", quantity: "Quantité", note: "Remarque (facultatif)", send: "Envoyer la demande", sent: "Demande envoyée. Nous la confirmerons rapidement.", list: "Vos demandes", asked: "Envoyée", done: "Commande créée : {code}", declined: "Impossible : {reason}", waiting: "En attente de notre part", none: "Saisissez au moins une quantité." },
+  labels: { title: "Étiquettes à approuver", open: "Ouvrir le fichier", approve: "Approuver", changes: "Demander des modifications", what: "Que faut-il modifier ?", send: "Envoyer", pending: "En attente de votre réponse", approved: "Approuvée", changesAsked: "Modifications demandées", note: "Notre remarque : {note}", comment: "Votre commentaire : {comment}", answered: "Répondu le {date} par {name}" },
   steps: { confirmed: "Commande confirmée", deposit: "Acompte reçu", production: "En production", ready: "Prête à expédier", dispatched: "Expédiée" },
   docs: {
     title: "Documents", intro: "Les documents produits partagés par notre équipe.", empty: "Aucun document pour le moment.",
@@ -141,6 +145,8 @@ const it: PortalText = {
     batches: "Lotti", units: "pezzi", produced: "Prodotto il", expires: "Da consumarsi preferibilmente entro", coa: "Certificato di analisi", released: "Rilasciato", inReview: "In controllo qualità", photos: "Foto e file della produzione",
     shipments: "Spedizioni", tracking: "Tracciamento", noTracking: "Ancora nessun numero di tracciamento", documents: "Documenti", invoices: "Fatture", messages: "Messaggi su questo ordine",
   },
+  reorder: { title: "Ordina di nuovo", intro: "Richieda di nuovo questi prodotti nelle quantità desiderate. Confermiamo noi l'ordine e i prezzi.", quantity: "Quantità", note: "Nota (facoltativa)", send: "Invia la richiesta", sent: "Richiesta inviata. La confermeremo a breve.", list: "Le sue richieste", asked: "Inviata", done: "Ordine creato: {code}", declined: "Non possibile: {reason}", waiting: "In attesa da parte nostra", none: "Inserisca almeno una quantità." },
+  labels: { title: "Etichette da approvare", open: "Apri il file", approve: "Approva", changes: "Chiedi modifiche", what: "Cosa va modificato?", send: "Invia", pending: "In attesa della sua risposta", approved: "Approvata", changesAsked: "Modifiche richieste", note: "Nostra nota: {note}", comment: "Suo commento: {comment}", answered: "Risposto il {date} da {name}" },
   steps: { confirmed: "Ordine confermato", deposit: "Acconto ricevuto", production: "In produzione", ready: "Pronto per la spedizione", dispatched: "Spedito" },
   docs: {
     title: "Documenti", intro: "I documenti di prodotto condivisi dal nostro team.", empty: "Ancora nessun documento.",
@@ -192,6 +198,8 @@ const ro: PortalText = {
     batches: "Loturi", units: "buc.", produced: "Produs la", expires: "A se consuma de preferință înainte de", coa: "Certificat de analiză", released: "Eliberat", inReview: "În controlul calității", photos: "Fotografii și fișiere din producție",
     shipments: "Expedieri", tracking: "Urmărire", noTracking: "Încă nu există număr de urmărire", documents: "Documente", invoices: "Facturi", messages: "Mesaje despre această comandă",
   },
+  reorder: { title: "Comandă din nou", intro: "Solicitați din nou aceste produse în cantitățile dorite. Noi confirmăm comanda și prețurile.", quantity: "Cantitate", note: "Notă (opțional)", send: "Trimite cererea", sent: "Cerere trimisă. O vom confirma în curând.", list: "Cererile dvs.", asked: "Trimisă", done: "Comandă creată: {code}", declined: "Nu este posibil: {reason}", waiting: "Așteaptă răspunsul nostru", none: "Introduceți cel puțin o cantitate." },
+  labels: { title: "Etichete de aprobat", open: "Deschide fișierul", approve: "Aprob", changes: "Cer modificări", what: "Ce trebuie modificat?", send: "Trimite", pending: "Așteaptă răspunsul dvs.", approved: "Aprobată", changesAsked: "Modificări cerute", note: "Nota noastră: {note}", comment: "Comentariul dvs.: {comment}", answered: "Răspuns la {date} de {name}" },
   steps: { confirmed: "Comandă confirmată", deposit: "Avans primit", production: "În producție", ready: "Gata de expediere", dispatched: "Expediată" },
   docs: {
     title: "Documente", intro: "Documentele de produs partajate de echipa noastră.", empty: "Încă nu există documente.",
@@ -243,6 +251,8 @@ const el: PortalText = {
     batches: "Παρτίδες", units: "τεμ.", produced: "Παραγωγή", expires: "Ανάλωση κατά προτίμηση πριν από", coa: "Πιστοποιητικό ανάλυσης", released: "Εγκρίθηκε", inReview: "Σε έλεγχο ποιότητας", photos: "Φωτογραφίες και αρχεία από την παραγωγή",
     shipments: "Αποστολές", tracking: "Παρακολούθηση", noTracking: "Δεν υπάρχει ακόμη αριθμός παρακολούθησης", documents: "Έγγραφα", invoices: "Τιμολόγια", messages: "Μηνύματα για αυτή την παραγγελία",
   },
+  reorder: { title: "Παραγγελία ξανά", intro: "Ζητήστε ξανά αυτά τα προϊόντα στις ποσότητες που χρειάζεστε. Εμείς επιβεβαιώνουμε την παραγγελία και τις τιμές.", quantity: "Ποσότητα", note: "Σημείωση (προαιρετικά)", send: "Αποστολή αιτήματος", sent: "Το αίτημα στάλθηκε. Θα το επιβεβαιώσουμε σύντομα.", list: "Τα αιτήματά σας", asked: "Στάλθηκε", done: "Δημιουργήθηκε παραγγελία: {code}", declined: "Δεν είναι δυνατό: {reason}", waiting: "Αναμένει εμάς", none: "Συμπληρώστε τουλάχιστον μία ποσότητα." },
+  labels: { title: "Ετικέτες προς έγκριση", open: "Άνοιγμα αρχείου", approve: "Εγκρίνω", changes: "Ζητώ αλλαγές", what: "Τι πρέπει να αλλάξει;", send: "Αποστολή", pending: "Αναμένει την απάντησή σας", approved: "Εγκρίθηκε", changesAsked: "Ζητήθηκαν αλλαγές", note: "Σημείωσή μας: {note}", comment: "Το σχόλιό σας: {comment}", answered: "Απαντήθηκε στις {date} από {name}" },
   steps: { confirmed: "Η παραγγελία επιβεβαιώθηκε", deposit: "Η προκαταβολή ελήφθη", production: "Σε παραγωγή", ready: "Έτοιμη για αποστολή", dispatched: "Απεστάλη" },
   docs: {
     title: "Έγγραφα", intro: "Τα έγγραφα προϊόντων που μοιράστηκε μαζί σας η ομάδα μας.", empty: "Δεν υπάρχουν ακόμη έγγραφα.",

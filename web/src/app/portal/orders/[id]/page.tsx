@@ -7,6 +7,7 @@ import { fmt, formatDate, formatNumber, formatPrice } from "@/lib/i18n";
 import { portalDocuments, portalFeed, portalInvoices, portalMarkRead, validId, type PortalOrder } from "@/lib/portal";
 import { getPortalSession } from "@/lib/session";
 import { orderTone } from "@/lib/status";
+import { PortalLabels, PortalReorder, type PortalLabel } from "@/components/portal-order-actions";
 
 const MAKING = ["in_production", "ready", "dispatched", "closed"];
 const READY = ["ready", "dispatched", "closed"];
@@ -41,6 +42,12 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
   // Photos and files of the batches that the team chose to show (owner, Nov 2026)
   const photos = await q<{ id: string; name: string; mime: string | null; created_at: string; batch: string }>(user.id,
     "select id, name, mime, created_at::text, batch from portal_batch_files($1)", [id]);
+  // Order again and labels to approve (owner, Nov 2026)
+  const reorderLines = await q<{ id: string; description: string; quantity: number }>(user.id, "select id, description, quantity from portal_order_lines($1)", [id]);
+  const reorders = await q<{ id: string; lines: { description: string; quantity: number }[]; note: string | null; status: "new" | "done" | "declined"; asked_at: string; reason: string | null; new_code: string | null }>(
+    user.id, "select id, lines, note, status, asked_at::text, reason, new_code from portal_reorders($1)", [id]);
+  const labels = await q<PortalLabel>(user.id,
+    "select id, file_id, file_name, status, note, client_comment, requested_at::text, decided_at::text, decided_name from portal_labels($1)", [id]);
   const production = READY.includes(o.status);
 
   return (
@@ -96,6 +103,18 @@ export default async function PortalOrderPage({ params }: PageProps<"/portal/ord
               </span>
             </div>
           ))}
+        </Panel>
+      )}
+
+      {labels.length > 0 && (
+        <Panel title={P.labels.title}>
+          <PortalLabels orderId={id} labels={labels} P={P} locale={locale} />
+        </Panel>
+      )}
+
+      {reorderLines.length > 0 && (
+        <Panel title={P.reorder.title}>
+          <PortalReorder orderId={id} lines={reorderLines} requests={reorders} P={P} locale={locale} />
         </Panel>
       )}
 

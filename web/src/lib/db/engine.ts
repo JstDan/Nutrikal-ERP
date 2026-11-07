@@ -151,7 +151,9 @@ async function init(): Promise<PGlite> {
     const done = new Set((await db.query<{ name: string }>("select name from nk_local.migrations")).rows.map((r) => r.name));
     for (const f of files.filter((x) => !done.has(x))) {
       try {
-        await db.exec(fs.readFileSync(path.join(/*turbopackIgnore: true*/ dir, f), "utf8"));
+        // All of it or nothing: a migration that fails half-way leaves no half-made tables behind
+        const sql = fs.readFileSync(path.join(/*turbopackIgnore: true*/ dir, f), "utf8");
+        await db.transaction(async (tx) => { await tx.exec(sql); });
         console.log(`[nutrikal] local database: applied ${f}`);
       } catch (e) {
         // Already in this database (it was made on another branch): counted as applied
