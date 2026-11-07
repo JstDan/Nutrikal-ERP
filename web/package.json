@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "db:migrate": "node --env-file=.env.local scripts/db-migrate.mjs",
+    "db:migrate:api": "node --env-file=.env.local scripts/db-migrate-api.mjs",
     "cf:build": "cross-env NK_TARGET=cloudflare NODE_OPTIONS=--require=./scripts/win-symlink.cjs opennextjs-cloudflare build && node scripts/cf-strip-env.mjs",
     "cf:preview": "npm run cf:build && node --env-file=.env.local scripts/cf-wrangler.mjs dev",
     "cf:deploy": "npm run cf:build && node --env-file=.env.local scripts/cf-wrangler.mjs deploy",
