@@ -3,107 +3,21 @@ import { docPlace } from '@/lib/doc-chrome';
 import autoTable from 'jspdf-autotable';
 import { footStrip, PdfFlow, PdfLayout, TABLE_RULES, type FontFor, type Rgb, type TextStyle, type Weight } from '@/lib/pdf-layout';
 import { fmt } from '@/lib/i18n';
-import { hasAluminiumCap, type CalcResult, type OfferLine } from './calc';
+import type { CalcResult, OfferLine } from './calc';
 import { formatDate, formatNumber, parseNum } from './numbers';
-import { hasAluminiumLid, offerCapsules, offerServings } from './catalogCapsules';
+import { offerCapsules } from './catalogCapsules';
 import { productName } from './offerRecord';
 import { offerPriceOptions } from './priceOptions';
-import { CAPSULE_SIZE, isCapsule, type OfferForm, type ProductType, type Settings } from './types';
+import { OFFER_TEXT, type OfferLang } from "./offer-text";
+import { offerProduct } from "./offer-product";
+export type { OfferLang } from "./offer-text";
+import { isCapsule, type OfferForm, type ProductType, type Settings } from './types';
 
 // Client-facing offer, laid out after Nutrikal's offer template (Poppins, two brand marks, customer /
 // supplier blocks, amount per serving table, sales prices table, excl. VAT note, payment terms, terms, footer).
 // It must NEVER contain raw material prices, cost per dose, fixed costs, markup, margin, profit or the
 // raw material requirement list – only the data passed in OfferPdfModel.
 // The offer is downloaded in Bulgarian or English, asked at every download (owner, Nov 2026); its text lives here.
-
-const PDF_EN = {
-  offer: 'Offer',
-  number: 'No',
-  date: 'Date',
-  customer: 'Prepared for',
-  supplier: 'Prepared by',
-  product: 'Product',
-  pack: 'Pack',
-  format: 'Format',
-  identificationNo: 'Identification No',
-  vatNo: 'VAT No',
-  contactPerson: 'Contact Person',
-  phone: 'Phone',
-  email: 'Email',
-  address: 'Address',
-  amountPerDose: 'Composition per serving ({portion})',
-  included: 'Included',
-  thanks: 'Thank you for considering Nutrikal. We look forward to building your brand together.',
-  validUntil: 'Valid until',
-  includedText: 'Manufacturing in a GMP and HACCP certified facility, container with lid, label printing and application.',
-  notIncluded: 'Not included',
-  notIncludedText: 'Label design, batch testing and COA, shipping and customs, VAT.',
-  moreTerms: 'Lead time usually 6-10 weeks after order, deposit and artwork are confirmed. Compliance in the destination market is the client’s responsibility. Some raw materials have their own minimums, which may affect price and timing.',
-  ingredient: 'Ingredient',
-  amountPerDoseColumn: 'Amount',
-  note: 'Note',
-  paymentTerms: 'Payment terms',
-  fromUnits: 'From {n} units',
-  pricesNote: 'Per unit, EUR, EXW Varna, Bulgaria, without VAT.',
-  page: 'Page {n} of {m}',
-  packaging_capsules_glass: 'Glass bottle',
-  packaging_capsules_plastic: 'Plastic bottle',
-  packaging_powder: 'Doypack (pouch)',
-  aluminiumLid: 'with aluminium cap',
-  capsule: 'capsule',
-  capsules: 'capsules',
-  servings: 'servings',
-  oneServing: '1 serving',
-  size: 'size {s} capsules',
-  doypack: 'Doypack',
-  newFormula: 'New formula',
-};
-
-const PDF_BG: typeof PDF_EN = {
-  offer: 'Оферта',
-  number: '№',
-  date: 'Дата',
-  customer: 'Изготвена за',
-  supplier: 'Изготвена от',
-  product: 'Продукт',
-  pack: 'Опаковка',
-  format: 'Формат',
-  identificationNo: 'ЕИК',
-  vatNo: 'ДДС №',
-  contactPerson: 'Лице за контакт',
-  phone: 'Телефон',
-  email: 'Имейл',
-  address: 'Адрес',
-  amountPerDose: 'Състав на доза ({portion})',
-  included: 'Включено',
-  thanks: 'Благодарим ви, че избрахте Нутрикал. С удоволствие ще изградим вашата марка заедно.',
-  validUntil: 'Валидна до',
-  includedText: 'Производство в предприятие, сертифицирано по GMP и HACCP, опаковка с капачка, печат и поставяне на етикет.',
-  notIncluded: 'Не е включено',
-  notIncludedText: 'Дизайн на етикет, изпитване на партидата и сертификат за анализ (COA), транспорт и мита, ДДС.',
-  moreTerms: 'Срокът за изпълнение обикновено е 6-10 седмици след потвърждаване на поръчката, аванса и дизайна. Съответствието с изискванията на пазара, на който ще се продава, е отговорност на клиента. Някои суровини имат собствени минимални количества, които могат да повлияят на цената и срока.',
-  ingredient: 'Съставка',
-  amountPerDoseColumn: 'Количество',
-  note: 'Бележка',
-  paymentTerms: 'Условия за плащане',
-  fromUnits: 'От {n} бр.',
-  pricesNote: 'Цена за брой, EUR, EXW Варна, България, без ДДС.',
-  page: 'Страница {n} от {m}',
-  packaging_capsules_glass: 'Стъклена бутилка',
-  packaging_capsules_plastic: 'Пластмасова бутилка',
-  packaging_powder: 'Дойпак (плик)',
-  aluminiumLid: 'с алуминиева капачка',
-  capsule: 'капсула',
-  capsules: 'капсули',
-  servings: 'дози',
-  oneServing: '1 доза',
-  size: 'капсули размер {s}',
-  doypack: 'Дойпак',
-  newFormula: 'Нова формула',
-};
-
-export type OfferLang = 'bg' | 'en';
-const OFFER_TEXT: Record<OfferLang, typeof PDF_EN> = { en: PDF_EN, bg: PDF_BG };
 
 export interface PdfImage {
   dataUrl: string;
@@ -215,37 +129,7 @@ export function toPdfModel(
   };
 
   // Product name + packaging, amount per serving table (no prices), then the account manager's notes.
-  const doseG = result.doseWeightMg / 1000;
-  const caps = parseNum(form.capsulesPerDose) ?? 1;
-  const servings = result.dosesPerUnit !== null ? formatNumber(result.dosesPerUnit, 2) : '–';
-  let pack: string;
-  let format: string;
-  if (catalog) {
-    const catalogServings = offerServings(form);
-    pack = catalogCaps ? [`${catalogCaps} ${PDF.capsules}`, ...(catalogServings ? [`${formatNumber(catalogServings, 2)} ${PDF.servings}`] : [])].join(', ') : '';
-    format = catalogCaps ? `${PDF[form.jar === 'glass' ? 'packaging_capsules_glass' : 'packaging_capsules_plastic']}${hasAluminiumLid(form) ? ` ${PDF.aluminiumLid}` : ''}` : '';
-  } else if (capsule) {
-    pack = `${perUnit} ${PDF.capsules}, ${servings} ${PDF.servings}`;
-    format = `${PDF[`packaging_${type}`]}${hasAluminiumCap(form) ? ` ${PDF.aluminiumLid}` : ''}, ${fmt(PDF.size, { s: CAPSULE_SIZE.replace('size', '').trim() })}`;
-  } else {
-    const net = result.netWeightPerPouchG;
-    pack = [net ? `${formatNumber(net, 0)} g` : '', `${servings} ${PDF.servings}`].filter(Boolean).join(', ');
-    format = PDF.doypack;
-  }
-  const portion = (n: number) => `${formatNumber(n, 2)} ${n === 1 ? PDF.capsule : PDF.capsules}`;
-  // A catalog product brings its own serving and composition from the product catalogue
-  const dosePortion = catalog
-    ? catalog.capsules_per_serving ? portion(catalog.capsules_per_serving) : catalog.serving_g ? `${formatNumber(catalog.serving_g, 2)} g` : PDF.oneServing
-    : capsule ? portion(caps) : `${formatNumber(doseG, 2)} g`;
-  const doseRows = !form.includeComposition
-    ? []
-    : catalog
-      ? (catalog.composition ?? [])
-          .filter((i) => i.amount > 0)
-          .map((i) => ({ name: i.note ? `${i.name} (${i.note})` : i.name, amount: `${formatNumber(i.amount, 4)} ${i.unit}` }))
-      : form.rows
-          .filter((r) => (parseNum(r.amount) ?? 0) > 0)
-          .map((r) => ({ name: r.name, amount: `${formatNumber(parseNum(r.amount) ?? 0, 4)} ${r.unit}` }));
+  const { pack, format, dosePortion, doseRows } = offerProduct(form, result, lang);
   const noteLines = form.notes.split('\n').map((l) => l.trim()).filter(Boolean);
 
   // Sales prices table: the offer quantity plus any price tiers; one column per quantity, no totals.

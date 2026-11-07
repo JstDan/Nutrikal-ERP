@@ -2,10 +2,13 @@
 import { fmt, formatDate, formatNumber, formatPrice, getDict } from "@/lib/i18n";
 import type { ContractPdfModel } from "@/lib/contract-pdf";
 
+/** What is made on a row of Schedule A (from its offer; no prices). */
+export type ContractProduct = { pack: string; format: string; portion: string; composition: { name: string; amount: string }[] };
+
 export type ContractRow = {
   number: string; locale: "bg" | "en"; body: string; status: string; client: string;
   schedule: {
-    currency: string; rows: { description: string; quantity: number; unit_price: number; amount: number }[];
+    currency: string; rows: { description: string; quantity: number; unit_price: number; amount: number; product?: ContractProduct | null }[];
     subtotal: number; vat_pct: number; vat: number; total: number; deposit_pct: number; deposit: number; balance: number;
   };
   accepted_at: string | null; accepted_name: string | null; accepted_title: string | null; accepted_email?: string | null; accepted_ip?: string | null;
@@ -37,6 +40,16 @@ export function contractModel(k: ContractRow, seller: ContractSeller): ContractP
         [fmt(P.deposit, { pct: formatNumber(l, Number(s.deposit_pct)) }), money(Number(s.deposit))],
         [P.balance, money(Number(s.balance))],
       ],
+    },
+    // What is made: only the rows that come from an offer
+    spec: {
+      title: P.spec,
+      products: s.rows.filter((r) => r.product).map((r) => ({
+        name: r.description,
+        facts: ([[P.pack, r.product!.pack], [P.format, r.product!.format], [P.portion, r.product!.portion]] as [string, string][]).filter(([, v]) => v),
+        compositionTitle: P.composition,
+        composition: r.product!.composition.map((c) => [c.name, c.amount] as [string, string]),
+      })),
     },
     stamp: k.accepted_at
       ? fmt(P.stamp, { name: k.accepted_name ?? "", title: k.accepted_title ? `, ${k.accepted_title}` : "", email: k.accepted_email ?? "", date: when(k.accepted_at), ip: k.accepted_ip ?? "—" })

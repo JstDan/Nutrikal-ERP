@@ -8,6 +8,7 @@ import { q, qPublic } from "@/lib/db/engine";
 import { getSession } from "@/lib/session";
 import type { ActionState } from "@/app/actions";
 import { DriveScopeError, uploadPdfToDrive } from "@/lib/drive";
+import { fillContractProducts } from "@/lib/contract-products";
 
 export type ContractResult = { ok?: boolean; error?: string; token?: string };
 const errorText = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
@@ -39,6 +40,8 @@ export async function contractOp(orderId: string, op: ContractOp, id: string, te
     : op === "save" || op === "comment" ? [id, text ?? ""] : op === "signed" ? [id, text?.trim() || null] : [id];
   try {
     const [row] = await q<{ r: string | null }>(user.id, OPS[op], params);
+    // Schedule A names what is made (pack, packaging, composition) from the offers of the order
+    if (op === "make" || op === "refresh") await fillContractProducts(user.id, op === "make" ? String(row?.r) : id).catch((e) => console.error("[contract products]", e));
     revalidatePath(`/orders/${orderId}`);
     return { ok: true, token: op === "sent" ? row?.r ?? undefined : undefined };
   } catch (e) {

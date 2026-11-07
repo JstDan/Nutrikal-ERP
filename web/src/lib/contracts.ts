@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { q } from "@/lib/db/engine";
 import { fmt, getDict } from "@/lib/i18n";
 import { loadSendInfo } from "@/lib/sends";
+import { fillContractProducts, needsProducts } from "@/lib/contract-products";
 import type { ContractSeller } from "@/lib/contract-model";
 import type { CardComment, CardContract, CardVersion } from "@/components/contract-card";
 import type { SendInfo } from "@/components/send-document";
@@ -25,6 +26,12 @@ export async function loadContractCard(userId: string, userName: string, orderId
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "app.nutrikal.com";
   const link = k ? `${host.startsWith("localhost") ? "http" : "https"}://${host}/contract/${k.token}` : "";
   if (!k) return { k: null, comments: [], versions: [], seller, link, send: null };
+  // A contract made before Schedule A named the products: filled once, while it can still change
+  if (k.status !== "signed" && needsProducts(k.schedule.rows as never[])) {
+    await fillContractProducts(userId, k.id).catch((e) => console.error("[contract products]", e));
+    const [again] = await q<{ schedule: CardContract["schedule"] }>(userId, "select schedule from order_contracts where id = $1", [k.id]);
+    if (again) k.schedule = again.schedule;
+  }
   const comments = await q<CardComment>(userId,
     "select from_client, author_name, body, created_at::text, version from contract_comments where contract_id = $1 order by created_at", [k.id]);
   const versions = await q<CardVersion>(userId,

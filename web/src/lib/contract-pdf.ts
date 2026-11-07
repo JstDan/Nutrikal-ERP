@@ -14,6 +14,7 @@ export interface ContractPdfModel {
   contact: string[];                    // under the logo
   body: string;                         // "# " starts a clause, "- " a bullet
   schedule: { title: string; head: [string, string, string, string]; rows: [string, string, string, string][]; totals: [string, string][] };
+  spec: { title: string; products: { name: string; facts: [string, string][]; compositionTitle: string; composition: [string, string][] }[] };
   stamp: string | null;                 // accepted on the link: who, when, IP
   sign: [string, string];               // For the Manufacturer / For the Client
   signNames: [string, string];          // the two parties' names under the lines
@@ -66,6 +67,10 @@ async function buildContractPdf(model: ContractPdfModel): Promise<jsPDF> {
   const metaLines = lay.wrap(m.meta.join('   ·   '), pageW - 30, metaStyle);
   const SHEET = metaY + (metaLines.length - 1) * lay.lineHeight(metaStyle) + 6;
   drawDocShell(doc, SHEET, docPhoto);
+  // Every further page has the same look: the dark ground and photo with the white sheet over them, from near the top
+  const SHEET_NEXT = 15;
+  const TOP_NEXT = SHEET_NEXT + 12;
+  (doc.internal as unknown as { events: { subscribe(e: string, fn: () => void): void } }).events.subscribe("addPage", () => drawDocShell(doc, SHEET_NEXT, docPhoto));
   if (brandLogo) {
     const w = 52;
     doc.addImage(brandLogo.dataUrl, 'PNG', 15, 22 - (w * brandLogo.height / brandLogo.width) / 2, w, w * brandLogo.height / brandLogo.width);
@@ -74,7 +79,7 @@ async function buildContractPdf(model: ContractPdfModel): Promise<jsPDF> {
   lay.lines(contactLines, 15, 30.5, pageW - 30, contactStyle);
   lay.lines(metaLines, 15, metaY, pageW - 30, metaStyle);
 
-  const flow = new PdfFlow(doc, SHEET + 12, 22, bottom);
+  const flow = new PdfFlow(doc, SHEET + 12, TOP_NEXT, bottom);
   /** Lines of one block, kept together when short; long paragraphs flow a line at a time. */
   const put = (text: string, style: TextStyle, x: number, width: number, gapBefore: number, keepWithNext = 0): number => {
     const lines = lay.wrap(text, width, style);
@@ -119,7 +124,7 @@ async function buildContractPdf(model: ContractPdfModel): Promise<jsPDF> {
   flow.y += 2;
   autoTable(doc, {
     startY: flow.y,
-    margin: { left: L, right: pageW - R, top: 22, bottom: pageH - bottom },
+    margin: { left: L, right: pageW - R, top: TOP_NEXT, bottom: pageH - bottom },
     theme: 'plain',
     rowPageBreak: TABLE_RULES.rowPageBreak,
     showHead: TABLE_RULES.showHead,
@@ -150,6 +155,46 @@ async function buildContractPdf(model: ContractPdfModel): Promise<jsPDF> {
     ];
     flow.ensure(lay.rowHeight(cells) + 2);
     flow.y = lay.row(cells, flow.y + 3) - lay.lineHeight(style) + 2.5;
+  }
+
+  // What is made: for each product its pack, packaging and serving, then the composition per serving
+  if (m.spec.products.length) {
+    put(m.spec.title, clauseStyle, L, W, 10, 30);
+    const nameStyle = st(10, true, INK, 1.35);
+    const factLabel = st(8.5, false, MUTED, 1.45);
+    const factValue = st(9, false, INK, 1.45);
+    const labelW = 48;
+    for (const p of m.spec.products) {
+      put(p.name, nameStyle, L, W, 5, 24);
+      flow.y += 1;
+      for (const [label, value] of p.facts) {
+        const cells = [{ x: L, width: labelW - 3, text: label, style: factLabel }, { x: L + labelW, width: W - labelW, text: value, style: factValue }];
+        flow.ensure(lay.rowHeight(cells));
+        flow.y = lay.row(cells, flow.y + 1.2);
+      }
+      if (p.composition.length) {
+        flow.y += 3;
+        flow.ensure(28);
+        autoTable(doc, {
+          startY: flow.y,
+          margin: { left: L, right: pageW - R, top: TOP_NEXT, bottom: pageH - bottom },
+          theme: 'plain',
+          rowPageBreak: TABLE_RULES.rowPageBreak,
+          showHead: TABLE_RULES.showHead,
+          head: [[p.compositionTitle.toUpperCase(), '']],
+          body: p.composition,
+          styles: { font: FONT, fontSize: 8.6, textColor: INK, cellPadding: { top: 1.5, bottom: 1.5, left: 0, right: 1.5 }, overflow: TABLE_RULES.overflow },
+          headStyles: { font: FONT, fontStyle: 'bold', fontSize: 7, textColor: MUTED },
+          columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 40, halign: 'right' } },
+          didDrawCell: (data) => {
+            doc.setLineWidth(data.section === 'head' ? 0.3 : 0.15);
+            doc.setDrawColor(...(data.section === 'head' ? INK : MIST));
+            doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+          },
+        });
+        flow.y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+      }
+    }
   }
 
   // Accepted on the link: a green note before the signatures

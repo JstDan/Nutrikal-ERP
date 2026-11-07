@@ -46,6 +46,35 @@ export function ContractBody({ k }: { k: Pick<ContractRow, "body" | "schedule" |
           </div>
         ))}
       </dl>
+      {s.rows.some((r) => r.product) && (
+        <>
+          <h3 className="m-0 mt-6 text-base font-bold">{P.spec}</h3>
+          {s.rows.filter((r) => r.product).map((r, i) => (
+            <section key={i} className="flex flex-col gap-2 rounded-sm border border-line p-3 text-sm">
+              <h4 className="m-0 text-[15px] font-bold">{r.description}</h4>
+              <dl className="m-0 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-[180px_minmax(0,1fr)]">
+                {([[P.pack, r.product!.pack], [P.format, r.product!.format], [P.portion, r.product!.portion]] as const).filter(([, v]) => v).map(([name, v]) => (
+                  <div key={name} className="contents">
+                    <dt className="text-ink-2">{name}</dt>
+                    <dd className="m-0 min-w-0 break-words">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              {r.product!.composition.length > 0 && (
+                <div className="mt-1">
+                  <div className="border-b border-ink pb-1 text-xs font-semibold tracking-[1px] uppercase text-ink-2">{P.composition}</div>
+                  {r.product!.composition.map((c, j) => (
+                    <div key={j} className="row grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-mist py-1 last:border-0">
+                      <span className="min-w-0 break-words">{c.name}</span>
+                      <span className="text-right tabular-nums">{c.amount}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          ))}
+        </>
+      )}
     </article>
   );
 }

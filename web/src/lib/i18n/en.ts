@@ -3242,6 +3242,11 @@ export const en = {
       client: "For the Client",
       nameLine: "Name, position, signature",
       pageOf: "Page {i} of {n}",
+      spec: "Product specification",
+      pack: "Contents of a pack",
+      format: "Packaging",
+      portion: "One serving",
+      composition: "Composition per serving",
     },
     open: {
       intro: "Please read the contract below and accept it at the end of the page.",

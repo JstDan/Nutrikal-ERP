@@ -4192,6 +4192,22 @@ await ok('a draft is edited; the link shows only the contract', async () => {
   if (JSON.stringify(p).includes('ТАЙНА')) throw new Error('order note leaked');
   eq((await asAnon('select contract_public($1) as d', ['00000000-0000-4000-8000-000000000000']))[0].d, null, 'a wrong token shows nothing');
 });
+await ok('Schedule A rows name their offer; the team adds what is made (pack, packaging, composition), shown on the link', async () => {
+  const k = await one('sales', 'select schedule from order_contracts where id = $1', [ctId]);
+  if (!('offer_id' in k.schedule.rows[0]) || !k.schedule.rows[0].line_id) throw new Error('row names no line/offer');
+  const spec = { pack: '60 капсули, 30 дози', format: 'Стъклен буркан', portion: '2 капсули', composition: [{ name: 'Колаген', amount: '500 mg' }] };
+  await fails('  production', () => as('production', 'select set_contract_products($1, $2)', [ctId, JSON.stringify([spec])]), 'Not allowed');
+  await fails('  designer', () => as('designer', 'select set_contract_products($1, $2)', [ctId, JSON.stringify([spec])]), 'Not allowed');
+  await fails('  not a list', () => as('sales', 'select set_contract_products($1, $2)', [ctId, '{}']), 'a list');
+  await as('sales', 'select set_contract_products($1, $2)', [ctId, JSON.stringify([spec])]);
+  const p = (await asAnon('select contract_public($1) as d', [ctToken]))[0].d;
+  eq(p.schedule.rows[0].product.format, 'Стъклен буркан', 'shown on the link');
+  eq(p.schedule.rows[0].product.composition[0].amount, '500 mg', 'composition');
+  await as('sales', 'select set_contract_products($1, $2)', [ctId, '[null]']);
+  const k2 = await one('sales', 'select schedule from order_contracts where id = $1', [ctId]);
+  eq('product' in k2.schedule.rows[0] && k2.schedule.rows[0].product === null, true, 'a row without details keeps product: null');
+  await as('sales', 'select set_contract_products($1, $2)', [ctId, JSON.stringify([spec])]);
+});
 await ok('anon reaches no contract table', async () => {
   for (const t of ['order_contracts', 'contract_templates', 'contract_versions', 'contract_comments']) {
     const n = await asAnon(`select 1 from ${t}`).then((r) => r.length, () => 0);
