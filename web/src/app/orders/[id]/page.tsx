@@ -20,6 +20,8 @@ import { TaskBoard } from "@/components/tasks/board";
 import { CancelPayment, ConfirmFinalPayment, ConfirmFirstPayment } from "@/components/tasks/payment-dialog";
 import { supabaseConfigured } from "@/lib/supabase/server";
 import { deleteOrder } from "@/app/trash-actions";
+import { loadContractCard } from "@/lib/contracts";
+import { ContractCard } from "@/components/contract-card";
 
 type Overview = { id: string; code: string; status: string; requested_date: string | null; client: string; client_id: string };
 type Line = {
@@ -171,6 +173,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const shipped = ["dispatched", "closed"].includes(o.status);
   const dueInvoice: OrderInvoice["purpose"] | null = !canEdit || !(shipped || o.status === "ready") || finalIssued ? null
     : !twoPayments ? "full" : invoiceOf("advance")?.status !== "issued" ? "advance" : c?.balance_received_on ? "final" : null;
+  // The production contract (optional; never holds the order up): Admin and Sales
+  const contract = canEdit && o.status !== "cancelled" ? await loadContractCard(user.id, user.name, o.id, o.code) : null;
   const showPrepare = isAdmin && ["confirmed", "in_production"].includes(o.status)
     && products.some((l) => !mos.some((m) => m.sales_order_line_id === l.id && m.status !== "cancelled"));
   const doneTasks = board ? board.tasks.filter((x) => x.status === "done").length : 0;
@@ -411,6 +415,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       <DispatchCard orderId={o.id} status={o.status} isAdmin={user.canPay} userId={user.id} locale={locale} t={t}
         balanceDue={!!c && c.balance_terms === "before_dispatch" && !c.balance_received_on} />
 
+      {contract && (
+        <Fold title={t.contract.title} open={!!contract.k && contract.k.status !== "signed"}>
+          <ContractCard orderId={o.id} k={contract.k} comments={contract.comments} versions={contract.versions} seller={contract.seller} link={contract.link}
+            canSign={isAdmin && !user.readOnly} canEdit={!user.readOnly} send={contract.send} sendText={t.send} C={t.contract} locale={locale} />
+        </Fold>
+      )}
       <ClientFiles clientId={o.client_id} orderId={o.id} userId={user.id} isAdmin={isAdmin} canShare={!user.readOnly && (user.role === "admin" || user.role === "sales")} locale={locale} t={t} />
 
       {(user.role === "admin" || user.role === "sales") && <ClientMessages clientId={o.client_id} orderId={o.id} userId={user.id} canWrite={!user.readOnly} locale={locale} t={t} />}

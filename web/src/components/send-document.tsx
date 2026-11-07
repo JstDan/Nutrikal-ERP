@@ -10,7 +10,7 @@ import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import type { ProformaPdfModel } from "@/lib/proforma-pdf";
 
-export type SendKind = "calc_offer" | "proforma" | "invoice" | "delivery_note";
+export type SendKind = "calc_offer" | "proforma" | "invoice" | "delivery_note" | "contract";
 export type SendInfo = {
   kind: SendKind; refId: string; to: string; subject: string; body: string; configured: boolean;
   /** The shared Gmail mailbox it leaves from, or null (Resend). */

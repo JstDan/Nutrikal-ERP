@@ -8,6 +8,7 @@ const TABS = [
   { key: "templates", href: "/settings/templates" },
   { key: "mail", href: "/settings/mail" },
   { key: "users", href: "/settings/users" },
+  { key: "contract", href: "/settings/contract" },
   { key: "trash", href: "/settings/trash" },
   { key: "history", href: "/history" },
 ] as const;

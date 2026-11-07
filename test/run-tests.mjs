@@ -4166,5 +4166,75 @@ await fails('production and clients see no versions of invoices', async () => {
   if (n === 0) throw new Error('none seen');
 }, 'none seen');
 
+// ----- Production contracts (owner, Nov 2026): from the template, filled from the order; accepted on a private link
+let ctOrder, ctId, ctToken;
+await ok('a contract is made from the template in the client language, filled from the order with Schedule A', async () => {
+  await db.exec('reset role');
+  ctOrder = (await db.query(`insert into sales_orders (code, client_id, currency, status, deposit_pct) values ('CT-1', $1, 'EUR', 'draft', 60) returning id`, [coA])).rows[0].id;
+  await db.query(`insert into sales_order_lines (order_id, kind, description, quantity, unit_price, sort_order) values ($1, 'service', 'Колаген 300 г', 1000, 4.5, 1)`, [ctOrder]);
+  await db.query(`update sales_orders set status = 'confirmed' where id = $1`, [ctOrder]);
+  await fails('  designer', () => as('designer', 'select create_order_contract($1)', [ctOrder]), 'Not allowed');
+  ctId = (await one('sales', `select create_order_contract($1, 'bg') as id`, [ctOrder])).id;
+  const k = await one('sales', 'select number, locale, body, schedule, status, token from order_contracts where id = $1', [ctId]);
+  ctToken = k.token;
+  if (!/^C-\d{4}-0001$/.test(k.number)) throw new Error('number ' + k.number);
+  eq(k.locale, 'bg', 'locale'); eq(k.status, 'draft', 'draft');
+  for (const w of ['Портал А', 'CT-1', '60%', '40%', 'НУТРИКАЛ']) if (!k.body.includes(w)) throw new Error('missing ' + w);
+  if (k.body.includes('{{')) throw new Error('placeholder left: ' + k.body.match(/\{\{[^}]+\}\}/)[0]);
+  eq(Number(k.schedule.subtotal), 4500, 'subtotal'); eq(Number(k.schedule.deposit_pct), 60, 'deposit pct');
+  eq(k.schedule.rows[0].description, 'Колаген 300 г', 'row');
+});
+await fails('one open contract per order', () => as('sales', 'select create_order_contract($1)', [ctOrder]), 'already has a contract');
+await ok('a draft is edited; the link shows only the contract', async () => {
+  await as('sales', 'select save_order_contract($1, $2)', [ctId, 'Редактиран текст']);
+  const p = (await asAnon('select contract_public($1) as d', [ctToken]))[0].d;
+  eq(p.body, 'Редактиран текст', 'body'); eq(p.client, 'Портал А', 'client name');
+  if (JSON.stringify(p).includes('ТАЙНА')) throw new Error('order note leaked');
+  eq((await asAnon('select contract_public($1) as d', ['00000000-0000-4000-8000-000000000000']))[0].d, null, 'a wrong token shows nothing');
+});
+await ok('anon reaches no contract table', async () => {
+  for (const t of ['order_contracts', 'contract_templates', 'contract_versions', 'contract_comments']) {
+    const n = await asAnon(`select 1 from ${t}`).then((r) => r.length, () => 0);
+    eq(n, 0, t);
+  }
+  for (const who of ['production', 'designer', 'clientA']) eq((await as(who, 'select 1 from order_contracts')).length, 0, who);
+});
+await ok('the client accepts on the link: who, when, IP; the team is told; the text is then fixed', async () => {
+  await fails('  without a name', () => asAnon('select contract_accept($1, $2, $3, $4, $5, $6)', [ctToken, ' ', '', 'a@b.bg', '1.2.3.4', 'x']), 'name');
+  const d = (await asAnon('select contract_accept($1, $2, $3, $4, $5, $6) as d', [ctToken, 'Иван Петров', 'Управител', 'ivan@portal.bg', '1.2.3.4', 'Firefox']))[0].d;
+  eq(d.status, 'accepted', 'accepted'); eq(d.accepted_name, 'Иван Петров', 'name');
+  const k = await one('admin', 'select accepted_ip, accepted_email from order_contracts where id = $1', [ctId]);
+  eq(k.accepted_ip, '1.2.3.4', 'ip'); eq(k.accepted_email, 'ivan@portal.bg', 'email');
+  eq((await as('sales', `select 1 from notifications where kind = 'contract_accepted'`)).length, 1, 'told');
+  await fails('  accepted twice', () => asAnon('select contract_accept($1, $2, $3, $4, $5, $6)', [ctToken, 'X', '', 'a@b.bg', '', '']), 'already accepted');
+});
+await ok('the client asks for changes on the link; the team answers; a correction keeps the accepted version and asks again', async () => {
+  await asAnon('select contract_comment_public($1, $2, $3, $4)', [ctToken, 'Иван Петров', 'ivan@portal.bg', 'Моля, сменете срока на 8 седмици']);
+  eq((await as('sales', `select 1 from notifications where kind = 'contract_comment'`)).length, 1, 'team told');
+  await as('sales', 'select add_contract_comment($1, $2)', [ctId, 'Променихме точка 6']);
+  await as('sales', 'select save_order_contract($1, $2)', [ctId, 'Коригиран текст с 8 седмици']);
+  const p = (await asAnon('select contract_public($1) as d', [ctToken]))[0].d;
+  eq(p.status, 'sent', 'to be accepted again'); eq(p.version, 2, 'version'); eq(p.accepted_name, null, 'acceptance cleared');
+  eq(p.comments.map((c) => (c.from_client ? 'c' : 't')).join(), 'c,t', 'both comments on the link');
+  const v = await one('admin', 'select version, body, accepted from contract_versions where contract_id = $1', [ctId]);
+  eq(v.version, 1, 'old version kept'); eq(v.body, 'Редактиран текст', 'old text'); eq(v.accepted.name, 'Иван Петров', 'old acceptance kept');
+  await as('sales', 'select refresh_contract_schedule($1)', [ctId]);
+  eq((await one('sales', 'select version from order_contracts where id = $1', [ctId])).version, 3, 'schedule refresh is a version too');
+  await asAnon('select contract_accept($1, $2, $3, $4, $5, $6)', [ctToken, 'Иван Петров', 'Управител', 'ivan@portal.bg', '5.6.7.8', 'Firefox']);
+});
+await ok('a cancelled contract is gone from the link; a new one is made; Admin marks it signed by hand; a signed one does not change', async () => {
+  await as('sales', 'select cancel_order_contract($1)', [ctId]);
+  eq((await asAnon('select contract_public($1) as d', [ctToken]))[0].d, null, 'link gone');
+  const id2 = (await one('sales', `select create_order_contract($1, 'en') as id`, [ctOrder])).id;
+  await fails('  sales cannot mark signed', () => as('sales', 'select mark_order_contract_signed($1)', [id2]), 'Not allowed');
+  await as('admin', 'select mark_order_contract_signed($1)', [id2]);
+  eq((await one('admin', 'select status from order_contracts where id = $1', [id2])).status, 'signed', 'signed');
+  await fails('  signed is fixed', () => as('admin', 'select save_order_contract($1, $2)', [id2, 'x']), 'does not change');
+});
+await ok('Admin edits the template; Sales only reads it', async () => {
+  eq((await as('sales', `update contract_templates set body = 'x' where locale = 'en' returning 1`)).length, 0, 'sales');
+  eq((await as('admin', `update contract_templates set body = body || ' ' where locale = 'en' returning updated_by`))[0].updated_by, U.admin, 'admin');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

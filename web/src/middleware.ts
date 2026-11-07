@@ -15,6 +15,12 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   const onCatalogHost = host === (process.env.CATALOG_HOST?.trim() || "catalog.nutrikal.com");
+  // A contract's private link: open to the client without signing in (the page reaches only that contract)
+  if (!onCatalogHost && /^\/contract\/[0-9a-f-]{36}$/i.test(path)) {
+    const headers = new Headers(request.headers);
+    headers.set("x-nk-public", "1");
+    return NextResponse.next({ request: { headers } });
+  }
   if (onCatalogHost || path === PUBLIC_PAGE || PUBLIC_APIS.includes(path)) {
     const headers = new Headers(request.headers);
     headers.set("x-nk-public", "1");
