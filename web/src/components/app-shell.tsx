@@ -8,7 +8,7 @@ import { fmt, LOCALES } from "@/lib/i18n";
 import { SideNav, type NavGroup } from "./side-nav";
 import { ActAsSwitch } from "./act-as-switch";
 import { ThemeSwitch } from "./theme-switch";
-import { MobileMenu } from "./mobile-menu";
+import { MobileTabBar, type TabItem } from "./mobile-tab-bar";
 import { Wordmark } from "./logo";
 import { UserAvatar } from "./user-avatar";
 import { NotificationBell } from "./notification-bell";
@@ -100,17 +100,22 @@ export async function AppShell({ children }: { children: ReactNode }) {
     ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/chat", "/clients", "/orders", "/my-tasks", "/boards"].includes(i.href ?? "")) })).filter((g) => g.items.length)
     : groups;
 
+  // On a phone the main sections sit in a bar at the foot; the rest behind More (owner, Nov 2026)
+  const all = shown.flatMap((g) => g.items);
+  const tabs: TabItem[] = (isProduction ? ["/factory", "/factory/calendar", "/factory/orders", "/factory/stock"] : ["/", "/clients", "/orders", "/my-tasks"])
+    .map((h) => all.find((i) => i.href === h)).filter((i): i is NonNullable<typeof i> => !!i)
+    .map((i) => ({ href: i.href!, label: i.label, badge: i.badge }));
+
   return (
-    <div data-readonly={user.readOnly || undefined} className="app-ui flex min-h-screen flex-wrap">
-      <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 py-5 text-side-strong lg:sticky lg:top-0 lg:h-screen lg:w-[232px] lg:shrink-0 lg:gap-3 lg:overflow-y-auto lg:py-4 lg:[scrollbar-width:none]">
-        <a href={isProduction ? "/factory" : "/"} className="flex flex-col gap-2 px-2 text-side-strong no-underline">
+    <div data-readonly={user.readOnly || undefined} className="app-ui has-tabbar flex min-h-screen flex-wrap pb-[var(--tabbar)]">
+      <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3 text-side-strong lg:sticky lg:top-0 lg:h-screen lg:w-[232px] lg:shrink-0 lg:gap-3 lg:overflow-y-auto lg:py-4 lg:[scrollbar-width:none]">
+        <a href={isProduction ? "/factory" : "/"} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-2 lg:flex-col lg:items-start text-side-strong no-underline">
           <Wordmark height={20} inverted />
           <span className="text-[11px] font-semibold tracking-[2px] text-green">{isProduction ? t.nav.productionLabel.toUpperCase() : "ERP"}</span>
           {isProduction && <span className="text-xs text-side-muted">{t.nav.partnerFacility}</span>}
         </a>
-        <MobileMenu label={t.nav.menu} closeLabel={t.nav.close}>
-          <SideNav groups={shown} label={t.nav.main} />
-        </MobileMenu>
+        <div className="hidden lg:block"><SideNav groups={shown} label={t.nav.main} /></div>
+        <MobileTabBar tabs={tabs} groups={shown} moreLabel={t.nav.more} closeLabel={t.nav.close} navLabel={t.nav.main} />
       </aside>
 
       <div className="flex min-w-0 flex-[999_1_560px] flex-col">

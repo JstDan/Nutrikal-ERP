@@ -14,7 +14,8 @@ export const metadata: Metadata = {
   icons: { apple: "/app/apple-touch-icon.png" },
 };
 
-export const viewport: Viewport = { themeColor: "#222831" };
+// cover: the bar at the foot keeps clear of the iPhone home line itself (env(safe-area-inset-bottom))
+export const viewport: Viewport = { themeColor: "#222831", viewportFit: "cover" };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // The open catalogue has no menu and no user, also for someone signed in

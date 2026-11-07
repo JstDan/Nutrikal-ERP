@@ -68,6 +68,7 @@ export const en = {
     corrections: "Stock corrections",
     partnerFacility: "Production facility",
     menu: "Menu",
+    more: "More",
     close: "Close",
     productionLabel: "Production",
   },

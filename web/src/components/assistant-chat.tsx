@@ -164,7 +164,7 @@ export function AssistantChat({ conversations, current, messages, proposals, mod
         <div className="sticky top-6 flex max-h-[calc(100dvh-48px)] flex-col gap-3 overflow-y-auto">{list}</div>
       </aside>
 
-      <section aria-label={current?.title ?? A.newChat} className="flex min-h-[calc(100dvh-220px)] min-w-0 flex-col">
+      <section aria-label={current?.title ?? A.newChat} className="flex min-h-[calc(100dvh-220px-var(--tabbar))] min-w-0 flex-col">
         {conversations.length > 0 && (
           <details className="mb-3 lg:hidden">
             <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">{A.history}</summary>
@@ -212,7 +212,7 @@ export function AssistantChat({ conversations, current, messages, proposals, mod
           <div ref={end} />
         </div>
 
-        <div className="sticky bottom-0 mx-auto w-full max-w-[800px] bg-canvas pt-2 pb-4">
+        <div className="sticky bottom-[var(--tabbar)] mx-auto w-full max-w-[800px] bg-canvas pt-2 pb-4">
           {!configured && <p className="m-0 mb-2 text-sm font-semibold">{A.notConfigured}</p>}
           {error && <p role="alert" className="m-0 mb-2 text-sm font-semibold text-red-ink">{error}</p>}
           <form onSubmit={(e) => { e.preventDefault(); send(draft); }}

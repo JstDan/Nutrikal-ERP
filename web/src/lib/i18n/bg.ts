@@ -70,6 +70,7 @@ export const bg: Dict = {
     corrections: "Корекции на наличност",
     partnerFacility: "Производствен обект",
     menu: "Меню",
+    more: "Още",
     close: "Затвори",
     productionLabel: "Производство",
   },

@@ -335,6 +335,10 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
 .p-seg { display: inline-flex; align-items: center; min-height: 34px; padding: 0 10px; border: 1px solid var(--color-line); border-radius: 999px; background: var(--color-paper); color: inherit; font-size: 12px; font-weight: 600; transition: background-color 0.15s; }
 .p-seg:hover { background: var(--color-neutral-tint); }
 .p-seg-on, .p-seg-on:hover { border-color: #222831; background: #222831; color: #ffffff; }
+/* The bar at the foot of the signed-in app on a phone (mobile-tab-bar.tsx); 0 on wide screens and elsewhere */
+:root { --tabbar: 0px; }
+.has-tabbar { --tabbar: calc(57px + env(safe-area-inset-bottom)); }
+@media (min-width: 1024px) { .has-tabbar { --tabbar: 0px; } }
 .c-inbox { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 12px; }
 .c-list { flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-paper); }
 .c-pane { flex-direction: column; gap: 12px; min-width: 0; min-height: 0; padding: 14px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-paper); }

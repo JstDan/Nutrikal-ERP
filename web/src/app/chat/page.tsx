@@ -90,7 +90,7 @@ export default async function ChatPage({ searchParams }: PageProps<"/chat">) {
             ))}
           </section>
         ) : current && (
-          <section aria-label={current.name} className="card flex h-[calc(100dvh-190px)] min-h-[420px] min-w-0 flex-col overflow-hidden pt-3">
+          <section aria-label={current.name} className="card flex h-[calc(100dvh-190px-var(--tabbar))] min-h-[420px] min-w-0 flex-col overflow-hidden pt-3">
             <div className="border-b border-line px-4 pb-2">
               <h2 className="m-0 text-lg font-bold">{current.kind === "direct" ? current.name : `# ${current.name}`}</h2>
               {current.description && current.kind !== "external" && <p className="m-0 text-sm text-ink-2">{current.description}</p>}

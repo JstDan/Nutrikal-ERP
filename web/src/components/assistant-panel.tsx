@@ -136,7 +136,7 @@ export function AssistantPanel({ models, configured, locale, text, keepsNothing 
   if (!open) {
     return (
       <button ref={opener} type="button" onClick={show} aria-label={A.open} aria-keyshortcuts="Control+J"
-        title={A.openShort} className="fixed right-4 bottom-4 z-40 grid h-12 w-12 place-items-center rounded-full bg-ink text-white shadow-lg hover:opacity-90 print:hidden sm:right-6 sm:bottom-6">
+        title={A.openShort} className="fixed right-4 bottom-[calc(var(--tabbar)+16px)] z-40 grid h-12 w-12 place-items-center rounded-full bg-ink text-white shadow-lg hover:opacity-90 print:hidden sm:right-6 lg:bottom-6">
         <span aria-hidden="true" className="text-lg leading-none">✦</span>
       </button>
     );

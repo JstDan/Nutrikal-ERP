@@ -226,7 +226,7 @@ export function Toast({ toast, onClose, closeLabel }: { toast: ToastMsg; onClose
   }, [toast, onClose]);
 
   return (
-    <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex justify-center">
+    <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--tabbar)+16px)] z-50 flex justify-center">
       {toast && (
         <div
           className={`pointer-events-auto flex max-w-[560px] min-w-0 items-center gap-3 rounded-sm px-4 py-2 text-sm font-semibold text-white shadow-lg ${
