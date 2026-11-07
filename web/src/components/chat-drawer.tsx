@@ -26,6 +26,8 @@ export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale
   const [term, setTerm] = useState("");
   const [, start] = useTransition();
   const button = useRef<HTMLButtonElement>(null);
+  // The page was drawn again (a channel was read): the count follows it
+  useEffect(() => { setUnread(first); }, [first]);
 
   const loadList = () => start(async () => {
     const r = await chatList();

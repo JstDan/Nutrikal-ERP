@@ -35,6 +35,12 @@ export async function pollChat(channel: string, seen: string | null): Promise<Ch
   return rows;
 }
 
+/** The channel is open on the screen: it is read now, with the notifications of its mentions. */
+export async function markChatRead(channel: string): Promise<void> {
+  const { user } = await getSession();
+  await markRead(user.id, channel);
+}
+
 /** For the side panel: the channels and the people to write to. */
 export async function chatList() {
   const { user } = await getSession();

@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
-import { deleteChatMessage, editChatMessage, pollChat, searchGifs, sendChat, toggleReaction, type Gif } from "@/app/chat-actions";
+import { useRouter } from "next/navigation";
+import { deleteChatMessage, editChatMessage, markChatRead, pollChat, searchGifs, sendChat, toggleReaction, type Gif } from "@/app/chat-actions";
 import { formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import { UserAvatar } from "@/components/user-avatar";
@@ -134,7 +135,20 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
   const query = draft.match(/(?:^|\s)@([^\s@]*)$/)?.[1];
   const options = query === undefined ? [] : people.filter((p) => p.full_name.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
 
-  const refresh = async () => setMessages(await pollChat(channel, messages.at(-1)?.id ?? null));
+  const router = useRouter();
+  // New messages are read here: the menu, the channel list and the bell are drawn again without them
+  const refresh = async () => {
+    const last = messages.at(-1)?.id ?? null;
+    const rows = await pollChat(channel, last);
+    setMessages(rows);
+    if (rows.at(-1)?.id !== last) router.refresh();
+  };
+  // Opening a channel reads it (also when no new message comes while it is open)
+  useEffect(() => {
+    let live = true;
+    markChatRead(channel).then(() => { if (live) router.refresh(); }).catch(() => {});
+    return () => { live = false; };
+  }, [channel, router]);
   const toEnd = (behaviour: ScrollBehavior = "smooth") => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: behaviour });
     setBehind(false);
