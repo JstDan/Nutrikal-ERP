@@ -2739,6 +2739,48 @@ await ok('only the author edits a message', async () => {
   eq((await as('admin', `update chat_messages set body = 'x' where id = $1 returning id`, [m])).length, 0, 'admin');
   eq((await as('sales', `update chat_messages set body = 'Второ', edited_at = now() where id = $1 returning id`, [m])).length, 1, 'author');
 });
+await ok('a thread: replies sit under their message, not in the channel, and do not make it unread', async () => {
+  const top = (await one('sales', `select chat_post($1, 'Нишка') as id`, [gen])).id;
+  await as('designer', 'insert into chat_reads (channel_id, user_id) values ($1, auth.uid()) on conflict (channel_id, user_id) do update set read_at = now()', [gen]);
+  await as('admin', `select chat_post($1, 'Отговор 1', '{}', $2)`, [gen, top]);
+  await as('designer', `select chat_post($1, 'Отговор 2', '{}', $2)`, [gen, top]);
+  const feed = await as('sales', 'select id, reply_count, repliers from chat_feed($1)', [gen]);
+  const row = feed.find((x) => x.id === top);
+  eq(row.reply_count, 2, 'count'); eq(row.repliers.length, 2, 'repliers');
+  eq(feed.some((x) => ['Отговор 1', 'Отговор 2'].includes(x.body)), false, 'not in the channel');
+  const th = await as('sales', 'select body from chat_feed($1, $2)', [gen, top]);
+  eq(th.map((x) => x.body).join('|'), 'Нишка|Отговор 1|Отговор 2', 'thread');
+  eq(Number((await one('designer', 'select coalesce(sum(unread), 0) as n from chat_unread() where channel_id = $1', [gen])).n), 0, 'replies are not unread');
+});
+await ok('a reply notifies the people of the thread, not its writer', async () => {
+  const top = (await one('sales', `select chat_post($1, 'Въпрос') as id`, [gen])).id;
+  await as('admin', `select chat_post($1, 'Аз съм тук', '{}', $2)`, [gen, top]);
+  await as('designer', `select chat_post($1, 'И аз', '{}', $2)`, [gen, top]);
+  const link = `/chat?c=${gen}&t=${top}`;
+  eq((await as('sales', `select id from notifications where kind = 'chat_reply' and link = $1`, [link])).length, 2, 'author told twice');
+  eq((await as('admin', `select id from notifications where kind = 'chat_reply' and link = $1`, [link])).length, 1, 'earlier replier told');
+  eq((await as('designer', `select id from notifications where kind = 'chat_reply' and link = $1`, [link])).length, 0, 'not the writer');
+});
+await fails('a reply stays in the channel of its message', async () => {
+  const top = (await one('sales', `select chat_post($1, 'Тук') as id`, [gen])).id;
+  await as('sales', `select chat_post($1, 'Другаде', '{}', $2)`, [dm, top]);
+}, 'same channel');
+await fails('a reply has no replies of its own', async () => {
+  const top = (await one('sales', `select chat_post($1, 'Горе') as id`, [gen])).id;
+  const r = (await one('sales', `select chat_post($1, 'Долу', '{}', $2) as id`, [gen, top])).id;
+  await as('sales', `select chat_post($1, 'Още по-долу', '{}', $2)`, [gen, r]);
+}, 'same channel');
+await ok('anyone of the channel pins a message; outsiders do not', async () => {
+  const m = (await one('sales', `select chat_post($1, 'Важно') as id`, [gen])).id;
+  await as('designer', 'select chat_pin($1, true)', [m]);
+  eq((await as('admin', 'select pinned_at from chat_feed($1) where id = $2', [gen, m]))[0].pinned_at !== null, true, 'pinned');
+  await as('admin', 'select chat_pin($1, false)', [m]);
+  eq((await as('sales', 'select pinned_at from chat_feed($1) where id = $2', [gen, m]))[0].pinned_at, null, 'unpinned');
+});
+await fails('the partner does not pin in a team channel', async () => {
+  const m = (await one('sales', `select chat_post($1, 'Само за екипа') as id`, [gen])).id;
+  await as('production', 'select chat_pin($1, true)', [m]);
+}, 'not allowed');
 
 console.log('\nCatalogue of stock formulas');
 async function asAnon(sql, params = []) {

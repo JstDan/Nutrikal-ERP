@@ -133,6 +133,8 @@ export function AssistantPanel({ models, configured, locale, text, keepsNothing 
   // The full page is the assistant already
   if (pathname.startsWith("/assistant")) return null;
 
+  // The chat has its own send buttons at the foot: there the assistant opens with Ctrl+J or from the menu
+  if (!open && pathname.startsWith("/chat")) return null;
   if (!open) {
     return (
       <button ref={opener} type="button" onClick={show} aria-label={A.open} aria-keyshortcuts="Control+J"

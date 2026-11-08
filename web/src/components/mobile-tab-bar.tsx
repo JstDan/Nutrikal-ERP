@@ -72,7 +72,7 @@ export function MobileTabBar({ tabs, groups, moreLabel, closeLabel, navLabel }: 
           </div>
         </div>
       )}
-      <nav aria-label={navLabel}
+      <nav id="tab-bar" aria-label={navLabel}
         className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[#3a404b] bg-side pb-[env(safe-area-inset-bottom)] lg:hidden print:hidden">
         {tabs.slice(0, 4).map((t) => {
           const active = !open && current === t.href;

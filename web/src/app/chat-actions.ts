@@ -10,7 +10,13 @@ import type { ActionState } from "@/app/actions";
 import type { ChatMessage, ChatPerson } from "@/components/chat-room";
 
 // The chat is the one thing a read-only account writes: qChat, and the rules of the chat tables decide.
-const FEED = "select id, author_id, author, body, created_at::text, edited_at::text, attachments, reactions from chat_feed($1)";
+const COLS = "id, author_id, author, body, created_at::text, edited_at::text, attachments, reactions, parent_id, reply_count, last_reply_at::text, repliers, pinned_at::text";
+const FEED = `select ${COLS} from chat_feed($1)`;
+const THREAD = `select ${COLS} from chat_feed($1, $2)`;
+const uuid = (v: unknown) => (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
+/** When the person last read the channel (before opening it now): where the "New" line goes. */
+export const lastReadOf = async (userId: string, channel: string) =>
+  (await q<{ at: string | null }>(userId, "select read_at::text as at from chat_reads where channel_id = $1 and user_id = auth.uid()", [channel]))[0]?.at ?? null;
 const text = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
 
 /**
@@ -41,6 +47,21 @@ export async function markChatRead(channel: string): Promise<void> {
   await markRead(user.id, channel);
 }
 
+/** A thread: its message first, then the replies. Opening it reads its notifications. */
+export async function pollThread(channel: string, thread: string): Promise<ChatMessage[]> {
+  const { user } = await getSession();
+  if (!uuid(channel) || !uuid(thread)) return [];
+  const rows = await q<ChatMessage>(user.id, THREAD, [channel, thread]);
+  await qChat(user.id, "select mark_notifications_seen($1)", [`/chat?c=${channel}&t=${thread}`]);
+  return rows;
+}
+
+/** Pins a message to its channel for everyone, or takes the pin away. */
+export async function pinChatMessage(id: string, on: boolean) {
+  const { writerId } = await writer();
+  await qChat(writerId, "select chat_pin($1, $2)", [id, on]);
+}
+
 /** For the side panel: the channels and the people to write to. */
 export async function chatList() {
   const { user } = await getSession();
@@ -52,9 +73,10 @@ export async function chatList() {
 
 export async function chatRoomData(channel: string) {
   const { user } = await getSession();
+  const lastRead = await lastReadOf(user.id, channel);
   const messages = await q<ChatMessage>(user.id, FEED, [channel]);
   await markRead(user.id, channel);
-  return { messages, people: await q<ChatPerson>(user.id, "select id, full_name from chat_people($1)", [channel]) };
+  return { messages, lastRead, people: await q<ChatPerson>(user.id, "select id, full_name from chat_people($1)", [channel]) };
 }
 
 export async function chatUnread(): Promise<number> {
@@ -67,7 +89,7 @@ export async function openDirectChat(person: string): Promise<string> {
   return (await qChat<{ id: string }>(user.id, "select chat_open_direct($1) as id", [person]))[0].id;
 }
 
-/** A message with its files: fd has channel, body, mentions and files. */
+/** A message with its files: fd has channel, body, mentions, files and, for a reply, parent. */
 export async function sendChat(fd: FormData): Promise<{ error?: string }> {
   const { t, developer, writerId } = await writer();
   const channel = String(fd.get("channel") ?? "");
@@ -77,7 +99,7 @@ export async function sendChat(fd: FormData): Promise<{ error?: string }> {
   if (!body) return {};
   try {
     const mentions = (JSON.parse(String(fd.get("mentions") ?? "[]")) as string[]).filter((x) => /^[0-9a-f-]{36}$/i.test(x));
-    const [{ id }] = await qChat<{ id: string }>(writerId, "select chat_post($1, $2, $3::uuid[]) as id", [channel, body, mentions]);
+    const [{ id }] = await qChat<{ id: string }>(writerId, "select chat_post($1, $2, $3::uuid[], $4) as id", [channel, body, mentions, uuid(fd.get("parent"))]);
     for (const f of files) {
       const key = newTaskFilePath(channel, randomUUID(), f.name);
       await putFile(CHAT_BUCKET, key, Buffer.from(await f.arrayBuffer()), f.type || "application/octet-stream");

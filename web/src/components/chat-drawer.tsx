@@ -9,7 +9,7 @@ import type { Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 
 type Channel = { id: string; name: string; description: string | null; kind: "team" | "external" | "direct"; unread: string };
-type Room = { channel: Channel; messages: ChatMessage[]; people: ChatPerson[] };
+type Room = { channel: Channel; messages: ChatMessage[]; people: ChatPerson[]; lastRead: string | null };
 const BADGE_MS = 15000;
 
 /** The chat from anywhere: a button by the bell and a panel over the page. */
@@ -100,6 +100,7 @@ export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale
           {room ? (
             <div className="min-h-0 flex-1 pt-2">
               <ChatRoom key={room.channel.id} channel={room.channel.id} initial={room.messages} people={room.people} me={me} userId={userId} isAdmin={isAdmin} gifs={gifs}
+                name={room.channel.kind === "direct" ? room.channel.name : `# ${room.channel.name}`} lastRead={room.lastRead}
                 locale={locale} text={C} warning={room.channel.kind === "external" && !partner ? C.partnerWarning : null} />
             </div>
           ) : (
