@@ -21,3 +21,9 @@ export async function deletePushSubscription(endpoint: string): Promise<void> {
   const { user } = await getSession();
   await q(user.id, "select delete_push_subscription($1)", [endpoint]).catch(() => undefined);
 }
+
+/** The bell's number. */
+export async function notificationCount(): Promise<number> {
+  const { user } = await getSession();
+  return (await q<{ n: number }>(user.id, "select count(*)::int as n from notifications where read_at is null"))[0]?.n ?? 0;
+}

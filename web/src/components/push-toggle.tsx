@@ -10,6 +10,18 @@ const fromB64 = (s: string) => {
   return Uint8Array.from(b, (c) => c.charCodeAt(0));
 };
 
+/** Asks for notifications and registers this device for them; "denied"/"off" when the person said no. */
+export async function subscribePush(publicKey: string): Promise<"on" | "off" | "denied" | { error: string }> {
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") return permission === "denied" ? "denied" : "off";
+  const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(() => navigator.serviceWorker.ready);
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromB64(publicKey) });
+  const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+  const r = await savePushSubscription(json, navigator.userAgent);
+  if (r.error) { await sub.unsubscribe(); return { error: r.error }; }
+  return "on";
+}
+
 /** Notifications on this device (Web Push) and installing the app; on iPhone the app has to be on the home screen first. */
 export function PushToggle({ publicKey, T }: { publicKey: string | null; T: Dict["push"] }) {
   const [state, setState] = useState<"loading" | "unsupported" | "denied" | "off" | "on">("loading");
@@ -36,14 +48,9 @@ export function PushToggle({ publicKey, T }: { publicKey: string | null; T: Dict
     setError(null);
     if (!publicKey) return setError(T.notConfigured);
     try {
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") return setState(permission === "denied" ? "denied" : "off");
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromB64(publicKey) });
-      const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-      const r = await savePushSubscription(json, navigator.userAgent);
-      if (r.error) { setError(r.error); await sub.unsubscribe(); return; }
-      setState("on");
+      const r = await subscribePush(publicKey);
+      if (typeof r === "object") return setError(r.error);
+      setState(r);
     } catch {
       // The browser has no push service here (or refused it): said plainly, the page stays
       setError(ios ? T.ios : T.unsupported);

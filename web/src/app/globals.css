@@ -3,7 +3,7 @@
 /* Nutrikal design tokens — taken from nutrikal.com (19 Oct 2026) */
 @theme {
   /* Poppins has no Cyrillic: Bulgarian letters fall through to Montserrat */
-  --font-sans: "Poppins", "Montserrat", "Noto Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--nk-poppins), var(--nk-montserrat), var(--nk-noto), ui-sans-serif, system-ui, sans-serif;
 
   --color-ink: #222831;          /* text, primary buttons, sidebar */
   --color-ink-2: #4a5160;        /* secondary text (7:1 on white) */
@@ -114,7 +114,7 @@ body {
 
 /* The signed-in app is a tool read all day: Inter (plain Cyrillic), 14px, numbers in even columns,
    sentence case. The open catalog keeps the nutrikal.com look below. */
-.app-ui { font-family: "Inter", "Noto Sans", ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.45; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.app-ui { font-family: var(--nk-inter), var(--nk-noto), ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.45; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .app-ui .btn { padding: 6px 14px; border-radius: 4px; font-size: 13px; letter-spacing: 0; text-transform: none; }
 .app-ui .label, .app-ui .uppercase { letter-spacing: 0; text-transform: none; }
 .app-ui [class*="tracking-"] { letter-spacing: 0; }
@@ -407,3 +407,13 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
 .nutri-capsule { animation: capsule-nudge 8s ease-in-out 3s infinite; }
 .nutri-capsule:hover { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .nutri-capsule { animation: none; } }
+
+/* A faster-feeling phone app (owner, Nov 2026): the outline of a page while it loads, no grey flash on a tap,
+   a short press feedback, and lists that scroll without dragging the whole page */
+@keyframes nk-skel { 0% { opacity: 0.55; } 50% { opacity: 1; } 100% { opacity: 0.55; } }
+.nk-skel { animation: nk-skel 1.2s ease-in-out infinite; }
+.app-ui { -webkit-tap-highlight-color: transparent; }
+@media (pointer: coarse) {
+  .app-ui a:active, .app-ui button:active, .app-ui summary:active { opacity: 0.7; }
+}
+@media (prefers-reduced-motion: reduce) { .nk-skel { animation: none; } }

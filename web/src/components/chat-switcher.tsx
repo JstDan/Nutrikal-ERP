@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { openDirectChat } from "@/app/chat-actions";
 import { Avatar } from "@/components/chat-room";
+import { PresenceDot } from "@/components/live";
 
 type Target = { kind: "channel" | "direct" | "person"; id: string; name: string; personId?: string };
 
@@ -59,7 +60,7 @@ export function ChatSwitcher({ targets, label, hint, placeholder }: { targets: T
                   className={`flex min-h-11 items-center gap-3 px-4 text-left text-sm ${n === active ? "bg-[#1264a3] text-white" : ""}`}>
                   {t.kind === "channel"
                     ? <span aria-hidden="true" className="grid w-6 place-items-center text-base font-bold opacity-70">#</span>
-                    : <span className="overflow-hidden rounded-md"><Avatar name={t.name} id={t.personId ?? t.id} photo={!!t.personId} size={24} /></span>}
+                    : <span className="relative"><span className="block overflow-hidden rounded-md"><Avatar name={t.name} id={t.personId ?? t.id} photo={!!t.personId} size={24} /></span><PresenceDot id={t.personId} ring={n === active ? "border-[#1264a3]" : "border-paper"} /></span>}
                   <span className="min-w-0 flex-1 truncate">{t.name}</span>
                 </button>
               ))}

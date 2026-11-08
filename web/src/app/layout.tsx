@@ -5,6 +5,14 @@ import { AppShell } from "@/components/app-shell";
 import { PwaRegister } from "@/components/pwa-register";
 import { CATALOG_THEME_COOKIE, THEME_COOKIE } from "@/lib/theme";
 import { cookies, headers } from "next/headers";
+import { Inter, Montserrat, Noto_Sans, Poppins } from "next/font/google";
+
+// The fonts come from the app itself (owner, Nov 2026: a faster phone app): no trip to Google before a page shows,
+// and the phone keeps them. Inter for the signed-in app; Poppins (Montserrat for Cyrillic, Noto Sans for Greek) for the open catalogue.
+const inter = Inter({ subsets: ["latin", "latin-ext", "cyrillic"], variable: "--nk-inter", display: "swap" });
+const poppins = Poppins({ subsets: ["latin", "latin-ext"], weight: ["400", "500", "600", "700", "800"], variable: "--nk-poppins", display: "swap", preload: false });
+const montserrat = Montserrat({ subsets: ["latin", "latin-ext", "cyrillic"], variable: "--nk-montserrat", display: "swap", preload: false });
+const noto = Noto_Sans({ subsets: ["latin", "latin-ext", "cyrillic", "greek"], variable: "--nk-noto", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   title: "Nutrikal ERP",
@@ -15,7 +23,8 @@ export const metadata: Metadata = {
 };
 
 // cover: the bar at the foot keeps clear of the iPhone home line itself (env(safe-area-inset-bottom))
-export const viewport: Viewport = { themeColor: "#222831", viewportFit: "cover" };
+// resizes-content: the phone's keyboard makes the page shorter, so the chat's box and buttons stay above it
+export const viewport: Viewport = { themeColor: "#222831", viewportFit: "cover", interactiveWidget: "resizes-content" };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // The open catalogue has no menu and no user, also for someone signed in
@@ -29,16 +38,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const theme = open ? (jar.get(CATALOG_THEME_COOKIE)?.value === "dark" ? "dark" : "light") : saved === "dark" || saved === "light" ? saved : undefined;
   return (
     // Browser extensions add attributes to <html> before React loads; ignore those (this element only)
-    <html lang={locale} data-theme={theme} suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700;800&family=Noto+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
-        />
-      </head>
+    <html lang={locale} data-theme={theme} suppressHydrationWarning className={`${inter.variable} ${poppins.variable} ${montserrat.variable} ${noto.variable}`}>
       <body>
         {!open && <PwaRegister />}
         {session && session.user.role !== "client" ? <AppShell>{children}</AppShell> : children}

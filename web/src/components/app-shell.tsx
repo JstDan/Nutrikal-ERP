@@ -16,6 +16,10 @@ import { NotificationsSeen } from "./notifications-seen";
 import { AssistantPanel } from "./assistant-panel";
 import { ChatDrawer } from "./chat-drawer";
 import { aiConfigured, aiModels } from "@/lib/ai/gateway";
+import { LiveProvider } from "./live";
+import { PushPrompt } from "./push-prompt";
+import { PullRefresh } from "./pull-refresh";
+import { supabaseConfigured } from "@/lib/supabase/server";
 
 export async function AppShell({ children }: { children: ReactNode }) {
   const { user, developer, screen, locale, t, local } = await getSession();
@@ -102,11 +106,17 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   // On a phone the main sections sit in a bar at the foot; the rest behind More (owner, Nov 2026)
   const all = shown.flatMap((g) => g.items);
-  const tabs: TabItem[] = (isProduction ? ["/factory", "/factory/calendar", "/factory/orders", "/factory/stock"] : ["/", "/clients", "/orders", "/my-tasks"])
+  const tabs: TabItem[] = (isProduction ? ["/factory", "/factory/calendar", "/factory/orders", "/factory/stock"] : ["/", "/clients", "/orders", "/chat", "/my-tasks"])
     .map((h) => all.find((i) => i.href === h)).filter((i): i is NonNullable<typeof i> => !!i)
-    .map((i) => ({ href: i.href!, label: i.label, badge: i.badge }));
+    // The chat's tab has a short name
+    .map((i) => ({ href: i.href!, label: i.href === "/chat" ? t.chat.tab : i.label, badge: i.badge }));
+  const live = supabaseConfigured()
+    ? { url: process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(), key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim() } : null;
 
   return (
+    // The live connection: messages, typing, who is online, huddles. Pings come for the account really signed in.
+    <LiveProvider config={live} userId={developer?.id ?? user.id} authId={developer?.id ?? screen?.adminId ?? user.id} name={developer?.name ?? user.name}>
+    <PullRefresh label={t.common.loading} />
     <div data-readonly={user.readOnly || undefined} className="app-ui has-tabbar flex min-h-screen flex-wrap pb-[var(--tabbar)]">
       <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3 text-side-strong lg:sticky lg:top-0 lg:h-screen lg:w-[232px] lg:shrink-0 lg:gap-3 lg:overflow-y-auto lg:py-4 lg:[scrollbar-width:none]">
         <a href={isProduction ? "/factory" : "/"} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-2 lg:flex-col lg:items-start text-side-strong no-underline">
@@ -178,6 +188,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
         )}
         <main className="w-full max-w-[1360px] px-4 py-6 sm:px-8 sm:py-8">
           {user.readOnly && <p className="m-0 mb-4 text-sm font-semibold text-ink-2 print:hidden">{t.common.readOnlyNote}</p>}
+          {!screen && !developer && <PushPrompt publicKey={process.env.VAPID_PUBLIC_KEY?.trim() || null} T={t.push} />}
           {children}
         </main>
       </div>
@@ -185,5 +196,6 @@ export async function AppShell({ children }: { children: ReactNode }) {
         <AssistantPanel models={aiModels()} configured={aiConfigured()} locale={locale} text={t.assistant} keepsNothing={user.readOnly} />
       )}
     </div>
+    </LiveProvider>
   );
 }

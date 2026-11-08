@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { SideNav, type NavGroup } from "./side-nav";
+import { chatUnread } from "@/app/chat-actions";
+import { onPing } from "./live";
 
 /** The main sections on a phone: a bar at the foot, always in reach of the thumb (below 1024px). */
 export type TabItem = { href: string; label: string; badge?: number };
@@ -16,6 +18,7 @@ const ICON: Record<string, string> = {
   "/factory/orders": "M6 2h9l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM14 2v6h6M8 13h8M8 17h6",
   "/my-tasks": "M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9",
   "/factory/calendar": "M4 5h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM3 10h18M8 3v4M16 3v4",
+  "/chat": "M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5.4A8 8 0 1 1 21 12z",
   "/factory/stock": "M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",
 };
 const MORE = "M4 6h16M4 12h16M4 18h16";
@@ -39,6 +42,11 @@ export function MobileTabBar({ tabs, groups, moreLabel, closeLabel, navLabel }: 
   const path = usePathname();
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [path]);
+  // The chat's count follows new messages at once (the live connection), not only the next page
+  const firstChat = tabs.find((t) => t.href === "/chat")?.badge ?? 0;
+  const [chat, setChat] = useState(firstChat);
+  useEffect(() => setChat(firstChat), [firstChat]);
+  useEffect(() => onPing((event) => { if (event === "chat") chatUnread().then(setChat).catch(() => {}); }), []);
   useEffect(() => {
     if (!open) return;
     const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
@@ -73,8 +81,9 @@ export function MobileTabBar({ tabs, groups, moreLabel, closeLabel, navLabel }: 
         </div>
       )}
       <nav id="tab-bar" aria-label={navLabel}
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[#3a404b] bg-side pb-[env(safe-area-inset-bottom)] lg:hidden print:hidden">
-        {tabs.slice(0, 4).map((t) => {
+        style={{ gridTemplateColumns: `repeat(${Math.min(tabs.length, 5) + 1}, minmax(0, 1fr))` }}
+        className="fixed inset-x-0 bottom-0 z-30 grid border-t border-[#3a404b] bg-side pb-[env(safe-area-inset-bottom)] lg:hidden print:hidden">
+        {tabs.slice(0, 5).map((t) => {
           const active = !open && current === t.href;
           return (
             <Link key={t.href} href={t.href} aria-current={active ? "page" : undefined}
@@ -82,7 +91,7 @@ export function MobileTabBar({ tabs, groups, moreLabel, closeLabel, navLabel }: 
               <span className={`relative grid h-7 w-12 place-items-center rounded-full ${active ? "bg-ink-3 text-green" : ""}`}>
                 <Icon d={ICON[t.href] ?? MORE} />
               </span>
-              <Badge n={t.badge} />
+              <Badge n={t.href === "/chat" ? chat : t.badge} />
               <span className="w-full break-words">{t.label}</span>
             </Link>
           );

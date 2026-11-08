@@ -4396,5 +4396,77 @@ await ok('the same device signed in by another user goes to them; a gone device 
 await fails('users cannot run the push job', () => as('admin', 'select * from push_jobs()'), 'permission denied');
 await fails('a subscription needs an https address', () => as('sales', 'select save_push_subscription($1, $2, $3, $4)', ['http://x', pushKey, 'authsecret123456', '']), 'check');
 
+// ----- The chat, live (owner, Nov 2026): saved items, notification settings, pushes, Realtime topics, huddles
+console.log('\nChat: live, saved items, notifications');
+await ok("a saved message is on its saver's list only", async () => {
+  const m = (await one('sales', "select chat_post($1, 'Запази ме') as id", [gen])).id;
+  await as('sales', 'select chat_save($1, true)', [m]);
+  await as('sales', 'select chat_save($1, true)', [m]);
+  const mine = await as('sales', 'select id, channel from chat_saved_list() where id = $1', [m]);
+  eq(mine.length, 1, 'saved once'); eq(mine[0].channel, 'общи', 'with its channel');
+  eq((await as('designer', 'select 1 from chat_saved_list() where id = $1', [m])).length, 0, 'not of others');
+  eq((await as('designer', 'select 1 from chat_saved where message_id = $1', [m])).length, 0, 'table: not of others');
+  await as('sales', 'select chat_save($1, false)', [m]);
+  eq((await as('sales', 'select 1 from chat_saved_list() where id = $1', [m])).length, 0, 'taken off');
+});
+await fails('the partner cannot save a message of a team channel', async () => {
+  const m = (await one('sales', "select chat_post($1, 'Само екип') as id", [gen])).id;
+  await as('production', 'select chat_save($1, true)', [m]);
+}, 'row-level security');
+await ok('a direct message notifies the other person by default, with its words', async () => {
+  await as('sales', "select chat_post($1, 'Здравей, виж поръчката')", [dm]);
+  const n = await as('designer', "select params from notifications where kind = 'chat_message' and link = $1 order by id desc limit 1", ['/chat?c=' + dm]);
+  eq(n.length, 1, 'told'); eq(n[0].params.text, 'Здравей, виж поръчката', 'words');
+  eq((await as('sales', "select 1 from notifications where kind = 'chat_message' and link = $1", ['/chat?c=' + dm])).length, 0, 'not the writer');
+});
+await ok('a channel tells only of mentions, unless one chose all messages; nothing silences it', async () => {
+  const link = '/chat?c=' + gen;
+  const count = async (u, kind) => Number((await one(u, 'select count(*) as n from notifications where kind = $1 and link like $2', [kind, link + '%'])).n);
+  const d0 = await count('designer', 'chat_message'), a0 = await count('admin', 'chat_message');
+  eq((await one('designer', 'select chat_my_notify($1) as n', [gen])).n, 'mentions', 'default');
+  await as('designer', "select chat_set_notify($1, 'all')", [gen]);
+  await as('sales', "select chat_post($1, 'До всички')", [gen]);
+  eq(await count('designer', 'chat_message'), d0 + 1, 'all: told'); eq(await count('admin', 'chat_message'), a0, 'mentions: not told');
+  await as('designer', "select chat_set_notify($1, 'none')", [gen]);
+  const m0 = await count('designer', 'chat_mention');
+  await as('sales', "select chat_post($1, '@Test designer виж', $2::uuid[])", [gen, [U.designer]]);
+  eq(await count('designer', 'chat_mention'), m0, 'none: not even a mention');
+  await as('designer', "select chat_set_notify($1, 'mentions')", [gen]);
+});
+await fails('a setting cannot be for a channel one does not see', () => as('production', "select chat_set_notify($1, 'all')", [gen]), 'row-level security');
+await ok('the Realtime topics: the channels one may read, one own pings, presence for the team', async () => {
+  const okFor = async (u, t) => (await one(u, 'select chat_topic_ok($1) as ok', [t])).ok;
+  eq(await okFor('sales', 'chat:' + gen), true, 'team channel');
+  eq(await okFor('production', 'chat:' + gen), false, 'partner: not a team channel');
+  eq(await okFor('admin', 'chat:' + dm), false, 'not the direct messages of others');
+  eq(await okFor('designer', 'chat:' + dm), true, 'own direct messages');
+  eq(await okFor('sales', 'user:' + U.sales), true, 'own pings');
+  eq(await okFor('sales', 'user:' + U.admin), false, 'not the pings of another');
+  eq(await okFor('sales', 'chat-presence'), true, 'presence');
+  eq(await okFor('clientA', 'chat-presence'), false, 'client: no presence');
+  eq(await okFor('clientA', 'user:' + U.clientA), false, 'client: nothing');
+  eq(await okFor('sales', 'chat:not-a-uuid'), false, 'nonsense');
+});
+await ok('a huddle in a direct conversation rings the other person once; a channel huddle rings nobody', async () => {
+  await as('sales', 'select chat_huddle_ring($1)', [dm]);
+  await as('sales', 'select chat_huddle_ring($1)', [dm]);
+  eq((await as('designer', "select 1 from notifications where kind = 'chat_huddle' and link like $1", ['/chat?c=' + dm + '%'])).length, 1, 'rung once');
+  const n0 = Number((await one('admin', "select count(*) as n from notifications where kind = 'chat_huddle'")).n);
+  await as('sales', 'select chat_huddle_ring($1)', [gen]);
+  eq(Number((await one('admin', "select count(*) as n from notifications where kind = 'chat_huddle'")).n), n0, 'channel: nobody');
+});
+await fails('no ringing in a conversation one is not part of', () => as('admin', 'select chat_huddle_ring($1)', [dm]), 'not allowed');
+await ok('a push is claimed once: the minute job and the push after a message never send it twice', async () => {
+  await as('admin', 'select save_push_subscription($1, $2, $3, $4)', ['https://push.example/claim', pushKey, 'authsecret123456', 'Phone']);
+  await db.exec('reset role');
+  await db.query(`insert into notifications (user_id, kind, link, params) values ($1, 'chat_message', '/chat?c=claim', '{"by":"X","channel":"","text":"hi"}')`, [U.admin]);
+  eq((await db.query("select * from push_claim('1 hour')")).rows.filter((j) => j.link === '/chat?c=claim').length, 0, 'too new for the minimum age');
+  const first = (await db.query("select * from push_claim('0 seconds')")).rows.filter((j) => j.link === '/chat?c=claim');
+  eq(first.length, 1, 'claimed'); eq(first[0].endpoint, 'https://push.example/claim', 'to the device');
+  eq((await db.query("select * from push_claim('0 seconds')")).rows.filter((j) => j.link === '/chat?c=claim').length, 0, 'not again');
+});
+await fails('users cannot claim pushes', () => as('admin', "select * from push_claim('0 seconds')"), 'permission denied');
+await fails('users cannot send Realtime pings themselves', () => as('admin', "select nk_live('user:x', 'chat', '{}')"), 'permission denied');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

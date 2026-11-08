@@ -84,7 +84,7 @@ export function pushConfigured(): boolean {
 }
 
 /** Sends one message; returns the status (201 sent; 404/410 the subscription is gone). */
-export async function sendPush(target: PushTarget, message: { title: string; body: string; link: string; tag?: string }): Promise<number> {
+export async function sendPush(target: PushTarget, message: { title: string; body: string; link: string; tag?: string; urgent?: boolean }): Promise<number> {
   const pub = process.env.VAPID_PUBLIC_KEY!.trim();
   const priv = process.env.VAPID_PRIVATE_KEY!.trim();
   const subject = process.env.VAPID_SUBJECT?.trim() || "mailto:sales@nutrikal.com";
@@ -96,7 +96,8 @@ export async function sendPush(target: PushTarget, message: { title: string; bod
       "Content-Encoding": "aes128gcm",
       "Content-Type": "application/octet-stream",
       TTL: "86400",
-      Urgency: "normal",
+      // Chat messages and huddles reach a sleeping phone at once
+      Urgency: message.urgent ? "high" : "normal",
     },
     body: buf(body),
   });

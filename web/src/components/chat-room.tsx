@@ -2,7 +2,9 @@
 
 import { Fragment, useEffect, useRef, useState, useTransition, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { useRouter } from "next/navigation";
-import { deleteChatMessage, editChatMessage, markChatRead, pinChatMessage, pollChat, pollThread, searchGifs, sendChat, toggleReaction, type Gif } from "@/app/chat-actions";
+import { deleteChatMessage, editChatMessage, markChatRead, pinChatMessage, pollChat, pollThread, saveChatMessage, searchGifs, sendChat, setChatNotify, toggleReaction, type Gif } from "@/app/chat-actions";
+import { useLive, type Topic } from "@/components/live";
+import { Huddle } from "@/components/huddle";
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import { UserAvatar } from "@/components/user-avatar";
@@ -12,11 +14,16 @@ export type ChatReaction = { emoji: string; n: number; mine: boolean };
 export type ChatMessage = {
   id: string; author_id: string; author: string; body: string; created_at: string; edited_at: string | null;
   attachments: ChatAttachment[]; reactions: ChatReaction[];
-  parent_id: string | null; reply_count: number; last_reply_at: string | null; repliers: string[] | null; pinned_at: string | null;
+  parent_id: string | null; reply_count: number; last_reply_at: string | null; repliers: string[] | null; pinned_at: string | null; saved?: boolean;
 };
 export type ChatPerson = { id: string; full_name: string };
 
 const POLL_MS = 3000;
+/** With the live connection the messages come at once; a slow poll stays as a safety net. */
+const LIVE_POLL_MS = 30000;
+/** Typing is told at most every few seconds, and shown a little longer. */
+const TYPING_SEND_MS = 2500;
+const TYPING_SHOW_MS = 5000;
 /** Nutrikal's own emoji first: public/emoji/<code>.svg, written :code: in a message. */
 const BRAND = ["capsule", "jar", "leaf", "flask", "coa", "pallet", "mg", "nutrikal"];
 const EMOJI = ["👍", "❤️", "😂", "🎉", "🔥", "🙏", "👀", "✅", "🚀", "💪", "😅", "🤔"];
@@ -161,6 +168,8 @@ const ICONS = {
   pin: "M9 4h6l-1 6 4 4H6l4-4zM12 14v7",
   edit: "M4 20h4L19 9l-4-4L4 16zM14 6l4 4",
   trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+  save: "M6 4h12v17l-6-4-6 4z",
+  bell: "M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0",
 };
 function Ico({ d, size = 18 }: { d: string; size?: number }) {
   return <svg aria-hidden="true" viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
@@ -169,9 +178,11 @@ function Ico({ d, size = 18 }: { d: string; size?: number }) {
 // ------------------------------------------------------------------ the composer
 type Draft = { body: string; files: File[]; mentions: ChatPerson[] };
 
-function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif, onEditLast, autoFocus }: {
+function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif, onEditLast, autoFocus, onTyping, typing }: {
   id: string; placeholder: string; people: ChatPerson[]; C: Dict["chat"]; gifs: boolean; pending: boolean;
   onSend: (d: Draft) => Promise<boolean>; onSendGif: (g: Gif) => void; onEditLast?: () => void; autoFocus?: boolean;
+  onTyping?: () => void;      // this person is typing: told to the others
+  typing?: string | null;     // "Maria is typing…"
 }) {
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -253,7 +264,7 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
   const tool = "grid h-9 min-w-9 shrink-0 place-items-center rounded-md px-1 text-sm text-ink-2 hover:bg-mist hover:text-ink";
 
   return (
-    <div className="@container/composer relative px-4 pt-1 pb-3">
+    <div className="@container/composer relative px-4 pt-1 pb-1">
       {options.length > 0 && (
         <div role="listbox" aria-label={C.mention} className="absolute right-4 bottom-full left-4 z-20 mb-1 flex flex-col overflow-hidden rounded-xl border border-line bg-paper py-1 shadow-xl">
           {options.map((p, n) => (
@@ -285,7 +296,7 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
           <button type="button" className={`${tool} font-mono text-xs`} aria-label={C.code} title={C.code} onClick={() => (box.current && box.current.selectionStart !== box.current.selectionEnd && draft.slice(box.current.selectionStart, box.current.selectionEnd).includes("\n") ? wrap("```\n", "\n```") : wrap("`"))}>{"</>"}</button>
         </div>
         <label htmlFor={id} className="sr-only">{placeholder}</label>
-        <textarea id={id} data-chat-input ref={box} rows={1} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey}
+        <textarea id={id} data-chat-input ref={box} rows={1} value={draft} onChange={(e) => { setDraft(e.target.value); if (e.target.value.trim()) onTyping?.(); }} onKeyDown={onKey}
           placeholder={placeholder} className="max-h-48 min-h-11 min-w-0 resize-none border-0 bg-transparent px-3 py-2.5 text-[15px] text-ink outline-none" />
         {files.length > 0 && (
           <div className="flex flex-wrap gap-2 px-3 pb-2">
@@ -312,15 +323,16 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
           </button>
         </div>
       </form>
+      <p aria-live="polite" className="m-0 h-4 truncate px-1 pt-0.5 text-[11px] text-ink-2">{typing ?? ""}</p>
     </div>
   );
 }
 
 // ------------------------------------------------------------------ one message
-function Message({ m, grouped, names, own, isAdmin, C, locale, inThread, editing, onEdit, onSaveEdit, onReact, onDelete, onPin, onThread, fresh }: {
+function Message({ m, grouped, names, own, isAdmin, C, locale, inThread, editing, onEdit, onSaveEdit, onReact, onDelete, onPin, onSave, onThread, fresh }: {
   m: ChatMessage; grouped: boolean; names: string[]; own: boolean; isAdmin: boolean; C: Dict["chat"]; locale: Locale; inThread: boolean;
   editing: boolean; onEdit: (on: boolean) => void; onSaveEdit: (body: string) => void; onReact: (code: string) => void; onDelete: () => void;
-  onPin: () => void; onThread: () => void; fresh: boolean;
+  onPin: () => void; onSave: () => void; onThread: () => void; fresh: boolean;
 }) {
   const [picker, setPicker] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -341,7 +353,12 @@ function Message({ m, grouped, names, own, isAdmin, C, locale, inThread, editing
           : <span className="block overflow-hidden rounded-md"><Avatar name={m.author} id={m.author_id} size={36} /></span>}
       </div>
       <div className="min-w-0 flex-1">
-        {m.pinned_at && !inThread && <div className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold text-[#b07b00]"><Ico d={ICONS.pin} size={12} />{C.pinned}</div>}
+        {(m.pinned_at && !inThread || m.saved) && (
+          <div className="mb-0.5 flex flex-wrap items-center gap-x-3 text-[11px] font-semibold">
+            {m.pinned_at && !inThread && <span className="flex items-center gap-1 text-[#b07b00]"><Ico d={ICONS.pin} size={12} />{C.pinned}</span>}
+            {m.saved && <span className="flex items-center gap-1 text-[#e01e5a]"><Ico d={ICONS.save} size={12} />{C.savedLabel}</span>}
+          </div>
+        )}
         {!grouped && (
           <div className="flex flex-wrap items-baseline gap-x-2">
             <span className="text-[15px] font-bold text-ink">{m.author}</span>
@@ -418,6 +435,7 @@ function Message({ m, grouped, names, own, isAdmin, C, locale, inThread, editing
           <button type="button" aria-label={C.react} title={C.react} onClick={() => setPicker(!picker)} className={btn}><Ico d={ICONS.react} /></button>
           {!inThread && <button type="button" aria-label={C.reply} title={C.reply} onClick={onThread} className={btn}><Ico d={ICONS.reply} /></button>}
           {!inThread && <button type="button" aria-label={m.pinned_at ? C.unpin : C.pin} title={m.pinned_at ? C.unpin : C.pin} aria-pressed={!!m.pinned_at} onClick={onPin} className={`${btn} ${m.pinned_at ? "text-[#b07b00]" : ""}`}><Ico d={ICONS.pin} /></button>}
+          <button type="button" aria-label={m.saved ? C.unsave : C.saveLater} title={m.saved ? C.unsave : C.saveLater} aria-pressed={!!m.saved} onClick={onSave} className={`${btn} ${m.saved ? "text-[#e01e5a]" : ""}`}><Ico d={ICONS.save} /></button>
           {own && !GIF.test(m.body) && <button type="button" aria-label={C.edit} title={C.edit} onClick={() => onEdit(true)} className={btn}><Ico d={ICONS.edit} /></button>}
           {(own || isAdmin) && <button type="button" aria-label={C.delete} title={C.delete} onClick={() => { if (window.confirm(C.deleteConfirm)) onDelete(); }} className={`${btn} hover:text-red-ink`}><Ico d={ICONS.trash} /></button>}
         </div>
@@ -438,7 +456,7 @@ function Feed({ messages, userId, names, isAdmin, C, locale, inThread, lastRead,
   // The "New" line: before the first message of someone else written after the channel was last read
   const firstNew = lastRead ? messages.find((m) => m.author_id !== userId && m.created_at > lastRead)?.id : undefined;
   return (
-    <div ref={scroller} onScroll={onScroll} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto pt-3 pb-2">
+    <div ref={scroller} onScroll={onScroll} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain pt-3 pb-2">
       {head}
       {messages.length === 0 && <div className="my-auto px-4 text-center text-sm text-ink-2">{empty}</div>}
       {messages.map((m, i) => {
@@ -467,7 +485,7 @@ function Feed({ messages, userId, names, isAdmin, C, locale, inThread, lastRead,
               fresh={!firstIds.has(m.id)} editing={editingId === m.id} onEdit={(on) => setEditing(on ? m.id : null)}
               onSaveEdit={(body) => { setEditing(null); if (body.trim() && body.trim() !== m.body) act(() => editChatMessage(m.id, body)); }}
               onReact={(code) => act(() => toggleReaction(m.id, BRAND.includes(code) ? `:${code}:` : code))}
-              onDelete={() => act(() => deleteChatMessage(m.id))} onPin={() => act(() => pinChatMessage(m.id, !m.pinned_at))} onThread={() => onThread(m)} />
+              onDelete={() => act(() => deleteChatMessage(m.id))} onPin={() => act(() => pinChatMessage(m.id, !m.pinned_at))} onSave={() => act(() => saveChatMessage(m.id, !m.saved))} onThread={() => onThread(m)} />
             {inThread && i === 0 && messages.length > 1 && (
               <div className="relative my-2 flex items-center gap-3 px-4 text-xs text-ink-2" role="separator">
                 <span className="shrink-0">{messages.length - 1 === 1 ? C.oneReply : fmt(C.replies, { n: messages.length - 1 })}</span>
@@ -506,12 +524,15 @@ function useFollow(count: number) {
  * One channel, in a page or in the side panel: it fills the height it gets. Enter sends, Shift+Enter starts a new line,
  * @ mentions a person, ↑ edits one's last message. Replies go in a thread beside the channel (owner, Nov 2026: like Slack).
  */
-export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale, text, warning, gifs = false, name, lastRead = null, thread: openThread = null }: {
+export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale, text, warning, gifs = false, name, lastRead = null, thread: openThread = null, kind = "team", notify: firstNotify = null, huddle: huddleOffer = false }: {
   channel: string; initial: ChatMessage[]; people: ChatPerson[]; me: string; userId: string; isAdmin: boolean; locale: Locale; text: Dict["chat"]; warning?: string | null;
   gifs?: boolean;                           // GIF search is set up (GIPHY_API_KEY)
   name?: string;                            // "# general" or a person: the composer says whom it writes to
   lastRead?: string | null;                 // when the channel was read before it was opened: the "New" line
   thread?: string | null;                   // a thread to open at once (a notification or a search hit)
+  kind?: "team" | "external" | "direct";
+  notify?: string | null;                   // one's notifications for this channel: all, mentions, none
+  huddle?: boolean;                         // opened from a huddle call: Join is shown big
 }) {
   const C = text;
   const [messages, setMessages] = useState(initial);
@@ -527,6 +548,13 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
   const main = useFollow(messages.length);
   const side = useFollow(replies?.length ?? 0);
   const router = useRouter();
+  const live = useLive();
+  const [topic, setTopic] = useState<Topic | null>(null);
+  const [typing, setTyping] = useState<Map<string, { name: string; thread: string | null; at: number }>>(new Map());
+  const [notify, setNotify] = useState(firstNotify);
+  const [notifyMenu, setNotifyMenu] = useState(false);
+  const lastTyping = useRef(0);
+  const refreshRef = useRef<() => Promise<void>>(async () => {});
 
   // New messages are read here: the menu, the channel list and the bell are drawn again without them
   const refresh = async () => {
@@ -542,10 +570,53 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
     markChatRead(channel).then(() => { if (live) router.refresh(); }).catch(() => {});
     return () => { live = false; };
   }, [channel, router]);
+  refreshRef.current = refresh;
   useEffect(() => {
-    const t = setInterval(() => { if (!document.hidden && !pending) refresh().catch(() => {}); }, POLL_MS);
+    const t = setInterval(() => { if (!document.hidden && !pending) refresh().catch(() => {}); }, live?.realtime ? LIVE_POLL_MS : POLL_MS);
     return () => clearInterval(t);
   });
+  // The live topic of the channel: a change brings the messages at once; who is typing; the huddle
+  // (join and session never change; the rest of the live value does, with every status of someone)
+  const liveJoin = live?.join, liveSession = live?.session;
+  useEffect(() => {
+    if (!liveJoin) return;
+    const t = liveJoin(`chat:${channel}`);
+    setTopic(t);
+    let timer = 0;
+    const off = t.on((event, p) => {
+      if (event === "change") {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => { refreshRef.current().catch(() => {}); }, 120);
+      } else if (event === "typing" && p.session !== liveSession) {
+        setTyping((old) => new Map(old).set(String(p.session), { name: String(p.name ?? ""), thread: (p.thread as string) ?? null, at: Date.now() }));
+      } else if (event === "stop-typing") {
+        setTyping((old) => { const n = new Map(old); n.delete(String(p.session)); return n; });
+      }
+    });
+    return () => { window.clearTimeout(timer); off(); t.release(); setTopic(null); };
+  }, [liveJoin, liveSession, channel]);
+  // Typing fades after a few seconds without a new sign
+  useEffect(() => {
+    if (!typing.size) return;
+    const t = window.setTimeout(() => setTyping((old) => {
+      const n = new Map([...old].filter(([, v]) => Date.now() - v.at < TYPING_SHOW_MS));
+      return n.size === old.size ? old : n;
+    }), 1000);
+    return () => window.clearTimeout(t);
+  }, [typing]);
+  const sayTyping = (where: string | null) => () => {
+    if (!topic || !live || Date.now() - lastTyping.current < TYPING_SEND_MS) return;
+    lastTyping.current = Date.now();
+    topic.send("typing", { session: live.session, name: me, thread: where });
+  };
+  const typingText = (where: string | null) => {
+    const who = [...new Set([...typing.values()].filter((v) => v.thread === where && Date.now() - v.at < TYPING_SHOW_MS).map((v) => v.name))];
+    if (!who.length) return null;
+    if (who.length === 1) return fmt(C.typingOne, { name: who[0] });
+    if (who.length === 2) return fmt(C.typingTwo, { a: who[0], b: who[1] });
+    return C.typingMany;
+  };
+  const chooseNotify = (level: string) => { setNotify(level); setNotifyMenu(false); start(async () => { await setChatNotify(channel, level); }); };
   // A thread opened: its messages, and its notifications are read
   useEffect(() => {
     if (!thread) { setReplies(null); return; }
@@ -573,7 +644,11 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
     (parent ? side : main).atEnd.current = true;
     start(async () => {
       const r = await sendChat(fd).catch(() => ({ error: C.failed }));
-      if (r.error) { setError(r.error); resolve(false); } else { await refresh(); resolve(true); }
+      if (r.error) { setError(r.error); resolve(false); } else {
+        if (topic && live) topic.send("stop-typing", { session: live.session });
+        lastTyping.current = 0;
+        await refresh(); resolve(true);
+      }
     });
   });
   const gif = (g: Gif, parent: string | null) => post({ body: g.url, files: [], mentions: [] }, parent);
@@ -590,14 +665,38 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
     <div className="@container relative flex h-full min-h-0 min-w-0">
       <div className={`relative min-h-0 min-w-0 flex-1 flex-col ${thread ? "hidden @min-[760px]:flex" : "flex"}`}>
         {warning && <p className="m-0 mx-4 mb-2 rounded-lg bg-amber-tint px-3 py-2 text-xs font-semibold text-amber-ink">{warning}</p>}
-        {pins.length > 0 && (
-          <div className="mx-4 mb-1">
+        <div className="relative mx-4 mt-1 mb-1 flex min-w-0 flex-wrap items-center gap-2">
+          {pins.length > 0 && (
             <button type="button" aria-expanded={showPins} onClick={() => setShowPins(!showPins)}
               className="flex min-h-8 items-center gap-1.5 rounded-md border border-line bg-paper px-2 text-xs font-semibold text-ink-2 hover:text-ink">
               <Ico d={ICONS.pin} size={13} />{fmt(C.pinnedCount, { n: pins.length })}
             </button>
-            {showPins && (
-              <div className="absolute inset-x-4 top-10 z-20 flex max-h-[60%] flex-col gap-1 overflow-y-auto rounded-xl border border-line bg-paper p-2 shadow-xl">
+          )}
+          <span className="flex-1" />
+          {live && <Huddle topic={topic} channel={channel} session={live.session} userId={userId} name={me} direct={kind === "direct"} C={C} autoOffer={huddleOffer} />}
+          {notify && (
+            <div className="relative">
+              <button type="button" aria-expanded={notifyMenu} aria-haspopup="menu" onClick={() => setNotifyMenu(!notifyMenu)} title={C.notifyTitle}
+                className={`flex min-h-9 items-center gap-1.5 rounded-md border border-line bg-paper px-2 text-xs font-semibold hover:text-ink ${notify === "none" ? "text-red-ink" : "text-ink-2"}`}>
+                <Ico d={ICONS.bell} size={15} /><span className="hide-sm">{C.notifyLevels[notify as keyof typeof C.notifyLevels] ?? notify}</span>
+                <span className="sr-only">{C.notifyTitle}</span>
+              </button>
+              {notifyMenu && (
+                <div role="menu" aria-label={C.notifyTitle} className="absolute top-full right-0 z-30 mt-1 flex w-64 flex-col rounded-xl border border-line bg-paper p-1 shadow-xl">
+                  <p className="m-0 px-2 py-1 text-xs font-bold text-ink-2">{C.notifyTitle}</p>
+                  {(["all", "mentions", "none"] as const).map((l) => (
+                    <button key={l} type="button" role="menuitemradio" aria-checked={notify === l} onClick={() => chooseNotify(l)}
+                      className="flex min-h-11 items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-canvas">
+                      <span aria-hidden="true" className="w-4 shrink-0 pt-0.5 text-[#1264a3]">{notify === l ? "✓" : ""}</span>
+                      <span className="flex min-w-0 flex-col"><span className="font-semibold">{C.notifyLevels[l]}</span><span className="text-xs text-ink-2">{C.notifyHints[l]}</span></span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {showPins && (
+              <div className="absolute inset-x-0 top-full z-20 mt-1 flex max-h-[60vh] flex-col gap-1 overflow-y-auto rounded-xl border border-line bg-paper p-2 shadow-xl">
                 <div className="flex items-center justify-between px-1"><strong className="text-sm">{C.pinnedTitle}</strong>
                   <button type="button" onClick={() => setShowPins(false)} aria-label={C.close} className="grid h-9 w-9 place-items-center rounded-md text-lg text-ink-2 hover:bg-mist">×</button></div>
                 {pins.map((m) => (
@@ -608,9 +707,8 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
                   </button>
                 ))}
               </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
         <Feed {...feedProps} messages={messages} inThread={false} lastRead={lastRead} onThread={(m) => setThread(m.id)} firstIds={first.current}
           scroller={main.scroller} onScroll={main.onScroll} empty={<><p className="m-0 text-base font-bold text-ink">{name ?? C.title}</p><p className="m-0">{C.empty}</p></>} />
         {main.behind && (
@@ -618,7 +716,7 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
         )}
         {error && !thread && <p role="alert" className="m-0 mx-4 mb-1 text-sm font-semibold text-red-ink">{error}</p>}
         <Composer id={`chat-text-${channel}`} placeholder={placeholder} people={people} C={C} gifs={gifs} pending={pending} autoFocus={!thread}
-          onSend={(d) => post(d, null)} onSendGif={(g) => gif(g, null)} onEditLast={editLast(messages)} />
+          onSend={(d) => post(d, null)} onSendGif={(g) => gif(g, null)} onEditLast={editLast(messages)} onTyping={sayTyping(null)} typing={typingText(null)} />
       </div>
 
       {thread && (
@@ -637,7 +735,7 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
           {error && thread && <p role="alert" className="m-0 mx-4 mb-1 text-sm font-semibold text-red-ink">{error}</p>}
           {parent && (
             <Composer key={thread} id={`chat-reply-${thread}`} placeholder={C.replyPlaceholder} people={people} C={C} gifs={gifs} pending={pending} autoFocus
-              onSend={(d) => post(d, thread)} onSendGif={(g) => gif(g, thread)} onEditLast={editLast((replies ?? []).slice(1))} />
+              onSend={(d) => post(d, thread)} onSendGif={(g) => gif(g, thread)} onEditLast={editLast((replies ?? []).slice(1))} onTyping={sayTyping(thread)} typing={typingText(thread)} />
           )}
         </section>
       )}

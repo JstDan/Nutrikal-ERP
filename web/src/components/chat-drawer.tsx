@@ -6,10 +6,11 @@ import { usePathname } from "next/navigation";
 import { chatList, chatRoomData, chatUnread, openDirectChat } from "@/app/chat-actions";
 import { Avatar, ChatRoom, type ChatMessage, type ChatPerson } from "@/components/chat-room";
 import type { Locale } from "@/lib/i18n";
+import { onPing, PresenceDot } from "@/components/live";
 import type { Dict } from "@/lib/i18n/en";
 
 type Channel = { id: string; name: string; description: string | null; kind: "team" | "external" | "direct"; unread: string };
-type Room = { channel: Channel; messages: ChatMessage[]; people: ChatPerson[]; lastRead: string | null };
+type Room = { channel: Channel; messages: ChatMessage[]; people: ChatPerson[]; lastRead: string | null; notify: string };
 const BADGE_MS = 15000;
 
 /** The chat from anywhere: a button by the bell and a panel over the page. */
@@ -54,6 +55,12 @@ export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale
     const t = setInterval(() => { if (!document.hidden) chatUnread().then(setUnread).catch(() => {}); }, BADGE_MS);
     return () => clearInterval(t);
   }, [open]);
+  // A new message anywhere: the count (and the open list) at once
+  useEffect(() => onPing((event) => {
+    if (event !== "chat") return;
+    if (open && !room) loadList(); else chatUnread().then(setUnread).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [open, room]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
@@ -100,7 +107,7 @@ export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale
           {room ? (
             <div className="min-h-0 flex-1 pt-2">
               <ChatRoom key={room.channel.id} channel={room.channel.id} initial={room.messages} people={room.people} me={me} userId={userId} isAdmin={isAdmin} gifs={gifs}
-                name={room.channel.kind === "direct" ? room.channel.name : `# ${room.channel.name}`} lastRead={room.lastRead}
+                name={room.channel.kind === "direct" ? room.channel.name : `# ${room.channel.name}`} lastRead={room.lastRead} kind={room.channel.kind} notify={room.notify}
                 locale={locale} text={C} warning={room.channel.kind === "external" && !partner ? C.partnerWarning : null} />
             </div>
           ) : (
@@ -125,14 +132,14 @@ export function ChatDrawer({ unread: first, userId, me, isAdmin, partner, locale
                   <span className="label px-2 pb-1">{C.direct}</span>
                   {talks.map((c) => (
                     <button key={c.id} type="button" onClick={() => enter(c)} className="flex min-h-11 min-w-0 items-center gap-3 rounded-xl px-2 text-left text-sm hover:bg-mist">
-                      <Avatar name={c.name} id={personId(c.name) ?? c.id} photo={!!personId(c.name)} />
+                      <span className="relative shrink-0"><Avatar name={c.name} id={personId(c.name) ?? c.id} photo={!!personId(c.name)} /><PresenceDot id={personId(c.name)} label={{ active: C.online, away: C.away }} /></span>
                       <span className={`min-w-0 flex-1 truncate ${Number(c.unread) ? "font-bold" : ""}`}>{c.name}</span>
                       {badge(Number(c.unread))}
                     </button>
                   ))}
                   {others.map((p) => (
                     <button key={p.id} type="button" onClick={() => direct(p)} className="flex min-h-11 min-w-0 items-center gap-3 rounded-xl px-2 text-left text-sm text-ink-2 hover:bg-mist hover:text-ink">
-                      <Avatar name={p.full_name} id={p.id} />
+                      <span className="relative shrink-0"><Avatar name={p.full_name} id={p.id} /><PresenceDot id={p.id} label={{ active: C.online, away: C.away }} /></span>
                       <span className="min-w-0 flex-1 truncate">{p.full_name}</span>
                     </button>
                   ))}

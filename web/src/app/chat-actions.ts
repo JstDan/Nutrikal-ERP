@@ -3,16 +3,20 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { q, qChat } from "@/lib/db/engine";
 import { CHAT_BUCKET, MAX_DESIGN_BYTES, newTaskFilePath, putFile } from "@/lib/files";
 import { getSession } from "@/lib/session";
+import { pushPending } from "@/lib/push-send";
+import { pushConfigured } from "@/lib/webpush";
 import type { ActionState } from "@/app/actions";
 import type { ChatMessage, ChatPerson } from "@/components/chat-room";
 
 // The chat is the one thing a read-only account writes: qChat, and the rules of the chat tables decide.
-const COLS = "id, author_id, author, body, created_at::text, edited_at::text, attachments, reactions, parent_id, reply_count, last_reply_at::text, repliers, pinned_at::text";
-const FEED = `select ${COLS} from chat_feed($1)`;
-const THREAD = `select ${COLS} from chat_feed($1, $2)`;
+const COLS = "id, author_id, author, body, created_at::text, edited_at::text, attachments, reactions, parent_id, reply_count, last_reply_at::text, repliers, pinned_at::text"
+  + ", exists (select 1 from chat_saved s where s.message_id = f.id and s.user_id = auth.uid()) as saved";
+const FEED = `select ${COLS} from chat_feed($1) f`;
+const THREAD = `select ${COLS} from chat_feed($1, $2) f`;
 const uuid = (v: unknown) => (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
 /** When the person last read the channel (before opening it now): where the "New" line goes. */
 export const lastReadOf = async (userId: string, channel: string) =>
@@ -76,7 +80,11 @@ export async function chatRoomData(channel: string) {
   const lastRead = await lastReadOf(user.id, channel);
   const messages = await q<ChatMessage>(user.id, FEED, [channel]);
   await markRead(user.id, channel);
-  return { messages, lastRead, people: await q<ChatPerson>(user.id, "select id, full_name from chat_people($1)", [channel]) };
+  return {
+    messages, lastRead,
+    people: await q<ChatPerson>(user.id, "select id, full_name from chat_people($1)", [channel]),
+    notify: (await q<{ n: string | null }>(user.id, "select chat_my_notify($1) as n", [channel]))[0]?.n ?? "mentions",
+  };
 }
 
 export async function chatUnread(): Promise<number> {
@@ -178,3 +186,54 @@ export async function createChannel(_: ActionState, fd: FormData): Promise<Actio
   revalidatePath("/chat");
   redirect(`/chat?c=${id}`);
 }
+
+/** Saves a message for later (one's own list, as in Slack), or takes it off. Personal, like reading: the person acted as. */
+export async function saveChatMessage(id: string, on: boolean) {
+  const { user } = await getSession();
+  if (!uuid(id)) return;
+  await qChat(user.id, "select chat_save($1, $2)", [id, on]);
+}
+
+export type SavedItem = { id: string; channel_id: string; channel: string; kind: string; author_id: string; author: string; body: string; created_at: string; parent_id: string | null; saved_at: string };
+export async function savedChatItems(): Promise<SavedItem[]> {
+  const { user } = await getSession();
+  return q<SavedItem>(user.id, "select id, channel_id, channel, kind, author_id, author, body, created_at::text, parent_id, saved_at::text from chat_saved_list()");
+}
+
+/** Notifications of a channel for oneself: every message, mentions only, or nothing. */
+export async function setChatNotify(channel: string, level: string) {
+  const { user } = await getSession();
+  if (!uuid(channel) || !["all", "mentions", "none"].includes(level)) return;
+  await qChat(user.id, "select chat_set_notify($1, $2)", [channel, level]);
+}
+
+/** A huddle started in a direct conversation: the other person's phone rings (a notification, pushed at once). */
+export async function ringHuddle(channel: string) {
+  const { writerId } = await writer();
+  if (!uuid(channel)) return;
+  await qChat(writerId, "select chat_huddle_ring($1)", [channel]);
+  if (pushConfigured()) after(() => pushPending(0).then(() => undefined).catch((e) => console.error("Push", e)));
+}
+
+/**
+ * The servers a huddle's browsers use to reach each other: public STUN, and Cloudflare TURN when it is set up
+ * (TURN_KEY_ID, TURN_KEY_API_TOKEN; needed when a phone network hides the device). Short-lived credentials.
+ */
+export async function huddleIceServers(): Promise<RTCIceServer[]> {
+  await getSession();
+  const stun: RTCIceServer[] = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
+  const id = process.env.TURN_KEY_ID?.trim(), token = process.env.TURN_KEY_API_TOKEN?.trim();
+  if (!id || !token) return stun;
+  try {
+    const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${id}/credentials/generate-ice-servers`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ ttl: 4 * 3600 }),
+    });
+    if (!r.ok) return stun;
+    const data = await r.json() as { iceServers?: RTCIceServer | RTCIceServer[] };
+    const got = Array.isArray(data.iceServers) ? data.iceServers : data.iceServers ? [data.iceServers] : [];
+    return got.length ? [...stun, ...got] : stun;
+  } catch {
+    return stun;
+  }
+}
+
