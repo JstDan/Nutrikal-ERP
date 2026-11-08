@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { deleteChatMessage, editChatMessage, markChatRead, pinChatMessage, pollChat, pollThread, saveChatMessage, searchGifs, sendChat, setChatNotify, toggleReaction, type Gif } from "@/app/chat-actions";
 import { useLive, type Topic } from "@/components/live";
 import { Huddle } from "@/components/huddle";
+import { MemeMaker } from "@/components/meme-maker";
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import { UserAvatar } from "@/components/user-avatar";
@@ -25,8 +26,12 @@ const LIVE_POLL_MS = 30000;
 const TYPING_SEND_MS = 2500;
 const TYPING_SHOW_MS = 5000;
 /** Nutrikal's own emoji first: public/emoji/<code>.svg, written :code: in a message. */
-const BRAND = ["capsule", "jar", "leaf", "flask", "coa", "pallet", "mg", "nutrikal"];
-const EMOJI = ["👍", "❤️", "😂", "🎉", "🔥", "🙏", "👀", "✅", "🚀", "💪", "😅", "🤔"];
+// More of them, on the company's themes (owner, Nov 2026): formats, the way of a batch, quality, nutrients
+const BRAND = ["nutrikal", "capsule", "tablet", "softgel", "gummy", "powder", "stick", "bar", "jar", "label", "leaf", "flask", "testtube",
+  "microscope", "scale", "coa", "released", "quarantine", "blocked", "factory", "pallet", "truck", "deadline", "euro",
+  "mg", "zn", "d3", "vitc", "b12", "omega", "probiotic", "collagen"];
+const EMOJI = ["👍", "❤️", "😂", "🎉", "🔥", "🙏", "👀", "✅", "🚀", "💪", "😅", "🤔", "😊", "😎", "🥳", "😍", "🙌", "👏", "🤝", "🫡",
+  "😬", "🤯", "😴", "🙈", "💯", "⏰", "📦", "🚚", "🧪", "💊", "🌿", "☕", "🍕", "🎯", "⚠️", "❌"];
 const QUICK = ["✅", "👀", "👍"];
 const IMAGE = /^image\/(png|jpeg|webp|gif)$/;
 const AVATARS = ["#222831", "#4a5160", "#3b6fd8", "#8a5cd6", "#c2610f", "#1a8078"];
@@ -150,13 +155,20 @@ function Rich({ text, names }: { text: string; names: string[] }) {
   return <div className="break-words">{out}</div>;
 }
 
-function Picker({ onPick, label }: { onPick: (code: string) => void; label: string }) {
+function Picker({ onPick, label, sections }: { onPick: (code: string) => void; label: string; sections: [string, string] }) {
   return (
-    <div role="group" aria-label={label} className="grid w-[244px] grid-cols-5 gap-0.5 rounded-xl border border-line bg-paper p-2 shadow-xl">
-      {[...BRAND, ...EMOJI].map((e) => (
-        <button key={e} type="button" onClick={() => onPick(e)} aria-label={e} className="grid h-11 w-11 place-items-center rounded-lg text-xl transition-transform hover:scale-110 hover:bg-mist">
-          <Emoji code={e} />
-        </button>
+    <div role="group" aria-label={label} className="flex max-h-[min(360px,55vh)] w-[292px] max-w-[calc(100vw-24px)] flex-col gap-1 overflow-y-auto rounded-xl border border-line bg-paper p-2 shadow-xl">
+      {([[sections[0], BRAND], [sections[1], EMOJI]] as const).map(([title, list]) => (
+        <Fragment key={title}>
+          <p className="m-0 px-1 pt-1 text-[11px] font-semibold text-ink-2">{title}</p>
+          <div className="grid grid-cols-6 gap-0.5">
+            {list.map((e) => (
+              <button key={e} type="button" onClick={() => onPick(e)} aria-label={e} title={e} className="grid h-11 w-11 place-items-center rounded-lg text-xl transition-transform hover:scale-110 hover:bg-mist">
+                <Emoji code={e} />
+              </button>
+            ))}
+          </div>
+        </Fragment>
       ))}
     </div>
   );
@@ -187,7 +199,7 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [mentions, setMentions] = useState<ChatPerson[]>([]);
-  const [panel, setPanel] = useState<"emoji" | "gif" | null>(null);
+  const [panel, setPanel] = useState<"emoji" | "gif" | "meme" | null>(null);
   const [active, setActive] = useState(0);
   // A phone: the formatting buttons come with Aa, as in Slack (owner, Nov 2026: fewer buttons on the phone)
   const [formatting, setFormatting] = useState(false);
@@ -277,7 +289,13 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
           ))}
         </div>
       )}
-      {panel === "emoji" && <div className="absolute bottom-full left-4 z-20 mb-1"><Picker label={C.emoji} onPick={(code) => { setDraft((d) => `${d}${BRAND.includes(code) ? `:${code}:` : code}`); setPanel(null); box.current?.focus(); }} /></div>}
+      {panel === "emoji" && <div className="absolute bottom-full left-4 z-20 mb-1"><Picker label={C.emoji} sections={[C.emojiOurs, C.emojiAll]} onPick={(code) => { setDraft((d) => `${d}${BRAND.includes(code) ? `:${code}:` : code}`); setPanel(null); box.current?.focus(); }} /></div>}
+      {panel === "meme" && (
+        <div className="absolute right-2 bottom-full left-2 z-20 mb-1 sm:right-auto sm:left-4 sm:w-[380px]">
+          <MemeMaker T={C} onClose={() => { setPanel(null); box.current?.focus(); }}
+            onAdd={(file) => { setFiles((f) => [...f, file]); setPanel(null); box.current?.focus(); }} />
+        </div>
+      )}
       {panel === "gif" && <div className="absolute right-4 bottom-full left-4 z-20 mb-1 sm:right-auto sm:w-[360px]"><GifPanel text={C} onPick={(g) => { setPanel(null); onSendGif(g); box.current?.focus(); }} onClose={() => { setPanel(null); box.current?.focus(); }} /></div>}
       <form data-chat onSubmit={(e) => { e.preventDefault(); send(); }}
         className="flex min-w-0 flex-col rounded-lg border border-line-strong bg-paper transition-shadow focus-within:border-ink-2 focus-within:shadow-sm">
@@ -315,6 +333,9 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
           <button type="button" aria-label={C.formatting} title={C.formatting} aria-pressed={formatting} onClick={() => setFormatting((f) => !f)}
             className={`${tool} text-[13px] font-semibold underline decoration-1 underline-offset-2 @min-[520px]/composer:hidden ${formatting ? "bg-mist text-ink" : ""}`}>Aa</button>
           <button type="button" aria-label={C.mention} title={C.mention} onClick={() => { setDraft((d) => `${d}${d && !d.endsWith(" ") ? " " : ""}@`); box.current?.focus(); }} className={`${tool} font-semibold`}>@</button>
+          <button type="button" aria-label={C.meme} title={C.memeTitle} aria-expanded={panel === "meme"} onClick={() => setPanel(panel === "meme" ? null : "meme")} className={`${tool} text-[10px] font-bold`}>
+            <span className="rounded border border-current px-1 leading-4">{C.meme}</span>
+          </button>
           {gifs && (
             <button type="button" aria-label={C.gif} aria-expanded={panel === "gif"} onClick={() => setPanel(panel === "gif" ? null : "gif")} className={`${tool} text-[10px] font-bold`}>
               <span className="rounded border border-current px-1 leading-4">GIF</span>
@@ -444,7 +465,7 @@ function Message({ m, grouped, names, own, isAdmin, C, locale, inThread, editing
           {(own || isAdmin) && <button type="button" aria-label={C.delete} title={C.delete} onClick={() => { if (window.confirm(C.deleteConfirm)) onDelete(); }} className={`${btn} hover:text-red-ink`}><Ico d={ICONS.trash} /></button>}
         </div>
       )}
-      {picker && <div className="absolute top-full right-4 z-20"><Picker label={C.emoji} onPick={(c) => { setPicker(false); onReact(c); }} /></div>}
+      {picker && <div className="absolute top-full right-4 z-20"><Picker label={C.emoji} sections={[C.emojiOurs, C.emojiAll]} onPick={(c) => { setPicker(false); onReact(c); }} /></div>}
     </div>
   );
 }

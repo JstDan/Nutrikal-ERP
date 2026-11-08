@@ -237,3 +237,29 @@ export async function huddleIceServers(): Promise<RTCIceServer[]> {
   }
 }
 
+
+/** A meme template: a picture with the number of text boxes it is made for. */
+export type MemeTemplate = { id: string; name: string; url: string; width: number; height: number };
+let memeCache: { at: number; list: MemeTemplate[] } | null = null;
+
+/**
+ * Memes in the chat (owner, Nov 2026): the 100 most used templates from Imgflip (free, no key; kept for an hour).
+ * The picture is drawn with the words in the browser and sent as an image file of the message.
+ */
+export async function memeTemplates(): Promise<MemeTemplate[]> {
+  const { user } = await getSession();
+  if (user.role === "client") return [];
+  if (memeCache && Date.now() - memeCache.at < 3600_000) return memeCache.list;
+  try {
+    const res = await fetch("https://api.imgflip.com/get_memes", { cache: "no-store" });
+    if (!res.ok) return memeCache?.list ?? [];
+    const data = (await res.json()) as { data?: { memes?: { id: string; name: string; url: string; width: number; height: number }[] } };
+    const list = (data.data?.memes ?? [])
+      .filter((m) => /^https:\/\/i\.imgflip\.com\/[\w.]+\.(?:jpg|png)$/.test(m.url))
+      .map((m) => ({ id: m.id, name: m.name, url: m.url, width: m.width, height: m.height }));
+    memeCache = { at: Date.now(), list };
+    return list;
+  } catch {
+    return memeCache?.list ?? [];
+  }
+}
