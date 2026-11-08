@@ -1,5 +1,6 @@
 export const en = {
   common: {
+    moreActions: "More actions",
     docLang: { title: "Which language?", bg: "Download in BG", en: "Download in EN", cancel: "Cancel" },
     readOnly: "This account only reads",
     loading: "Refreshing…",
@@ -97,6 +98,7 @@ export const en = {
   },
   topbar: {
     search: "Search",
+    account: "Profile and settings",
     searchPlaceholder: "Search clients, orders, offers, recipes, items, lots, invoices",
     language: "Language",
     signOut: "Sign out",
@@ -3082,6 +3084,7 @@ export const en = {
     close: "Close",
     search: "Search cards",
     filtersLabel: "Filter the cards",
+    filters: "Filters",
     onlyMine: "Only mine",
     hideDone: "Hide done",
     labelFilter: "Label",

@@ -417,3 +417,15 @@ textarea.input { height: auto; padding: 10px 12px; min-height: 96px; }
   .app-ui a:active, .app-ui button:active, .app-ui summary:active { opacity: 0.7; }
 }
 @media (prefers-reduced-motion: reduce) { .nk-skel { animation: none; } }
+
+/* The buttons at the top of a page on a phone (owner, Nov 2026): with three or more, the main (dark) one stays and
+   the rest wait behind the ⋯ button (PageActions). A wrapper (span, form) counts as one button. */
+.page-more { display: none; }
+@media (max-width: 639px) {
+  .page-actions:has(> :nth-child(4)) > .page-more {
+    display: inline-grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--color-line-strong);
+    border-radius: 2px; background: var(--color-white); color: var(--color-ink); cursor: pointer;
+  }
+  .page-actions:has(> :nth-child(4)):not(.open) > :not(.page-more):not(.btn-primary):not(:has(.btn-primary)) { display: none; }
+  .page-actions.open > .page-more { background: var(--color-mist); }
+}

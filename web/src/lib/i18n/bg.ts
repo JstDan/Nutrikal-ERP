@@ -2,6 +2,7 @@ import type { Dict } from "./en";
 
 export const bg: Dict = {
   common: {
+    moreActions: "Още действия",
     docLang: { title: "На какъв език?", bg: "Изтегли на БГ", en: "Изтегли на EN", cancel: "Отказ" },
     readOnly: "Този акаунт е само за четене",
     loading: "Опресняване…",
@@ -99,6 +100,7 @@ export const bg: Dict = {
   },
   topbar: {
     search: "Търсене",
+    account: "Профил и настройки",
     searchPlaceholder: "Търси клиенти, поръчки, оферти, рецепти, артикули, партиди, фактури",
     language: "Език",
     signOut: "Изход",
@@ -3084,6 +3086,7 @@ export const bg: Dict = {
     close: "Затвори",
     search: "Търси карти",
     filtersLabel: "Филтрирай картите",
+    filters: "Филтри",
     onlyMine: "Само моите",
     hideDone: "Скрий готовите",
     labelFilter: "Етикет",

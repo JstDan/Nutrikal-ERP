@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { SideNav, type NavGroup } from "./side-nav";
 import { chatUnread } from "@/app/chat-actions";
@@ -36,8 +36,10 @@ function Badge({ n }: { n?: number }) {
   return <span className="absolute -top-1 left-[calc(50%+6px)] min-w-[18px] rounded-full bg-green px-1 text-center text-[11px] leading-[18px] font-semibold text-ink tabular-nums">{n > 99 ? "99+" : n}</span>;
 }
 
-export function MobileTabBar({ tabs, groups, moreLabel, closeLabel, navLabel }: {
+export function MobileTabBar({ tabs, groups, moreLabel, closeLabel, navLabel, extra, accountLabel }: {
   tabs: TabItem[]; groups: NavGroup[]; moreLabel: string; closeLabel: string; navLabel: string;
+  /** Language, theme, profile and signing out: on a phone they live here, not in the header */
+  extra?: ReactNode; accountLabel?: string;
 }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
@@ -74,6 +76,12 @@ export function MobileTabBar({ tabs, groups, moreLabel, closeLabel, navLabel }: 
               <span aria-hidden="true">✕</span>{closeLabel}
             </button>
           </div>
+          {extra && (
+            <section aria-label={accountLabel} className="mb-6">
+              {accountLabel && <h2 className="m-0 mb-2 text-[11px] font-semibold tracking-[2px] text-side-muted uppercase">{accountLabel}</h2>}
+              {extra}
+            </section>
+          )}
           {/* Two sections a row, so the whole menu fits a phone screen without scrolling */}
           <div className="[&_nav]:gap-5 [&_nav>div]:grid [&_nav>div]:grid-cols-2 [&_nav>div]:gap-1 [&_nav>div>div]:col-span-2 [&_nav_a]:bg-white/5">
             <SideNav groups={groups} label={navLabel} />

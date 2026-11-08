@@ -75,7 +75,7 @@ export default async function ChatPage({ searchParams }: PageProps<"/chat">) {
     <>
       <h1 className="sr-only">{C.title}</h1>
       <ChatListRefresh current={savedView || term ? null : current?.id ?? null} />
-      <FillHeight className="grid h-[calc(100dvh-150px-var(--tabbar))] min-w-0 grid-cols-1 overflow-hidden rounded-lg border border-line bg-paper sm:-my-2 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <FillHeight className="grid h-[calc(100dvh-150px-var(--tabbar))] min-w-0 grid-cols-1 overflow-hidden rounded-lg border border-line bg-paper max-sm:-mx-4 max-sm:-my-4 max-sm:rounded-none max-sm:border-0 sm:-my-2 lg:grid-cols-[260px_minmax(0,1fr)]">
         <aside className={`${inRoom ? "hidden lg:flex" : "flex"} min-h-0 min-w-0 flex-col gap-4 overflow-y-auto bg-side px-3 py-4 text-side-text`}>
           <div className="flex flex-col gap-2 px-1">
             <span className="text-base font-bold text-white">Nutrikal</span>
@@ -132,7 +132,7 @@ export default async function ChatPage({ searchParams }: PageProps<"/chat">) {
         <section aria-label={term ? C.search : current?.name ?? C.title} className={`${inRoom ? "flex" : "hidden lg:flex"} min-h-0 min-w-0 flex-col`}>
           {savedView ? (
             <>
-              <header className="flex min-h-14 items-center gap-2 border-b border-line px-4">
+              <header className="flex min-h-12 items-center gap-2 border-b border-line px-2 sm:min-h-14 sm:px-4">
                 <Link href="/chat" aria-label={C.channels} className="grid h-11 w-9 shrink-0 place-items-center rounded-md text-xl text-ink no-underline hover:bg-mist lg:hidden">←</Link>
                 <h2 className="m-0 min-w-0 truncate text-lg font-bold">{C.savedTitle}</h2>
               </header>
@@ -152,7 +152,7 @@ export default async function ChatPage({ searchParams }: PageProps<"/chat">) {
             </>
           ) : term ? (
             <>
-              <header className="flex min-h-14 items-center gap-2 border-b border-line px-4">
+              <header className="flex min-h-12 items-center gap-2 border-b border-line px-2 sm:min-h-14 sm:px-4">
                 <Link href={current ? `/chat?c=${current.id}` : "/chat"} aria-label={C.back} className="grid h-11 w-9 place-items-center rounded-md text-xl text-ink no-underline hover:bg-mist">←</Link>
                 <h2 className="m-0 min-w-0 truncate text-lg font-bold">{C.search}: “{term}”</h2>
               </header>
@@ -168,14 +168,14 @@ export default async function ChatPage({ searchParams }: PageProps<"/chat">) {
             </>
           ) : current && (
             <>
-              <header className="flex min-h-14 items-center gap-2 border-b border-line px-4">
+              <header className="flex min-h-12 items-center gap-2 border-b border-line px-2 sm:min-h-14 sm:px-4">
                 <Link href="/chat" aria-label={C.channels} className="grid h-11 w-9 shrink-0 place-items-center rounded-md text-xl text-ink no-underline hover:bg-mist lg:hidden">←</Link>
                 {current.kind === "direct" && personOf(current.name) && (
                   <span className="relative shrink-0"><Avatar name={current.name} id={personOf(current.name)!} size={28} /><PresenceDot id={personOf(current.name)} label={dot} /></span>
                 )}
                 <div className="min-w-0 flex-1 py-1">
                   <h2 className="m-0 truncate text-lg font-bold">{label(current)}</h2>
-                  {current.description && current.kind !== "external" && <p className="m-0 truncate text-xs text-ink-2">{current.description}</p>}
+                  {current.description && current.kind !== "external" && <p className="hide-sm m-0 truncate text-xs text-ink-2">{current.description}</p>}
                 </div>
                 {current.kind !== "direct" && <span className="hide-sm shrink-0 rounded-md border border-line px-2 py-1 text-xs text-ink-2">{fmt(C.members, { n: people.length + 1 })}</span>}
               </header>

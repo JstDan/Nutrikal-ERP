@@ -189,6 +189,8 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
   const [mentions, setMentions] = useState<ChatPerson[]>([]);
   const [panel, setPanel] = useState<"emoji" | "gif" | null>(null);
   const [active, setActive] = useState(0);
+  // A phone: the formatting buttons come with Aa, as in Slack (owner, Nov 2026: fewer buttons on the phone)
+  const [formatting, setFormatting] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const pick = useRef<HTMLInputElement>(null);
 
@@ -264,7 +266,7 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
   const tool = "grid h-9 min-w-9 shrink-0 place-items-center rounded-md px-1 text-sm text-ink-2 hover:bg-mist hover:text-ink";
 
   return (
-    <div className="@container/composer relative px-4 pt-1 pb-1">
+    <div className="@container/composer relative px-2 pt-1 pb-1 sm:px-4">
       {options.length > 0 && (
         <div role="listbox" aria-label={C.mention} className="absolute right-4 bottom-full left-4 z-20 mb-1 flex flex-col overflow-hidden rounded-xl border border-line bg-paper py-1 shadow-xl">
           {options.map((p, n) => (
@@ -279,7 +281,7 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
       {panel === "gif" && <div className="absolute right-4 bottom-full left-4 z-20 mb-1 sm:right-auto sm:w-[360px]"><GifPanel text={C} onPick={(g) => { setPanel(null); onSendGif(g); box.current?.focus(); }} onClose={() => { setPanel(null); box.current?.focus(); }} /></div>}
       <form data-chat onSubmit={(e) => { e.preventDefault(); send(); }}
         className="flex min-w-0 flex-col rounded-lg border border-line-strong bg-paper transition-shadow focus-within:border-ink-2 focus-within:shadow-sm">
-        <div role="toolbar" aria-label={C.formatting} className="flex flex-wrap items-center gap-0.5 rounded-t-lg border-b border-mist bg-canvas px-1 py-0.5">
+        <div role="toolbar" aria-label={C.formatting} className={`${formatting ? "flex" : "hidden"} flex-wrap items-center gap-0.5 rounded-t-lg border-b border-mist bg-canvas px-1 py-0.5 @min-[520px]/composer:flex`}>
           <button type="button" className={`${tool} font-bold`} aria-label={C.bold} title={`${C.bold} (Ctrl+B)`} onClick={() => wrap("*")}>B</button>
           <button type="button" className={`${tool} italic`} aria-label={C.italic} title={`${C.italic} (Ctrl+I)`} onClick={() => wrap("_")}>I</button>
           <button type="button" className={`${tool} line-through`} aria-label={C.strike} title={`${C.strike} (Ctrl+Shift+X)`} onClick={() => wrap("~")}>S</button>
@@ -310,6 +312,8 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
           <input ref={pick} type="file" multiple hidden aria-label={C.attach} onChange={(e) => { setFiles([...files, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
           <button type="button" aria-label={C.attach} title={C.attach} onClick={() => pick.current?.click()} className={`${tool} text-lg`}>+</button>
           <button type="button" aria-label={C.emoji} aria-expanded={panel === "emoji"} onClick={() => setPanel(panel === "emoji" ? null : "emoji")} className={tool}><Ico d={ICONS.react} /></button>
+          <button type="button" aria-label={C.formatting} title={C.formatting} aria-pressed={formatting} onClick={() => setFormatting((f) => !f)}
+            className={`${tool} text-[13px] font-semibold underline decoration-1 underline-offset-2 @min-[520px]/composer:hidden ${formatting ? "bg-mist text-ink" : ""}`}>Aa</button>
           <button type="button" aria-label={C.mention} title={C.mention} onClick={() => { setDraft((d) => `${d}${d && !d.endsWith(" ") ? " " : ""}@`); box.current?.focus(); }} className={`${tool} font-semibold`}>@</button>
           {gifs && (
             <button type="button" aria-label={C.gif} aria-expanded={panel === "gif"} onClick={() => setPanel(panel === "gif" ? null : "gif")} className={`${tool} text-[10px] font-bold`}>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FilterLinks } from "@/components/filter-links";
 import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { formatDate, formatPrice } from "@/lib/i18n";
@@ -53,15 +54,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
           {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
           <LiveSearch id="inv-search" defaultValue={term} placeholder={I.direct.search} className="input" />
         </form>
-        <nav aria-label={I.status} className="flex flex-wrap gap-1">
-          {FILTERS.map((f) => (
-            <Link key={f} href={`/invoices?${new URLSearchParams({ ...(f !== "all" && { filter: f }), ...(term && { q: term }) })}`}
-              aria-current={filter === f ? "page" : undefined}
-              className={`flex min-h-11 items-center rounded-full border px-3.5 text-[13px] no-underline ${filter === f ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}>
-              {I.direct.filters[f]}
-            </Link>
-          ))}
-        </nav>
+        <FilterLinks id="invoice-filter" label={I.status} items={FILTERS.map((f) => ({ href: `/invoices?${new URLSearchParams({ ...(f !== "all" && { filter: f }), ...(term && { q: term }) })}`, label: I.direct.filters[f], current: filter === f }))} />
       </div>
       <section aria-label={I.title} className="card px-5 pt-2 pb-3">
         <div className={`row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${grid}`}>

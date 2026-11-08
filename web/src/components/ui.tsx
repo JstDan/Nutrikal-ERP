@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PageActions } from "./page-actions";
 
 export type Tone = "green" | "amber" | "red" | "neutral";
 
@@ -38,7 +39,7 @@ export function PageHeader({ title, subtitle, actions, crumb, titleAside }: { ti
           )}
           {subtitle && <p className="mt-1 mb-0 text-sm text-ink-2">{subtitle}</p>}
         </div>
-        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+        {actions && <PageActions>{actions}</PageActions>}
       </div>
     </div>
   );

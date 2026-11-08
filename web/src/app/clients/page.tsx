@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FilterLinks } from "@/components/filter-links";
 import { LiveSearch } from "@/components/live-search";
 import { q } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
@@ -37,18 +38,10 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
       />
 
       <div className="flex flex-wrap items-center gap-3">
-        <nav aria-label={t.clients.status} className="flex flex-wrap gap-1">
-          {tabs.map((s) => (
-            <Link
-              key={s || "all"}
-              href={`/clients?${new URLSearchParams({ ...(term && { q: term }), ...(s && { status: s }) })}`}
-              aria-current={status === s ? "page" : undefined}
-              className={`flex min-h-10 items-center rounded-full border px-3.5 text-[13px] no-underline ${status === s ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}
-            >
-              {s ? t.enums.clientStatus[s] : t.common.all}
-            </Link>
-          ))}
-        </nav>
+        <FilterLinks id="client-status" label={t.clients.status} items={tabs.map((s) => ({
+          href: `/clients?${new URLSearchParams({ ...(term && { q: term }), ...(s && { status: s }) })}`,
+          label: s ? t.enums.clientStatus[s] : t.common.all, current: status === s,
+        }))} />
         <form method="get" role="search" className="flex min-w-0 flex-[1_1_240px] justify-end gap-2">
           {status && <input type="hidden" name="status" value={status} />}
           <label htmlFor="client-q" className="sr-only">{t.topbar.search}</label>

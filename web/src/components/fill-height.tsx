@@ -12,7 +12,7 @@ export function FillHeight({ className, min = 420, children }: { className?: str
       const top = el.getBoundingClientRect().top + window.scrollY;
       const bar = document.getElementById("tab-bar");
       const foot = bar && getComputedStyle(bar).display !== "none" ? window.innerHeight - bar.getBoundingClientRect().top : 0;
-      const gap = window.innerWidth < 640 ? 12 : 24;
+      const gap = window.innerWidth < 640 ? 0 : 24;
       el.style.height = `${Math.max(min, window.innerHeight - top - foot - gap)}px`;
     };
     fit();

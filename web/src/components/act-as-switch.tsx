@@ -5,14 +5,14 @@ import { actAs } from "@/app/actions";
 type Option = { id: string; label: string };
 
 /** Developer only: pick the user to act as. Every page then runs as that user. */
-export function ActAsSwitch({ current, options, label }: { current: string; options: Option[]; label: string }) {
+export function ActAsSwitch({ current, options, label, id = "act-as" }: { current: string; options: Option[]; label: string; id?: string }) {
   return (
     <form action={actAs} className="flex min-w-0 max-w-full items-center gap-2">
-      <label htmlFor="act-as" className="sr-only">
+      <label htmlFor={id} className="sr-only">
         {label}
       </label>
       <select
-        id="act-as"
+        id={id}
         name="user"
         defaultValue={current}
         onChange={(e) => e.currentTarget.form?.requestSubmit()}

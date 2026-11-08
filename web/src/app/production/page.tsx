@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FilterLinks } from "@/components/filter-links";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
 import { formatDate, formatNumber } from "@/lib/i18n";
@@ -43,18 +44,7 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={P.title} subtitle={P.subtitle} actions={<a href="#new-sim" className="btn btn-primary">{P.newTitle}</a>} />
-      <nav aria-label={P.status} className="flex flex-wrap gap-1">
-        {TABS.map((s) => (
-          <Link
-            key={s}
-            href={s === "open" ? "/production" : `/production?status=${s}`}
-            aria-current={tab === s ? "page" : undefined}
-            className={`flex min-h-10 items-center rounded-full border px-3.5 text-[13px] no-underline ${tab === s ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}
-          >
-            {s === "open" ? P.allOpen : t.enums.moStatus[s]}
-          </Link>
-        ))}
-      </nav>
+      <FilterLinks id="mo-status" label={P.status} items={TABS.map((s) => ({ href: s === "open" ? "/production" : `/production?status=${s}`, label: s === "open" ? P.allOpen : t.enums.moStatus[s], current: tab === s }))} />
 
       <section aria-label={P.title} className="card px-5 pt-2 pb-3">
         <div className={`row hide-sm border-b border-mist py-3 text-xs font-semibold tracking-[1px] uppercase text-ink-2 ${grid}`}>

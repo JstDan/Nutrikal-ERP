@@ -118,12 +118,17 @@ function List({ offers, settings, userId, isAdmin, inOrder, langText }: Props) {
         <label htmlFor="offer-search" className="sr-only">{o.search}</label>
         <input id="offer-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={o.searchPlaceholder}
           className="input min-w-0 flex-[1_1_280px]" />
+        {/* A phone: the filters as one drop-down next to Mine (owner, Nov 2026: fewer buttons on the phone) */}
+        <label htmlFor="offer-filter" className="sr-only">{o.title}</label>
+        <select id="offer-filter" value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} className="input min-w-0 flex-[1_1_140px] sm:hidden">
+          {(["all", "active", "inOrder", "expired"] as const).map((f) => <option key={f} value={f}>{o.filters[f]} {searched.filter((x) => inFilter(x, f)).length}</option>)}
+        </select>
         <button type="button" aria-pressed={mine} onClick={() => setMine(!mine)}
           className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${mine ? "border-ink bg-ink text-white" : "border-line-strong bg-white text-ink"}`}>
           {o.mine}
         </button>
       </div>
-      <div role="group" aria-label={o.title} className="flex flex-wrap gap-2">
+      <div role="group" aria-label={o.title} className="hidden flex-wrap gap-2 sm:flex">
         {(["all", "active", "inOrder", "expired"] as const).map((f) => (
           <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}
             className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${filter === f ? "border-ink bg-ink text-white" : "border-line-strong bg-white text-ink"}`}>

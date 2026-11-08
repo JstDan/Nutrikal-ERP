@@ -19,6 +19,7 @@ import { aiConfigured, aiModels } from "@/lib/ai/gateway";
 import { LiveProvider } from "./live";
 import { PushPrompt } from "./push-prompt";
 import { PullRefresh } from "./pull-refresh";
+import { UiTextProvider } from "./page-actions";
 import { supabaseConfigured } from "@/lib/supabase/server";
 
 export async function AppShell({ children }: { children: ReactNode }) {
@@ -113,68 +114,99 @@ export async function AppShell({ children }: { children: ReactNode }) {
   const live = supabaseConfigured()
     ? { url: process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(), key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim() } : null;
 
+  // Language, theme, acting as, one's profile and signing out: in the header on a computer, under More on a phone
+  const accountControls = (where: "top" | "more") => {
+    const more = where === "more";
+    return (
+      <>
+        {more && !isProduction && (
+          <a href="/signature" className="flex min-h-11 min-w-0 items-center gap-3 text-sm font-semibold text-ink no-underline">
+            <UserAvatar id={user.id} size={32} /><span className="min-w-0 break-words">{developer?.name ?? user.name}</span>
+          </a>
+        )}
+        <div className={`flex flex-wrap items-center gap-3 ${more ? "" : "contents"}`}>
+          <form action={setLocale} role="group" aria-label={t.topbar.language} className="flex overflow-hidden rounded-sm border border-line-strong">
+            {LOCALES.map((l) => (
+              <button
+                key={l}
+                type="submit"
+                name="locale"
+                value={l}
+                aria-pressed={locale === l}
+                lang={l}
+                title={t.enums.locale[l]}
+                className={`h-[42px] min-w-12 border-0 text-xs font-semibold tracking-[1.5px] ${locale === l ? "bg-ink text-white" : "bg-white text-ink-2 hover:bg-canvas"}`}
+              >
+                {l === "bg" ? "БГ" : "EN"}
+              </button>
+            ))}
+          </form>
+          <ThemeSwitch toDark={t.topbar.toDark} toLight={t.topbar.toLight} saved={savedTheme} />
+          {!local && more && (
+            <form action={signOut} className="ml-auto"><button type="submit" className="btn btn-outline">{t.topbar.signOut}</button></form>
+          )}
+        </div>
+        {developer && (
+          <ActAsSwitch
+            id={more ? "act-as-more" : "act-as"}
+            current={user.id}
+            label={t.topbar.actAs}
+            options={developer.targets.map((u) => ({ id: u.id, label: `${u.full_name} · ${t.enums.role[u.role]}` }))}
+          />
+        )}
+        {!local && !more && (
+          <form action={signOut} className="flex min-w-0 items-center gap-3">
+            {isProduction ? (
+              <span className="min-w-0 truncate text-xs font-semibold text-ink-2">{developer?.name ?? screen?.adminName ?? user.name}</span>
+            ) : (
+              // One's own e-mail signature is kept under one's name
+              <a href="/signature" title={t.signature.title} className="flex min-h-11 min-w-0 items-center gap-2 truncate text-xs font-semibold text-ink-2 hover:text-ink"><UserAvatar id={user.id} size={28} />{developer?.name ?? user.name}</a>
+            )}
+            <button type="submit" className="btn btn-outline">{t.topbar.signOut}</button>
+          </form>
+        )}
+      </>
+    );
+  };
+
   return (
     // The live connection: messages, typing, who is online, huddles. Pings come for the account really signed in.
     <LiveProvider config={live} userId={developer?.id ?? user.id} authId={developer?.id ?? screen?.adminId ?? user.id} name={developer?.name ?? user.name}>
+    <UiTextProvider moreActions={t.common.moreActions}>
     <PullRefresh label={t.common.loading} />
     <div data-readonly={user.readOnly || undefined} className="app-ui has-tabbar flex min-h-screen flex-wrap pb-[var(--tabbar)]">
-      <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3 text-side-strong lg:sticky lg:top-0 lg:h-screen lg:w-[232px] lg:shrink-0 lg:gap-3 lg:overflow-y-auto lg:py-4 lg:[scrollbar-width:none]">
-        <a href={isProduction ? "/factory" : "/"} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-2 lg:flex-col lg:items-start text-side-strong no-underline">
+      {/* On a phone the dark strip is gone (owner, Nov 2026: the header took too much of the screen); the bar at the foot stays */}
+      <aside className="relative flex print:hidden w-full flex-col gap-6 bg-side px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3 text-side-strong max-lg:contents lg:sticky lg:top-0 lg:h-screen lg:w-[232px] lg:shrink-0 lg:gap-3 lg:overflow-y-auto lg:py-4 lg:[scrollbar-width:none]">
+        <a href={isProduction ? "/factory" : "/"} className="hidden flex-col items-start gap-x-3 gap-y-2 px-2 text-side-strong no-underline lg:flex">
           <Wordmark height={20} inverted />
           <span className="text-[11px] font-semibold tracking-[2px] text-green">{isProduction ? t.nav.productionLabel.toUpperCase() : "ERP"}</span>
           {isProduction && <span className="text-xs text-side-muted">{t.nav.partnerFacility}</span>}
         </a>
         <div className="hidden lg:block"><SideNav groups={shown} label={t.nav.main} /></div>
-        <MobileTabBar tabs={tabs} groups={shown} moreLabel={t.nav.more} closeLabel={t.nav.close} navLabel={t.nav.main} />
+        <MobileTabBar tabs={tabs} groups={shown} moreLabel={t.nav.more} closeLabel={t.nav.close} navLabel={t.nav.main}
+          extra={<div className="flex flex-col gap-3 rounded-md bg-paper p-3 text-ink">{accountControls("more")}</div>} accountLabel={t.topbar.account} />
       </aside>
 
       <div className="flex min-w-0 flex-[999_1_560px] flex-col">
-        <header className="flex flex-wrap print:hidden items-center gap-3 border-b border-line bg-white px-4 py-3 sm:px-8">
+        {/* A phone: one row, the search and the bell; language, theme, profile and signing out sit under More */}
+        <header className="flex flex-nowrap print:hidden items-center gap-2 border-b border-line bg-white px-3 pt-[max(8px,env(safe-area-inset-top))] pb-2 sm:px-8 lg:flex-wrap lg:gap-3 lg:py-3">
+          {isProduction && (
+            <a href="/factory" className="mr-auto flex min-h-11 items-center no-underline lg:hidden"><Wordmark height={16} /></a>
+          )}
           {!isProduction && (
             <form action="/search" method="get" role="search" className="flex min-w-0 flex-[1_1_260px]">
               <label htmlFor="global-search" className="sr-only">{t.topbar.search}</label>
               <input id="global-search" name="q" type="search" placeholder={t.topbar.searchPlaceholder} className="input" />
             </form>
           )}
-          <div className={`flex flex-wrap items-center gap-3 ${isProduction ? "ml-auto" : ""}`}>
-            <form action={setLocale} role="group" aria-label={t.topbar.language} className="flex overflow-hidden rounded-sm border border-line-strong">
-              {LOCALES.map((l) => (
-                <button
-                  key={l}
-                  type="submit"
-                  name="locale"
-                  value={l}
-                  aria-pressed={locale === l}
-                  lang={l}
-                  title={t.enums.locale[l]}
-                  className={`h-[42px] min-w-12 border-0 text-xs font-semibold tracking-[1.5px] ${locale === l ? "bg-ink text-white" : "bg-white text-ink-2 hover:bg-canvas"}`}
-                >
-                  {l === "bg" ? "БГ" : "EN"}
-                </button>
-              ))}
-            </form>
-            <ChatDrawer unread={unread} userId={developer?.id ?? user.id} me={developer?.name ?? user.name} isAdmin={user.role === "admin"} partner={isProduction} locale={locale} text={t.chat} gifs={!!process.env.GIPHY_API_KEY} />
+          <div className={`flex shrink-0 items-center gap-2 lg:flex-wrap lg:gap-3 ${isProduction ? "lg:ml-auto" : ""}`}>
+            {/* The phone has the Chat tab at the foot */}
+            <div className="hidden lg:contents">
+              <ChatDrawer unread={unread} userId={developer?.id ?? user.id} me={developer?.name ?? user.name} isAdmin={user.role === "admin"} partner={isProduction} locale={locale} text={t.chat} gifs={!!process.env.GIPHY_API_KEY} />
+            </div>
             <NotificationsSeen />
             <NotificationBell userId={user.id} label={t.topbar.notifications} unreadLabel={t.topbar.unread} />
-            <ThemeSwitch toDark={t.topbar.toDark} toLight={t.topbar.toLight} saved={savedTheme} />
-            {developer && (
-              <ActAsSwitch
-                current={user.id}
-                label={t.topbar.actAs}
-                options={developer.targets.map((u) => ({ id: u.id, label: `${u.full_name} · ${t.enums.role[u.role]}` }))}
-              />
-            )}
-            {!local && (
-              <form action={signOut} className="flex min-w-0 items-center gap-3">
-                {isProduction ? (
-                  <span className="hidden min-w-0 truncate text-xs font-semibold text-ink-2 lg:block">{developer?.name ?? screen?.adminName ?? user.name}</span>
-                ) : (
-                  // One's own e-mail signature is kept under one's name
-                  <a href="/signature" title={t.signature.title} className="hidden min-h-11 min-w-0 items-center gap-2 truncate text-xs font-semibold text-ink-2 hover:text-ink lg:flex"><UserAvatar id={user.id} size={28} />{developer?.name ?? user.name}</a>
-                )}
-                <button type="submit" className="btn btn-outline">{t.topbar.signOut}</button>
-              </form>
-            )}
+            <div className="hidden lg:contents">{accountControls("top")}</div>
           </div>
         </header>
         {screen && (
@@ -186,7 +218,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
             <button type="submit" className="btn btn-outline border-white bg-white text-ink">{t.productionScreen.close}</button>
           </form>
         )}
-        <main className="w-full max-w-[1360px] px-4 py-6 sm:px-8 sm:py-8">
+        <main className="w-full max-w-[1360px] px-4 py-4 sm:px-8 sm:py-8">
           {user.readOnly && <p className="m-0 mb-4 text-sm font-semibold text-ink-2 print:hidden">{t.common.readOnlyNote}</p>}
           {!screen && !developer && <PushPrompt publicKey={process.env.VAPID_PUBLIC_KEY?.trim() || null} T={t.push} />}
           {children}
@@ -196,6 +228,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
         <AssistantPanel models={aiModels()} configured={aiConfigured()} locale={locale} text={t.assistant} keepsNothing={user.readOnly} />
       )}
     </div>
+    </UiTextProvider>
     </LiveProvider>
   );
 }

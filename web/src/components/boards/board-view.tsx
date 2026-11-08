@@ -49,6 +49,8 @@ export function BoardView({ data, locale, userId, isAdmin, canEdit, T, today, in
   const [label, setLabel] = useState("");
   const [openCard, setOpenCard] = useState<string | null>(initialCard);
   const [settings, setSettings] = useState(false);
+  // A phone: the label, Mine and Hide done behind one Filters button (owner, Nov 2026: fewer buttons on the phone)
+  const [moreFilters, setMoreFilters] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);   // list id of the "+ card" form, or "list"
   const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,9 +173,18 @@ export function BoardView({ data, locale, userId, isAdmin, canEdit, T, today, in
           </span>
           {canEdit && (
             <button type="button" onClick={() => setSettings(true)} aria-label={T.addMember} title={T.addMember}
-              className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-dashed border-white/80 text-lg font-bold hover:bg-white/15">+</button>
+              className="hidden h-11 w-11 items-center justify-center rounded-full border-2 border-dashed border-white/80 text-lg font-bold hover:bg-white/15 sm:flex">+</button>
           )}
-          {canEdit && <button type="button" className="btn border-white bg-white text-ink hover:bg-white/90" onClick={() => setSettings(true)}>{T.settings}</button>}
+          {canEdit && (
+            <>
+              {/* A phone: the gear only; a computer: the button with its name */}
+              <button type="button" onClick={() => setSettings(true)} aria-label={T.settings} title={T.settings}
+                className="grid h-11 w-11 place-items-center rounded-full bg-white text-ink hover:bg-white/90 sm:hidden">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+              </button>
+              <span className="hidden sm:contents"><button type="button" className="btn border-white bg-white text-ink hover:bg-white/90" onClick={() => setSettings(true)}>{T.settings}</button></span>
+            </>
+          )}
         </div>
       </header>
 
@@ -196,6 +207,10 @@ export function BoardView({ data, locale, userId, isAdmin, canEdit, T, today, in
           <input ref={searchRef} type="search" className="input" placeholder={`${T.search}  /`} value={search} onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { setSearch(""); e.currentTarget.blur(); } }} />
         </label>
+        <button type="button" aria-expanded={moreFilters} onClick={() => setMoreFilters(!moreFilters)} className={`${chip(moreFilters || !!(mine || hideDone || label))} sm:hidden`}>
+          {T.filters}{(mine || hideDone || label) ? ` · ${[mine, hideDone, label].filter(Boolean).length}` : ""}
+        </button>
+        <div className={`${moreFilters ? "flex" : "hidden"} w-full flex-wrap items-end gap-2 sm:contents`}>
         <label className="field min-w-0 flex-[0_1_200px]"><span className="sr-only">{T.labelFilter}</span>
           <select className="input" value={label} onChange={(e) => setLabel(e.target.value)}>
             <option value="">{T.anyLabel}</option>
@@ -204,6 +219,7 @@ export function BoardView({ data, locale, userId, isAdmin, canEdit, T, today, in
         </label>
         <button type="button" aria-pressed={mine} onClick={() => setMine(!mine)} className={chip(mine)}>{T.onlyMine}</button>
         <button type="button" aria-pressed={hideDone} onClick={() => setHideDone(!hideDone)} className={chip(hideDone)}>{T.hideDone}</button>
+        </div>
       </div>
       {error && <p role="alert" className="m-0 text-sm font-semibold text-red-ink">{error}</p>}
       {filtered && visible.length === 0 && <p className="m-0 text-sm text-ink-2">{T.noCards}</p>}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FilterLinks } from "@/components/filter-links";
 import { LiveSearch } from "@/components/live-search";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
@@ -147,18 +148,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       />
 
       <div className="flex flex-wrap items-center gap-3">
-        <nav aria-label={t.inventory.filter} className="flex flex-wrap gap-1">
-          {TYPES.map((ty) => (
-            <Link
-              key={ty}
-              href={`/inventory?${keep({ type: ty, ...(term && { q: term }) })}`}
-              aria-current={type === ty ? "page" : undefined}
-              className={`flex min-h-10 items-center rounded-full border px-3.5 text-[13px] no-underline ${type === ty ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}
-            >
-              {t.enums.itemType[ty]}
-            </Link>
-          ))}
-        </nav>
+        <FilterLinks id="item-type" label={t.inventory.filter} items={TYPES.map((ty) => ({ href: `/inventory?${keep({ type: ty, ...(term && { q: term }) })}`, label: t.enums.itemType[ty], current: type === ty }))} />
         <form method="get" role="search" className="flex min-w-0 flex-[1_1_220px] justify-end">
           <input type="hidden" name="type" value={type} />
           {at && <input type="hidden" name="loc" value={at} />}

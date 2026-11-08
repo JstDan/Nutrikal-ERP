@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FilterLinks } from "@/components/filter-links";
 import { withUser } from "@/lib/db/engine";
 import { requireStaff } from "@/lib/session";
 import { fmt, formatDate, formatPrice, formatQty } from "@/lib/i18n";
@@ -267,18 +268,7 @@ export default async function DeliveriesPage({ searchParams }: PageProps<"/deliv
       {!canEdit && <p className="m-0 text-sm text-ink-2">{D.readOnly}</p>}
       {form && tab === "open" && <PurchaseShortages rows={form.shortages} suppliers={form.suppliers} locale={locale} t={t} />}
 
-      <nav aria-label={D.status} className="flex flex-wrap gap-1">
-        {ALL_TABS.map((s) => (
-          <Link
-            key={s}
-            href={s === "open" ? "/deliveries" : `/deliveries?status=${s}`}
-            aria-current={tab === s ? "page" : undefined}
-            className={`flex min-h-10 items-center rounded-full border px-3.5 text-[13px] no-underline ${tab === s ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}
-          >
-            {s === "requests" ? D.requestsTab : t.enums.deliveryStatus[s]}
-          </Link>
-        ))}
-      </nav>
+      <FilterLinks id="delivery-status" label={D.status} items={ALL_TABS.map((s) => ({ href: s === "open" ? "/deliveries" : `/deliveries?status=${s}`, label: s === "requests" ? D.requestsTab : t.enums.deliveryStatus[s], current: tab === s }))} />
 
       {tab === "requests" ? (
         <PurchaseRequests user={user} locale={locale} t={t} status={typeof sp.rs === "string" ? sp.rs : undefined} />
