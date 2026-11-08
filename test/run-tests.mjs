@@ -3749,15 +3749,14 @@ await fails('production screen: Production cannot open it', () => as('production
 await fails('production screen: Admin cannot act as a non-production account', () => as('admin', 'select start_production_screen($1)', [U.sales]), 'Not a production account');
 
 console.log('\nAI assistant links');
-// The fixed queries of web/src/lib/ai/tools.ts, read from the file so the test follows the code
-const aiQueries = Object.fromEntries([...readFileSync(join(here, '..', 'web', 'src', 'lib', 'ai', 'tools.ts'), 'utf8').replace(/\r\n/g, '\n')
-  .matchAll(/^  (\w+): \(a?\) => \[\s*`([\s\S]*?)`/gm)].map(([, name, sql]) => [name, sql.replace(/\$\{LIMIT\}/g, '25')]));
-await ok('every query of the assistant runs for Admin', async () => {
+// The fixed queries of Nutri AI (web/src/lib/ai/queries.ts), imported so the test follows the code
+const { QUERIES: aiQueries } = await import(new URL('../web/src/lib/ai/queries.ts', import.meta.url).href);
+const aiOrder = (code) => aiQueries.order_details({ code });
+await ok('every query of the assistant runs for Admin, with nothing typed', async () => {
   eq(Object.keys(aiQueries).length > 10, true, 'queries found');
-  for (const [name, sql] of Object.entries(aiQueries)) {
-    const n = Math.max(0, ...[...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1])));
-    try { await as('admin', sql, Array.from({ length: n }, (_, i) => (name === 'eu_health_claims' && i === 1 ? 'authorised' : ''))); }
-    catch (e) { throw new Error(`${name}: ${e.message}`); }
+  for (const [name, build] of Object.entries(aiQueries)) {
+    const [sql, params] = build({});
+    try { await as('admin', sql, params); } catch (e) { throw new Error(`${name}: ${e.message}`); }
   }
 });
 await ok('an order gives the links of its next steps, by its own payments', async () => {
@@ -3765,7 +3764,7 @@ await ok('an order gives the links of its next steps, by its own payments', asyn
                                     from sales_orders so where so.status not in ('draft', 'unpaid', 'cancelled') and so.deposit_received_on is not null`);
   eq(rows.length > 0, true, 'a paid order exists');
   for (const r of rows) {
-    const d = await one('admin', aiQueries.order_details, [r.code]);
+    const d = await one('admin', ...aiOrder(r.code));
     eq(d.link.startsWith('/orders/'), true, 'order link');
     eq(!!d.links.advance_invoice, r.two, `${r.code} advance`);
     eq(!!d.links.invoice, !r.two, `${r.code} full`);
@@ -3774,7 +3773,7 @@ await ok('an order gives the links of its next steps, by its own payments', asyn
   }
   const unpaid = await as('admin', `select code from sales_orders where status = 'unpaid' limit 1`);
   if (unpaid[0]) {
-    const d = await one('admin', aiQueries.order_details, [unpaid[0].code]);
+    const d = await one('admin', ...aiOrder(unpaid[0].code));
     eq(d.links.advance_invoice ?? d.links.invoice ?? null, null, 'no invoice link before the payment');
   }
 });
@@ -4489,6 +4488,38 @@ await ok('the best fit comes first', async () => {
 await ok('the stock search finds a raw material with a letter wrong, as the signed-in user', async () => {
   const rows = await as('sales', "select sku from items where nk_search_hit(concat_ws(' ', name, name_bg), $1)", ['magensium bisglicinat']);
   eq(rows.some((r) => r.sku === 'RM-MGBG'), true, 'found');
+});
+
+// ----- Nutri AI as the company's brain (owner, Nov 2026): its memory and every fixed query it runs
+console.log('\nNutri AI: memory and queries');
+await ok('a person can only propose a note through Nutri AI; Admin approves it and only then it is read', async () => {
+  const id = (await one('sales', "insert into ai_knowledge (body, status) values ('Acme wants the COA with the delivery', 'proposed') returning id")).id;
+  eq((await as('sales', 'select 1 from ai_knowledge where id = $1', [id])).length, 1, 'the proposer sees it');
+  eq((await as('designer', 'select 1 from ai_knowledge where id = $1', [id])).length, 0, 'a designer does not');
+  eq((await as('production', 'select 1 from ai_knowledge where id = $1', [id])).length, 0, 'the partner does not');
+  eq((await as('clientA', 'select 1 from ai_knowledge where id = $1', [id])).length, 0, 'a client does not');
+  await as('sales', "update ai_knowledge set status = 'approved' where id = $1", [id]);
+  eq((await one('admin', 'select status from ai_knowledge where id = $1', [id])).status, 'proposed', 'Sales cannot approve');
+  await as('admin', "update ai_knowledge set status = 'approved' where id = $1", [id]);
+  const r = await one('admin', 'select status, approved_by from ai_knowledge where id = $1', [id]);
+  eq(r.status, 'approved', 'approved'); eq(r.approved_by, U.admin, 'by Admin');
+});
+await fails('nobody but Admin writes an approved note', () => as('sales', "insert into ai_knowledge (body, status) values ('x', 'approved')"), 'row-level security');
+await fails('the partner cannot propose notes', () => as('production', "insert into ai_knowledge (body, status) values ('x', 'proposed')"), 'row-level security');
+await ok('every query of Nutri AI runs for Admin and for Sales', async () => {
+  const { QUERIES, OVERVIEW, MY_DAY } = await import(new URL('../web/src/lib/ai/queries.ts', import.meta.url).href);
+  const broken = [];
+  for (const who of ['admin', 'sales']) {
+    for (const [name, build] of Object.entries(QUERIES)) {
+      if (name === 'sales_figures' && who !== 'admin') continue;
+      const [sql, params] = build({ term: 'magnesium', code: 'SO-00001', status: '', from: '2026-11-01', to: '2026-11-30', days: 3 });
+      try { await as(who, sql, params); } catch (e) { broken.push(`${who} ${name}: ${e.message.split('\n')[0]}`); }
+    }
+    for (const [name, sql] of Object.entries({ ...OVERVIEW, ...MY_DAY })) {
+      try { await as(who, sql); } catch (e) { broken.push(`${who} ${name}: ${e.message.split('\n')[0]}`); }
+    }
+  }
+  eq(broken.join('; '), '', 'no query fails');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

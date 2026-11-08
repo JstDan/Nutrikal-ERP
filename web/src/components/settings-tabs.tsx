@@ -1,5 +1,5 @@
-import Link from "next/link";
 import type { Dict } from "@/lib/i18n/en";
+import { FilterLinks } from "./filter-links";
 
 const TABS = [
   { key: "general", href: "/settings" },
@@ -9,24 +9,15 @@ const TABS = [
   { key: "mail", href: "/settings/mail" },
   { key: "users", href: "/settings/users" },
   { key: "contract", href: "/settings/contract" },
+  { key: "ai", href: "/settings/ai" },
   { key: "trash", href: "/settings/trash" },
   { key: "history", href: "/history" },
 ] as const;
 
-/** The parts of Settings (Admin only). */
+/** The parts of Settings (Admin only); one drop-down on a phone. */
 export function SettingsTabs({ t, active }: { t: Dict; active: (typeof TABS)[number]["key"] }) {
   return (
-    <nav aria-label={t.adminSettings.title} className="flex flex-wrap gap-1">
-      {TABS.map((x) => (
-        <Link
-          key={x.key}
-          href={x.href}
-          aria-current={active === x.key ? "page" : undefined}
-          className={`flex min-h-11 items-center rounded-full border px-3.5 text-[13px] no-underline ${active === x.key ? "border-ink bg-ink font-semibold text-white" : "border-line-strong bg-white text-ink"}`}
-        >
-          {t.adminSettings.tabs[x.key]}
-        </Link>
-      ))}
-    </nav>
+    <FilterLinks id="settings-part" label={t.adminSettings.title}
+      items={TABS.map((x) => ({ href: x.href, label: t.adminSettings.tabs[x.key], current: active === x.key }))} />
   );
 }

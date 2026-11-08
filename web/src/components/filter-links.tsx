@@ -24,7 +24,7 @@ export function FilterLinks({ label, items, id, className = "" }: { label: strin
           </Link>
         ))}
       </nav>
-      <div className={`flex min-w-0 flex-[1_1_160px] sm:hidden ${className}`}>
+      <div className={`flex min-w-40 flex-1 sm:hidden ${className}`}>
         <label htmlFor={id} className="sr-only">{label}</label>
         <select id={id} className="input min-w-0" value={current?.href} onChange={(e) => router.push(e.target.value)}>
           {items.map((i) => <option key={i.href} value={i.href}>{text(i)}</option>)}

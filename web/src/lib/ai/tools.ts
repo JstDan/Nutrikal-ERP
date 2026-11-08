@@ -2,38 +2,64 @@ import { q } from "@/lib/db/engine";
 import { searchMailbox } from "@/lib/gmail";
 import { CAPSULE_SIZE, CAPSULE_SIZES } from "@/lib/calculator/types";
 import type { ToolDefinition } from "./gateway";
+import { MY_DAY, OVERVIEW, QUERIES, type Args } from "./queries";
 
-// What the assistant can read. Fixed queries only, each run as the signed-in user, so row-level security decides
-// what comes back. Nothing here changes company data: text in the data (client notes, for example) cannot make the
-// assistant act. propose_recipe only keeps a proposal in the conversation; a person turns it into a draft recipe.
-
-const LIMIT = 25;
-type Args = { term?: string; status?: string; code?: string };
-const term = (a: Args) => (a.term ?? "").trim();
+// What the assistant can read. Fixed queries only (queries.ts), each run as the signed-in user, so row-level security
+// decides what comes back. Nothing here changes company data: text in the data (client notes, e-mails) cannot make the
+// assistant act. propose_recipe and remember only keep a proposal; a person turns it into a draft recipe or an
+// approved note (owner, Oct-Nov 2026: AI proposes, a person approves).
 
 const tool = (name: string, description: string, properties: Record<string, unknown> = {}): ToolDefinition => ({
   name, description, parameters: { type: "object", properties, additionalProperties: false },
 });
-const TERM = { term: { type: "string", description: "Part of the name or code; empty for all" } };
+const TERM = { term: { type: "string", description: "A name, code or words; Cyrillic or Latin, typos are fine. Empty for all." } };
+const ONE = (what: string) => ({ term: { type: "string", description: `The ${what}: its name or code, Cyrillic or Latin; the best match is taken` } });
+const CODE = (what: string) => ({ code: { type: "string", description: what } });
+const RANGE = {
+  from: { type: "string", description: "First day, YYYY-MM-DD" },
+  to: { type: "string", description: "Last day, YYYY-MM-DD" },
+};
 
 export const AI_TOOLS: ToolDefinition[] = [
-  tool("find_clients", "Find clients by name, with status, country, VAT number and billing e-mail.", TERM),
-  tool("list_orders", "Sales orders, newest first, optionally by client name and status (unpaid, confirmed, in_production, ready, dispatched, closed, cancelled).",
+  // The whole company at a glance
+  tool("company_overview", "What needs attention across the company right now: orders waiting for payment or dispatch, batches in the next 14 days, dates the partner proposed, finished batches waiting for release, overdue invoices, missing materials, late deliveries, expiring or blocked lots, unread client messages, pending label approvals and reorders, new catalogue enquiries, offers without answer, clients due to reorder, contracts waiting. Use it for 'what is going on', 'what should we do', priorities, daily or weekly briefings."),
+  tool("my_day", "The day of the person asking: their board cards (overdue first), order tasks assigned to them, CRM to-dos, unread notifications and their clients' unread messages. Use it for 'what do I have today', 'my tasks'."),
+  tool("find_anything", "One search over clients, items, recipes, catalogue products, orders, offers, batches and projects at once, with the kind and link of each. Use it when you do not know what kind of record a name or code is.", TERM),
+  // Clients and sales
+  tool("find_clients", "Find clients by name, code or VAT number, with status, country and billing e-mail.", TERM),
+  tool("client_overview", "Everything about one client: details, responsible person, contacts, projects, last orders with totals, unpaid invoices, offers, recipes, recent CRM activities, open conversations and when a reorder is expected.", ONE("client")),
+  tool("list_orders", "Sales orders, newest first, with total incl. VAT, optionally by client or code and status (unpaid, confirmed, in_production, ready, dispatched, closed, cancelled).",
     { ...TERM, status: { type: "string", description: "Order status; empty for all" } }),
-  tool("order_details", "One sales order by its code (SO-00001): lines, prices, payments and production batches.",
-    { code: { type: "string", description: "Order code" } }),
-  tool("find_stock", "Stock of items by name or SKU: available, unit.", TERM),
+  tool("order_details", "One sales order by its code (SO-00001): lines, prices, totals, payments, invoices, batches, open tasks with who has them, dispatches, contract, and the links to act on it.", CODE("Order code")),
+  tool("list_offers", "Calculator offers, newest first, by number, client or product.", TERM),
+  tool("offer_details", "One offer by its number (NK-2026-9005): client, product, totals and the full offer data (format, quantities, tiers, composition).", CODE("Offer number")),
+  tool("receivables", "Money owed: issued invoices not fully paid (with days overdue), orders waiting for the advance, orders waiting for the balance."),
+  tool("sales_figures", "Admin only: the figures of the admin dashboard for a period (money received and invoiced, sales by client and product, stock value, purchasing, production costs). Default: this month.", RANGE),
+  tool("client_messages_waiting", "Open conversations with clients in the customer panel: last message, unread count, who is responsible."),
+  tool("catalog_enquiries", "New enquiries from the open catalogue (catalog.nutrikal.com): company, products, quantities, message."),
+  // Production, stock, purchasing
+  tool("production_schedule", "Batches planned in a period (default the next 30 days): date, whether the partner confirmed it or proposed another, product, order and client.", RANGE),
+  tool("production_details", "One batch by its code (MO-00001) or batch number: status, quantities, dates, recipe, order, client and its finished lot.", CODE("Manufacturing order code or batch number")),
+  tool("find_stock", "Stock of items by name or SKU: on hand, reserved, available, in quarantine, incoming and the next delivery.", TERM),
+  tool("item_overview", "Everything about one item (raw material, packaging, finished good): stock, lots with warehouse, expiry and quality status, reservations by batch, expected deliveries, purchase requests and the recipes that use it.", ONE("item")),
   tool("expiring_lots", "Lots close to their expiry date."),
-  tool("find_recipes", "Recipes by name or code, with format and latest version status.", TERM),
-  tool("recipe_details", "Ingredients and amounts per serving of the latest version of one recipe, by its code (NK-F-0001).",
-    { code: { type: "string", description: "Recipe code" } }),
-  tool("find_invoices", "Invoices and notes by number, client or order code, newest first, with total, due date and what is left to pay.", TERM),
-  tool("production_details", "One batch by its code (MO-00001): status, quantity, dates, recipe and client order.", { code: { type: "string", description: "Manufacturing order code" } }),
   tool("find_lots", "Lots by lot number, supplier lot or item: quality status and expiry date.", TERM),
+  tool("purchasing_status", "Purchasing: missing materials for orders, open purchase requests, expected deliveries (late and partial ones marked) and recent purchase orders."),
+  tool("find_suppliers", "Suppliers by name or by a material they supply: approval, contact and what they supply.", TERM),
+  // Recipes and regulation
+  tool("find_recipes", "Recipes by name or code, with format, client and latest version status.", TERM),
+  tool("recipe_details", "Ingredients and amounts per serving of the latest version of one recipe, by its code (NK-F-0001).", CODE("Recipe code")),
   tool("find_materials", "Raw materials and excipients in the system by name or SKU, with stock, price per base unit when the person may see it, and Novel Food status. Recipes can use only these.", TERM),
   tool("eu_health_claims", "The EU Register of health claims: exact wording, conditions of use and status, by substance or words of the claim. Status: authorised (default), non_authorised, revoked.",
     { ...TERM, status: { type: "string", enum: ["authorised", "non_authorised", "revoked"] } }),
   tool("eu_novel_food_status", "The EU Novel Food status Catalogue, by name, synonym or common name: the status per part of the source. Search by the source (Camellia sinensis, magnesium) as well as by the ingredient.", TERM),
+  // The team
+  tool("search_team_chat", "Messages of the internal chat the person may read, by words: channel, author, date and link.", TERM),
+  tool("recent_changes", "What was created, changed or deleted in the last days (the audit log; Admin), optionally for one table (sales_orders, invoices, lots, items, formulas, clients…).", {
+    days: { type: "integer", description: "How many days back, 1 to 30" },
+    status: { type: "string", description: "A table name, or empty for all" },
+  }),
+  // Proposals: a person decides
   tool("propose_recipe", "Propose a new recipe from items found with find_materials. The system calculates cost, capsule fill and stock and returns them; use those figures. A person decides whether to save it as a draft.", {
     name: { type: "string", description: "Recipe name in English" },
     name_bg: { type: "string", description: "Recipe name in Bulgarian" },
@@ -52,6 +78,9 @@ export const AI_TOOLS: ToolDefinition[] = [
       },
     },
   }),
+  tool("remember", "Propose a lasting note for your memory when the person asks you to remember something about the company, a client, a supplier or how the team works. Admin approves it under Settings; then you know it in every conversation. One fact per note, in a full sentence that makes sense on its own, in the language of the conversation; never figures that the system already holds (stock, prices, balances).", {
+    note: { type: "string", description: "The fact, at most 1000 characters" },
+  }),
 ];
 
 /** Mail reaches the AI service only with AI_READ_MAIL=on (after the data processing agreement is signed). */
@@ -66,86 +95,19 @@ const MAIL_TOOLS: ToolDefinition[] = [
 ];
 export const aiTools = () => (process.env.AI_READ_MAIL?.trim() === "on" ? [...AI_TOOLS, ...MAIL_TOOLS] : AI_TOOLS);
 
-const QUERIES: Record<string, (a: Args) => [string, unknown[]]> = {
-  find_clients: (a) => [
-    `select code, legal_name, trade_name, status, country_code, vat_number, billing_email, '/clients/' || id as link from clients
-      where $1 = '' or legal_name ilike '%' || $1 || '%' or trade_name ilike '%' || $1 || '%' order by legal_name limit ${LIMIT}`, [term(a)]],
-  list_orders: (a) => [
-    `select code, status, client, total_packs, requested_date::text, '/orders/' || id as link from sales_order_overview
-      where ($1 = '' or client ilike '%' || $1 || '%') and ($2 = '' or status::text = $2) order by code desc limit ${LIMIT}`, [term(a), a.status ?? ""]],
-  order_details: (a) => [
-    `select so.code, so.status, c.legal_name as client, so.currency, so.vat_pct, so.deposit_pct, so.deposit_amount, so.deposit_received_on::text,
-            so.balance_terms, so.balance_received_on::text, so.requested_date::text, so.customer_ref, so.notes,
-            '/orders/' || so.id as link, '/clients/' || so.client_id as client_link,
-            (select json_agg(json_build_object('purpose', i.purpose, 'number', i.number, 'status', i.status, 'total', i.total, 'link', '/invoices/' || i.id))
-               from invoices i where i.order_id = so.id) as invoices,
-            -- Pages to act on the order; an invoice link opens the invoice, or one click there makes its draft
-            json_strip_nulls(json_build_object(
-              'proforma', '/orders/' || so.id || '/proforma',
-              'final_proforma', case when two.v and order_production_done(so.id) then '/orders/' || so.id || '/proforma?final=1' end,
-              'advance_invoice', case when two.v and so.deposit_received_on is not null and paid.v then '/orders/' || so.id || '/invoice?purpose=advance' end,
-              'final_invoice', case when two.v and so.balance_received_on is not null and paid.v then '/orders/' || so.id || '/invoice?purpose=final' end,
-              'invoice', case when not two.v and paid.v then '/orders/' || so.id || '/invoice?purpose=full' end,
-              'payments_and_tasks', '/orders/' || so.id,
-              'dispatch', case when so.status = 'ready' then '/orders/' || so.id || '#dispatch-h' end)) as links,
-            (select json_agg(json_build_object('product', coalesce(l.description, f.name), 'quantity', l.quantity, 'unit_price', l.unit_price) order by l.sort_order)
-               from sales_order_lines l left join formula_versions v on v.id = l.formula_version_id left join formulas f on f.id = v.formula_id
-              where l.order_id = so.id) as lines,
-            (select json_agg(json_build_object('code', m.code, 'status', m.status, 'quantity', m.quantity, 'produced', m.produced_quantity, 'planned', m.planned_date, 'link', '/production/' || m.id) order by m.code)
-               from manufacturing_orders m join sales_order_lines l on l.id = m.sales_order_line_id where l.order_id = so.id) as batches
-       from sales_orders so join clients c on c.id = so.client_id
-       cross join lateral (select order_paid_in_two(so.id) as v) two
-       cross join lateral (select so.status not in ('draft', 'unpaid', 'cancelled') as v) paid
-      where so.code = $1`, [(a.code ?? "").trim().toUpperCase()]],
-  find_stock: (a) => [
-    `select i.sku, i.name, i.name_bg, s.available, s.base_unit
-       from item_stock_summary s join items i on i.id = s.item_id
-      where $1 = '' or i.name ilike '%' || $1 || '%' or i.name_bg ilike '%' || $1 || '%' or i.sku ilike '%' || $1 || '%' order by i.name limit ${LIMIT}`, [term(a)]],
-  expiring_lots: () => [
-    `select lot_number, item_name, days_left, quantity from expiring_lots order by days_left limit ${LIMIT}`, []],
-  find_recipes: (a) => [
-    `select f.code, f.name, f.name_bg, f.product_format, f.is_active, c.legal_name as client, '/formulas/' || f.id as link,
-            (select v.status from formula_versions v where v.formula_id = f.id order by v.version desc limit 1) as latest_status
-       from formulas f left join clients c on c.id = f.client_id
-      where $1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%' order by f.code desc limit ${LIMIT}`, [term(a)]],
-  find_invoices: (a) => [
-    `select i.number, i.kind, i.status, i.buyer ->> 'name' as client, so.code as order_code, i.issue_date::text, i.due_date::text, i.total, i.currency, '/invoices/' || i.id as link,
-            case when i.status = 'issued' and i.kind = 'invoice' then invoice_open_amount(i.id) end as left_to_pay
-       from invoices i left join sales_orders so on so.id = i.order_id
-      where $1 = '' or i.number ilike '%' || $1 || '%' or i.buyer ->> 'name' ilike '%' || $1 || '%' or so.code ilike '%' || $1 || '%'
-      order by i.created_at desc limit ${LIMIT}`, [term(a)]],
-  production_details: (a) => [
-    `select m.code, m.status, m.quantity, m.produced_quantity, m.planned_date::text, m.produced_on::text, f.code as recipe, f.name as product, so.code as sales_order, '/production/' || m.id as link
-       from manufacturing_orders m
-       left join formula_versions v on v.id = m.formula_version_id left join formulas f on f.id = v.formula_id
-       left join sales_order_lines l on l.id = m.sales_order_line_id left join sales_orders so on so.id = l.order_id
-      where m.code = $1`, [(a.code ?? "").trim().toUpperCase()]],
-  find_lots: (a) => ["select lot_number, supplier_lot, sku, name, qc_status, expires_on::text from trace_find_lots($1) limit 25", [term(a)]],
-  mail_waiting_reply: () => [
-    `select client, from_address, subject, snippet, sent_at::text from emails_waiting_reply order by sent_at limit ${LIMIT}`, []],
-  search_client_mail: (a) => [
-    `select c.legal_name as client, c.code as client_code, e.direction, e.from_address, e.to_addresses, e.subject,
-            left(e.body, 1500) as body, e.has_attachments, e.sent_at::text
-       from client_emails e join clients c on c.id = e.client_id
-      where c.legal_name ilike '%' || $1 || '%' or c.trade_name ilike '%' || $1 || '%' or c.code ilike $1
-         or e.from_address ilike '%' || $1 || '%' or e.subject ilike '%' || $1 || '%' or e.body ilike '%' || $1 || '%'
-      order by e.sent_at desc limit 20`, [term(a)]],
-  eu_health_claims: (a) => [
-    `select code, substance, claim, conditions, restrictions, status, claim_type, (select downloaded_on::text from eu_lists_info limit 1) as list_date
-       from eu_health_claims where status = $2 and (substance ilike '%' || $1 || '%' or claim ilike '%' || $1 || '%')
-      order by substance limit 30`, [term(a), a.status || "authorised"]],
-  eu_novel_food_status: (a) => [
-    `select code, name, synonyms, common_names, parts, description, (select downloaded_on::text from eu_lists_info limit 1) as list_date
-       from eu_novel_food_status where name ilike '%' || $1 || '%' or synonyms ilike '%' || $1 || '%' or common_names ilike '%' || $1 || '%'
-      order by name limit 15`, [term(a)]],
-  find_materials: (a) => ["select * from recipe_materials($1)", [term(a)]],
-  recipe_details: (a) => [
-    `select f.code, f.name, v.version, v.status, f.product_format, f.serving_size, f.serving_unit, f.servings_per_pack, '/formulas/' || f.id as link,
-            (select json_agg(json_build_object('ingredient', d.name, 'amount', d.amount, 'unit', d.unit) order by d.sort_order, d.name)
-               from formula_line_details d where d.version_id = v.id) as lines
-       from formulas f join formula_versions v on v.formula_id = f.id
-      where f.code = $1 order by v.version desc limit 1`, [(a.code ?? "").trim().toUpperCase()]],
-};
+/** Several parts read one by one: a part the person may not read is left out instead of failing the whole answer. */
+async function readParts(userId: string, parts: Record<string, string>): Promise<string> {
+  const out: Record<string, unknown> = {};
+  for (const [key, sql] of Object.entries(parts)) {
+    try {
+      const rows = await q(userId, sql);
+      if (rows.length) out[key] = rows;
+    } catch {
+      // No rights on this part for the role
+    }
+  }
+  return JSON.stringify(Object.keys(out).length ? out : { note: "Nothing needs attention, or nothing this account may read" });
+}
 
 /** The result of a tool as text for the model; a failure is reported to the model, not thrown. */
 export async function runTool(userId: string, conversationId: string, name: string, rawArgs: string): Promise<string> {
@@ -158,6 +120,19 @@ export async function runTool(userId: string, conversationId: string, name: stri
       return JSON.stringify({ error: e instanceof Error ? e.message.split("\n")[0] : "The proposal could not be saved" });
     }
   }
+  if (name === "remember") {
+    const { note = "" } = JSON.parse(rawArgs || "{}") as { note?: string };
+    const text = String(note).trim().slice(0, 1000);
+    if (!text) return JSON.stringify({ error: "Empty note" });
+    try {
+      await q(userId, "insert into ai_knowledge (body, status) values ($1, 'proposed')", [text]);
+      return JSON.stringify({ ok: true, note: "Proposed. Admin approves it under Settings > Nutri AI; until then it is not used." });
+    } catch {
+      return JSON.stringify({ error: "This account cannot propose notes" });
+    }
+  }
+  if (name === "company_overview") return readParts(userId, OVERVIEW);
+  if (name === "my_day") return readParts(userId, MY_DAY);
   if (MAIL_TOOLS.some((t) => t.name === name) && process.env.AI_READ_MAIL?.trim() !== "on") return JSON.stringify({ error: "Mail is not available" });
   if (name === "search_gmail") {
     // The same people who may read saved client mail (Admin and Sales), checked by the database
@@ -170,9 +145,11 @@ export async function runTool(userId: string, conversationId: string, name: stri
   if (!query) return JSON.stringify({ error: "Unknown tool" });
   try {
     const [sql, params] = query(JSON.parse(rawArgs || "{}") as Args);
-    return JSON.stringify(await q(userId, sql, params));
+    const rows = await q(userId, sql, params);
+    return JSON.stringify(rows.length ? rows : { note: "Nothing found" });
   } catch (e) {
     console.error(`AI tool ${name}`, e);
-    return JSON.stringify({ error: "The data could not be read" });
+    const msg = e instanceof Error ? e.message.split("\n")[0] : "";
+    return JSON.stringify({ error: /permission|not allowed|row-level/i.test(msg) ? "This account may not read this" : "The data could not be read" });
   }
 }
