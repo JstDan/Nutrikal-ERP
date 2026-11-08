@@ -27,6 +27,8 @@ type Version = { revision: number; reason: string; changed_at: string; name: str
 type Fixed = { revision: number; corrected_at: string | null; corrected_name: string | null };
 
 /** An invoice: a draft is checked and issued here (number and date); an issued one is downloaded or printed. */
+const EU = new Set(["AT", "BE", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK"]);
+
 export default async function InvoicePage({ params, searchParams }: PageProps<"/invoices/[id]">) {
   const { id } = await params;
   const { user, locale, t } = await requireRole("admin", "sales");
@@ -61,10 +63,14 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
          from invoice_versions v left join profiles p on p.id = v.changed_by where v.invoice_id = $1 order by v.revision desc`, [id])).rows;
     const raw = (await tx.query<{ id: string; description: string; quantity: string; unit_price: string }>(
       "select id, description, quantity::text, unit_price::text from invoice_lines where invoice_id = $1 order by sort_order", [id])).rows;
-    return { inv, lines, next, logo: seller?.logo_data_url ?? null, rate: Number(rate ?? 20), notes, payments, open, fixed, versions, raw };
+    // 0 % VAT to another EU country needs the buyer's VAT number valid in VIES (owner, Nov 2026)
+    const buyer = (await tx.query<{ id: string; country_code: string; vies: boolean }>(
+      `select c.id, c.country_code, c.vat_validated_at is not null as vies from clients c
+        where c.id = coalesce($1::uuid, (select client_id from sales_orders where id = $2::uuid))`, [inv.client_id, inv.order_id])).rows[0] ?? null;
+    return { inv, lines, next, logo: seller?.logo_data_url ?? null, rate: Number(rate ?? 20), notes, payments, open, fixed, versions, raw, buyer };
   });
   if (!data) notFound();
-  const { inv: x, lines, next, logo, rate, notes, payments, open, fixed, versions, raw } = data;
+  const { inv: x, lines, next, logo, rate, notes, payments, open, fixed, versions, raw, buyer } = data;
   const FX = t.invoiceFix;
   const draft = x.status === "draft";
   // No order: the lines and terms are written here, and payments are recorded here
@@ -260,6 +266,11 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
         <div className="print:hidden">
           <Card title={isNote ? N.issueTitle : I.issueTitle} id="issue-h">
             <p className="m-0 text-sm text-ink-2">{I.draftNote}</p>
+            {Number(x.order_id ? rate : x.vat_pct) === 0 && buyer && !buyer.vies && buyer.country_code !== "BG" && EU.has(buyer.country_code) && (
+              <p role="alert" className="m-0 border-l-4 border-[#D72C0D] pl-3 text-sm">
+                {t.clients.vies.zeroVatHint} <Link href={`/clients/${buyer.id}`}>{t.clients.vies.check}</Link>
+              </p>
+            )}
             {!isNote && !direct && (
               <ActionForm action={setInvoiceVatRate} submitLabel={t.common.save} resetOnSuccess={false}>
                 <input type="hidden" name="invoice_id" value={x.id} />

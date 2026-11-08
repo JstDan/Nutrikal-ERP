@@ -4522,5 +4522,33 @@ await ok('every query of Nutri AI runs for Admin and for Sales', async () => {
   eq(broken.join('; '), '', 'no query fails');
 });
 
+// ----- VIES (owner, Nov 2026): every check of a VAT number kept as proof; the client shows its last valid check
+console.log('\nVIES checks');
+await ok('a valid check stamps the clients with that number, with or without the prefix', async () => {
+  const c = await one('sales', "insert into clients (legal_name, country_code, vat_number) values ('VIES Test GmbH', 'DE', 'de 811 907 980') returning id, vat_number, vat_validated_at");
+  eq(c.vat_number, 'DE811907980', 'the number is cleaned'); eq(c.vat_validated_at, null, 'not checked yet');
+  const g = await one('sales', "insert into clients (legal_name, country_code, vat_number) values ('VIES Test AE', 'GR', '094014201') returning id");
+  await as('sales', "select record_vat_check('DE811907980', true, 'VIES Test GmbH', 'Berlin', 'WAPIAAAAX1')");
+  await as('bookkeeper', "select record_vat_check('EL094014201', true, null, null, null)");
+  eq(!!(await one('sales', 'select vat_validated_at from clients where id = $1', [c.id])).vat_validated_at, true, 'stamped');
+  eq(!!(await one('sales', 'select vat_validated_at from clients where id = $1', [g.id])).vat_validated_at, true, 'Greece by EL');
+  const r = await one('sales', "select request_id, checked_by from vat_checks where vat_number = 'DE811907980' order by checked_at desc limit 1");
+  eq(r.request_id, 'WAPIAAAAX1', 'the request number kept'); eq(r.checked_by, U.sales, 'who checked');
+  await as('sales', "update clients set vat_number = 'DE999999999' where id = $1", [c.id]);
+  eq((await one('sales', 'select vat_validated_at from clients where id = $1', [c.id])).vat_validated_at, null, 'a changed number is not checked');
+  await as('sales', "update clients set vat_number = 'DE811907980' where id = $1", [c.id]);
+  eq(!!(await one('sales', 'select vat_validated_at from clients where id = $1', [c.id])).vat_validated_at, true, 'back to the checked number');
+  await as('sales', "select record_vat_check('DE811907980', false, null, null, null)");
+  eq((await one('sales', 'select vat_validated_at from clients where id = $1', [c.id])).vat_validated_at, null, 'an invalid answer clears it');
+});
+await ok('the checks are read by the team only', async () => {
+  eq((await as('admin', 'select 1 from vat_checks')).length > 0, true, 'Admin reads');
+  eq((await as('production', 'select 1 from vat_checks')).length, 0, 'the partner does not');
+  eq((await as('designer', 'select 1 from vat_checks')).length, 0, 'a designer does not');
+  eq((await as('clientA', 'select 1 from vat_checks')).length, 0, 'a client does not');
+});
+await fails('the partner cannot record a check', () => as('production', "select record_vat_check('DE811907980', true, null, null, null)"), 'Not allowed');
+await fails('nobody writes a check directly', () => as('admin', "insert into vat_checks (vat_number, valid) values ('DE811907980', true)"), 'row-level security');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

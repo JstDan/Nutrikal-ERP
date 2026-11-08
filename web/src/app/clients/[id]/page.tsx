@@ -19,6 +19,7 @@ type Client = {
   billing_email: string | null; phone: string | null; preferred_locale: "bg" | "en"; currency: string;
   deposit_pct: string | null; balance_terms: "before_dispatch" | "net_days" | null; balance_net_days: number | null;
   credit_limit: string | null; notes: string | null; owner: string | null; owner_id: string | null; registration_address: string | null; website: string | null;
+  vies_at: string | null; vies_request: string | null;
 };
 type Order = { id: string; code: string; status: string; total_packs: number; products: string | null };
 type Contact = { id: string; first_name: string; last_name: string | null; position: string | null; email: string | null; phone: string | null; is_primary: boolean };
@@ -37,7 +38,8 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
   const data = await withUser(user.id, async (tx) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
     const client = (await tx.query<Client>(
-      `select c.*, c.deposit_pct::text, c.credit_limit::text, pr.full_name as owner
+      `select c.*, c.deposit_pct::text, c.credit_limit::text, pr.full_name as owner, c.vat_validated_at::text as vies_at,
+              (select v.request_id from vat_checks v where v.valid and v.checked_at = c.vat_validated_at limit 1) as vies_request
          from clients c left join profiles pr on pr.id = c.owner_id where c.id = $1`, [id])).rows[0];
     if (!client) return null;
     const settings = (await tx.query<{ default_deposit_pct: string | null; default_balance_terms: "before_dispatch" | "net_days"; default_balance_net_days: number | null }>(
@@ -96,6 +98,12 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
             <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
               <Fact label={d.registry}>{c.company_id ?? "—"}</Fact>
               <Fact label={d.currency}>{c.currency}</Fact>
+              {c.vat_number && (
+                <Fact label={t.clients.vies.status}>
+                  {c.vies_at ? fmt(t.clients.vies.checkedOn, { date: formatDate(locale, c.vies_at) }) : t.clients.vies.notChecked}
+                  {c.vies_request && <span className="block text-[13px] text-ink-2">{fmt(t.clients.vies.requestId, { id: c.vies_request })}</span>}
+                </Fact>
+              )}
               {user.access !== "designer" && (
                 <>
                   <Fact label={d.paymentTerms}>{termsText}{usingDefaults && <span className="text-ink-2"> ({d.defaultTerms})</span>}</Fact>

@@ -215,6 +215,34 @@ export async function updateClient(_: ActionState, fd: FormData): Promise<Action
   return { ok: true, message: t.common.saved };
 }
 
+export type VatCheckResult =
+  | { ok: true; valid: boolean; vat: string; country: string; name: string | null; address: string | null; requestId: string | null; at: string }
+  | { ok: false; error: string };
+
+/**
+ * Checks a VAT number in VIES (owner, Nov 2026) and keeps the answer as proof (`record_vat_check`, which also stamps
+ * the clients with that number). Nutrikal's own VAT number goes with the question, so VIES gives a request number.
+ */
+export async function checkVat(vat: string, country: string | null): Promise<VatCheckResult> {
+  const { user, t } = await getSession();
+  const T = t.clients.vies;
+  const { splitVat, checkVies, countryOfPrefix } = await import("@/lib/vies");
+  const parts = splitVat(vat ?? "", country);
+  if (!parts) return { ok: false, error: T.notEu };
+  try {
+    const own = await q<{ vat_number: string | null }>(user.id, "select vat_number from company_settings limit 1");
+    const answer = await checkVies(parts.prefix, parts.number, own[0]?.vat_number);
+    const full = parts.prefix + parts.number;
+    await q(user.id, "select record_vat_check($1, $2, $3, $4, $5)", [full, answer.valid, answer.name, answer.address, answer.requestId]);
+    revalidatePath("/clients", "layout");
+    return { ok: true, valid: answer.valid, vat: full, country: countryOfPrefix(parts.prefix), name: answer.name, address: answer.address,
+      requestId: answer.requestId, at: new Date().toISOString() };
+  } catch (e) {
+    const msg = errorText(e);
+    return { ok: false, error: /not allowed/i.test(msg) ? T.notAllowed : T.unavailable };
+  }
+}
+
 export async function createProject(_: ActionState, fd: FormData): Promise<ActionState> {
   const { user } = await getSession();
   const clientId = str(fd, "client_id");

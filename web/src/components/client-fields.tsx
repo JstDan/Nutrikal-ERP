@@ -1,4 +1,5 @@
 import { countryOptions } from "@/lib/calculator/countries";
+import { VatInput } from "@/components/vat-input";
 import type { Dict } from "@/lib/i18n/en";
 import type { Locale } from "@/lib/i18n";
 
@@ -40,7 +41,7 @@ export function ClientFields({ t, locale, c, withContact }: { t: Dict; locale: L
           <label className="field"><span>{f.legalName}{c ? " *" : ""}</span><input name="legal_name" required={!!c} defaultValue={v(c?.legal_name)} className="input" /></label>
           <label className="field"><span>{f.tradeName}</span><input name="trade_name" defaultValue={v(c?.trade_name)} className="input" /></label>
           <label className="field"><span>{f.companyId}</span><input name="company_id" defaultValue={v(c?.company_id)} className="input" /></label>
-          <label className="field"><span>{f.vatNumber}</span><input name="vat_number" defaultValue={v(c?.vat_number)} className="input" /></label>
+          <VatInput label={f.vatNumber} defaultValue={v(c?.vat_number)} T={t.clients.vies} />
           <label className="field md:col-span-2">
             <span>{f.registrationAddress}</span>
             <input name="registration_address" defaultValue={v(c?.registration_address)} className="input" aria-describedby="reg-address-hint" />
