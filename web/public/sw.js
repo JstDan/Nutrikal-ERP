@@ -1,11 +1,18 @@
 // Nutrikal service worker: installable app, push notifications, and a fast start on phones (owner, Nov 2026).
 // Pages are never cached: every page is per user and always fresh from the server. The app's own files
 // (scripts, styles, fonts, icons: their names change with every release) are kept, so the app opens at once.
-const STATIC = "nk-static-v1";
+const STATIC = "nk-static-v2";
 const OFFLINE = "/offline.html";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(STATIC).then((c) => c.add(OFFLINE)).catch(() => {}).then(() => self.skipWaiting()));
+  // The host serves /offline.html as /offline (a redirect); a redirected answer cannot stand for a page, so a clean copy is kept
+  event.waitUntil((async () => {
+    try {
+      const res = await fetch(OFFLINE);
+      if (res.ok) await (await caches.open(STATIC)).put(OFFLINE, new Response(await res.blob(), { headers: { "Content-Type": "text/html; charset=utf-8" } }));
+    } catch {}
+    await self.skipWaiting();
+  })());
 });
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
