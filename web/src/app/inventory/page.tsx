@@ -65,7 +65,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
     const locations = (await tx.query<Loc>(
       "select id, code, name from locations where is_active and type <> 'virtual' order by (code = 'NK-WH') desc, (code = 'G-PRO') desc, name")).rows;
     const at = locations.some((l) => l.id === loc) ? loc : "";
-    const search = `($2 = '' or i.name ilike '%' || $2 || '%' or i.name_bg ilike '%' || $2 || '%' or i.sku ilike '%' || $2 || '%'
+    const search = `($2 = '' or i.sku ilike '%' || $2 || '%' or nk_search_hit(concat_ws(' ', i.name, i.name_bg), $2)
                or exists (select 1 from stock_balances b join lots lo on lo.id = b.lot_id
                            where b.item_id = i.id and b.quantity > 0 and ($3::uuid is null or b.location_id = $3::uuid)
                              and (lo.lot_number ilike '%' || $2 || '%' or lo.supplier_lot ilike '%' || $2 || '%')))`;
@@ -93,7 +93,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
          join items i on i.id = s.item_id
          left join lateral (select min(b.expires_on) as next_expiry from stock_balances b where b.item_id = s.item_id and b.quantity > 0) e on true
         where s.type::text = any($1::text[])
-          and ($2 = '' or s.name ilike '%' || $2 || '%' or i.name_bg ilike '%' || $2 || '%' or s.sku ilike '%' || $2 || '%'
+          and ($2 = '' or s.sku ilike '%' || $2 || '%' or nk_search_hit(concat_ws(' ', s.name, i.name_bg), $2)
                -- our lot number or the supplier's batch of a lot in stock
                or exists (select 1 from stock_balances b join lots lo on lo.id = b.lot_id
                            where b.item_id = s.item_id and b.quantity > 0

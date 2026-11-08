@@ -18,6 +18,13 @@ const code = (col: string) =>
      and regexp_replace(lower($1), '[^a-z0-9]', '', 'g') <> '')`;
 
 /**
+ * Smart search on names (owner, Nov 2026): Cyrillic finds Latin and back, a letter wrong or missing still finds it
+ * (nk_search_hit / nk_search_score, migration 20261108000300); the best fit comes first. Codes stay exact.
+ */
+const fuzzy = (text: string) => `nk_search_hit(${text}, $2)`;
+const fit = (text: string) => `nk_search_score(${text}, $2) desc`;
+
+/**
  * One search over the main records. Every query runs as the signed-in user, so each role finds only
  * what it may read; a group the role has no rights on simply stays empty.
  */
@@ -25,54 +32,54 @@ const QUERIES: Record<Group, string> = {
   clients: `select '/clients/' || c.id as href, c.code, c.legal_name as name,
                    concat_ws(' · ', c.trade_name, c.city, c.country_code) as note
               from clients c
-             where c.legal_name ilike $1 or c.trade_name ilike $1 or c.code ilike $1 or c.vat_number ilike $1 or c.company_id ilike $1
-             order by c.legal_name limit ${LIMIT}`,
+             where c.code ilike $1 or c.vat_number ilike $1 or c.company_id ilike $1 or ${fuzzy("concat_ws(' ', c.legal_name, c.trade_name)")}
+             order by ${fit("concat_ws(' ', c.legal_name, c.trade_name)")}, c.legal_name limit ${LIMIT}`,
   projects: `select '/clients/' || p.client_id as href, p.code, p.name, c.legal_name as note
                from projects p join clients c on c.id = p.client_id
-              where p.name ilike $1 or p.code ilike $1
-              order by p.code desc limit ${LIMIT}`,
+              where p.code ilike $1 or ${fuzzy("p.name")}
+              order by ${fit("p.name")}, p.code desc limit ${LIMIT}`,
   // The overview holds no prices, so the designer finds orders too
   orders: `select '/orders/' || o.id as href, o.code, o.client as name, null as note
              from sales_order_overview o
-            where o.code ilike $1 or o.client ilike $1
-            order by o.code desc limit ${LIMIT}`,
+            where o.code ilike $1 or ${fuzzy("o.client")}
+            order by ${fit("o.client")}, o.code desc limit ${LIMIT}`,
   // Catalogue products (the open catalogue and the calculator's catalogue formulas) by code or name
   catalog: `select href, code, name, note from (
-               select '/catalog/' || p.id as href, p.code, case when $2 = 'bg' then coalesce(p.name_bg, p.name) else p.name end as name,
+               select '/catalog/' || p.id as href, p.code, case when $3 = 'bg' then coalesce(p.name_bg, p.name) else p.name end as name,
                       null::text as note
                  from catalog_products p
-                where p.code ilike $1 or ${code("p.code")} or p.name ilike $1 or p.name_bg ilike $1
+                where p.code ilike $1 or ${code("p.code")} or ${fuzzy("concat_ws(' ', p.name, p.name_bg)")}
                union all
                select '/calculator/catalog' as href, c.code, c.name, c.category as note
                  from calc_catalog_products c
-                where (c.code ilike $1 or ${code("c.code")} or c.name ilike $1)
+                where (c.code ilike $1 or ${code("c.code")} or ${fuzzy("c.name")})
                   and not exists (select 1 from catalog_products p where p.code = c.code)
-             ) x order by code limit ${LIMIT}`,
+             ) x order by ${fit("name")}, code limit ${LIMIT}`,
   offers: `select '/offers/calc/' || o.id as href, o.offer_no as code, coalesce(nullif(o.company_name, ''), o.receiver_name) as name, o.product_name as note
              from calc_offers o
-            where o.offer_no ilike $1 or o.company_name ilike $1 or o.receiver_name ilike $1 or o.product_name ilike $1
+            where o.offer_no ilike $1 or ${fuzzy("concat_ws(' ', o.company_name, o.receiver_name, o.product_name)")}
                or ${code("coalesce(o.data -> 'catalog' ->> 'code', '')")}
             order by o.created_at desc limit ${LIMIT}`,
-  formulas: `select '/formulas/' || f.id as href, f.code, case when $2 = 'bg' then coalesce(f.name_bg, f.name) else f.name end as name, c.legal_name as note
+  formulas: `select '/formulas/' || f.id as href, f.code, case when $3 = 'bg' then coalesce(f.name_bg, f.name) else f.name end as name, c.legal_name as note
                from formulas f left join clients c on c.id = f.client_id
-              where f.code ilike $1 or f.name ilike $1 or f.name_bg ilike $1
+              where f.code ilike $1 or ${fuzzy("concat_ws(' ', f.name, f.name_bg)")}
                  or exists (select 1 from catalog_products cp where cp.formula_id = f.id and (cp.code ilike $1 or ${code("cp.code")}))
-              order by f.code desc limit ${LIMIT}`,
-  items: `select '/inventory/items/' || i.id as href, i.sku as code, case when $2 = 'bg' then coalesce(i.name_bg, i.name) else i.name end as name, null as note
+              order by ${fit("concat_ws(' ', f.name, f.name_bg)")}, f.code desc limit ${LIMIT}`,
+  items: `select '/inventory/items/' || i.id as href, i.sku as code, case when $3 = 'bg' then coalesce(i.name_bg, i.name) else i.name end as name, null as note
             from items i
-           where i.sku ilike $1 or i.name ilike $1 or i.name_bg ilike $1
-           order by i.name limit ${LIMIT}`,
-  lots: `select '/traceability?lot=' || l.id as href, l.lot_number as code, case when $2 = 'bg' then coalesce(i.name_bg, i.name) else i.name end as name, l.supplier_lot as note
+           where i.sku ilike $1 or ${fuzzy("concat_ws(' ', i.name, i.name_bg)")}
+           order by ${fit("concat_ws(' ', i.name, i.name_bg)")}, i.name limit ${LIMIT}`,
+  lots: `select '/traceability?lot=' || l.id as href, l.lot_number as code, case when $3 = 'bg' then coalesce(i.name_bg, i.name) else i.name end as name, l.supplier_lot as note
            from lots l join items i on i.id = l.item_id
-          where l.lot_number ilike $1 or l.supplier_lot ilike $1
+          where (l.lot_number ilike $1 or l.supplier_lot ilike $1) and $2::text <> ''
           order by l.received_on desc limit ${LIMIT}`,
   invoices: `select '/invoices/' || v.id as href, coalesce(v.number, '—') as code, c.legal_name as name, null as note
                from invoices v join clients c on c.id = v.client_id
-              where v.number ilike $1 or c.legal_name ilike $1
+              where v.number ilike $1 or ${fuzzy("c.legal_name")}
               order by v.created_at desc limit ${LIMIT}`,
   production: `select '/production/' || m.id as href, m.code, coalesce(f.name, '') as name, null as note
                  from manufacturing_orders m left join formula_versions fv on fv.id = m.formula_version_id left join formulas f on f.id = fv.formula_id
-                where m.code ilike $1 or m.batch_number ilike $1
+                where m.code ilike $1 or m.batch_number ilike $1 or ${fuzzy("f.name")}
                 order by m.code desc limit ${LIMIT}`,
 };
 
@@ -87,7 +94,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
     ? await Promise.all(
         (Object.keys(QUERIES) as Group[]).map(async (g) => {
           try {
-            return [g, await q<Hit>(user.id, QUERIES[g], QUERIES[g].includes("$2") ? [pattern, user.locale] : [pattern])] as const;
+            return [g, await q<Hit>(user.id, QUERIES[g], QUERIES[g].includes("$3") ? [pattern, term, user.locale] : QUERIES[g].includes("$2") ? [pattern, term] : [pattern])] as const;
           } catch {
             // No rights on this table for the role: nothing to show here
             return [g, [] as Hit[]] as const;

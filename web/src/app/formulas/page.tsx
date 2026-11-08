@@ -35,7 +35,7 @@ export default async function FormulasPage({ searchParams }: PageProps<"/formula
           order by status = 'draft' desc, status = 'approved' desc, version desc limit 1) v
       where f.is_active
         and (not $2 or exists (select 1 from catalog_products cp where cp.formula_id = f.id))
-        and ($1 = '' or f.name ilike '%' || $1 || '%' or f.name_bg ilike '%' || $1 || '%' or f.code ilike '%' || $1 || '%' or o.offer_no ilike '%' || $1 || '%')
+        and ($1 = '' or f.code ilike '%' || $1 || '%' or o.offer_no ilike '%' || $1 || '%' or nk_search_hit(concat_ws(' ', f.name, f.name_bg), $1))
       order by f.code desc`,
     [term, onlyCatalog],
   );

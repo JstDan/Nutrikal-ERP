@@ -4468,5 +4468,28 @@ await ok('a push is claimed once: the minute job and the push after a message ne
 await fails('users cannot claim pushes', () => as('admin', "select * from push_claim('0 seconds')"), 'permission denied');
 await fails('users cannot send Realtime pings themselves', () => as('admin', "select nk_live('user:x', 'chat', '{}')"), 'permission denied');
 
+// ----- Smart search (owner, Nov 2026): Cyrillic or Latin, a letter wrong or missing
+console.log('\nSmart search');
+await ok('a name is found in Cyrillic or Latin, with a letter wrong, and not by something else', async () => {
+  const hit = async (text, typed) => (await one('sales', 'select nk_search_hit($1, $2) as h', [text, typed])).h;
+  eq(await hit('Citrulline Malate', 'цитрулин'), true, 'Cyrillic finds Latin');
+  eq(await hit('Колагенови пептиди', 'collagen'), true, 'Latin finds Cyrillic');
+  eq(await hit('Magnesium Bisglycinate', 'magensium'), true, 'letters swapped');
+  eq(await hit('Caffeine anhydrous', 'кофеин'), true, 'a letter off, by sound');
+  eq(await hit('Vitamin C (L-ascorbic acid)', 'витамин ц'), true, 'a lone ц is C');
+  eq(await hit('Vitamin K2', 'витамин ц'), false, 'C is not K');
+  eq(await hit('Zinc Picolinate', 'pink'), false, 'not when the first letter differs');
+  eq(await hit('Apple Cider Vinegar powder', 'магнезий'), false, 'not another material');
+  eq(await hit('Magnesium Bisglycinate', ''), false, 'nothing typed, nothing found');
+});
+await ok('the best fit comes first', async () => {
+  const r = await one('sales', "select nk_search_score('Magnesium Bisglycinate', 'magnesium') as a, nk_search_score('Magnesium Bisglycinate', 'magensium') as b");
+  eq(Number(r.a) > Number(r.b), true, 'exact before a typo');
+});
+await ok('the stock search finds a raw material with a letter wrong, as the signed-in user', async () => {
+  const rows = await as('sales', "select sku from items where nk_search_hit(concat_ws(' ', name, name_bg), $1)", ['magensium bisglicinat']);
+  eq(rows.some((r) => r.sku === 'RM-MGBG'), true, 'found');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

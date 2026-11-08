@@ -21,7 +21,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
             (select count(*)::int from projects p where p.client_id = c.id) as projects,
             pr.full_name as owner
        from clients c left join profiles pr on pr.id = c.owner_id
-      where ($1 = '' or c.legal_name ilike '%' || $1 || '%' or c.trade_name ilike '%' || $1 || '%' or c.code ilike '%' || $1 || '%')
+      where ($1 = '' or c.code ilike '%' || $1 || '%' or nk_search_hit(concat_ws(' ', c.legal_name, c.trade_name), $1))
         and ($2 = '' or c.status::text = $2)
       order by c.legal_name`,
     [term, status],

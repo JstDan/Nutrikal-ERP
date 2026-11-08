@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { matchesQuery } from "@/lib/calculator/search";
+import { searchScore } from "@/lib/fuzzy";
 
 const MAX_OPTIONS = 60;
 
@@ -28,7 +29,12 @@ export function SearchCombobox<T>({ id, items, searchText, optionKey, renderOpti
   const [active, setActive] = useState(0);
 
   const options = useMemo(
-    () => (query.trim() ? items.filter((x) => matchesQuery(searchText(x), query)) : items).slice(0, MAX_OPTIONS),
+    () => {
+      if (!query.trim()) return items.slice(0, MAX_OPTIONS);
+      // The best fit first: a name that has the typed words before one found by sound or with a letter off
+      const hits = items.filter((x) => matchesQuery(searchText(x), query)).map((x) => ({ x, s: searchScore(searchText(x), query) }));
+      return hits.sort((a, b) => b.s - a.s).slice(0, MAX_OPTIONS).map((h) => h.x);
+    },
     [items, query, searchText],
   );
 

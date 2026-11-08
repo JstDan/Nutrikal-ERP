@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { fuzzyMatch } from "@/lib/fuzzy";
 import { Wordmark } from "@/components/logo";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { CATALOG_THEME_COOKIE } from "@/lib/theme";
@@ -200,7 +201,9 @@ export function CatalogBrowser({ ai, languages, data, locale, text, formats, cat
   const findCode = flat(find);
   const shown = data.products.filter((p) =>
     (!category || inCategory(p, category))
-    && (!find || (findCode !== "" && flat(p.code).includes(findCode)) || [p.code, p.name, p.name_en, p.name_bg, p.description, p.description_bg, ...p.ingredients.flatMap((i) => [i.name, i.name_bg])].some((x) => x?.toLowerCase().includes(find))));
+    && (!find || (findCode !== "" && flat(p.code).includes(findCode)) || [p.code, p.name, p.name_en, p.name_bg, p.description, p.description_bg, ...p.ingredients.flatMap((i) => [i.name, i.name_bg])].some((x) => x?.toLowerCase().includes(find))
+      // Smart search (owner, Nov 2026): Cyrillic or Latin, a letter wrong or missing
+      || fuzzyMatch([p.name, p.name_en, p.name_bg, ...p.ingredients.flatMap((i) => [i.name, i.name_bg])].filter(Boolean).join(" "), find)));
   const overview = !category && !find;
   const lines = data.products.filter((p) => basket[p.code]);
   const allValid = lines.every((p) => basket[p.code] >= p.min_qty);
