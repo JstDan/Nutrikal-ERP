@@ -4653,5 +4653,21 @@ await ok('Sales still cannot change the catalogue', async () => {
   eq((await as('sales', "update catalog_products set description = 'x' where id = $1 returning id", [p.id])).length, 0, 'sales');
 });
 
+// ----- Protein bars and cookies from the owner's catalogue (Nov 2026)
+console.log('\nProtein bars and cookies');
+await ok('the matching bars and cookies have ingredients, allergens and pack; bars their nutrition per bar; no sugar or salt claims', async () => {
+  const rows = await as('admin', "select code, description, pack, ingredients from catalog_products where code in ('GP-103','GP-104','GP-105','GP-106','GP-107','GP-108','GP-110','GP-111') order by code");
+  eq(rows.length, 8, 'eight products');
+  for (const r of rows) {
+    eq(/Ingredients: /.test(r.description) && /Allergens: /.test(r.description), true, `${r.code} text`);
+    eq(/no (added )?sugar|no added salt|meal replacement/i.test(r.description), false, `${r.code} no claims`);
+    eq(!!r.pack, true, `${r.code} pack`);
+  }
+  const bar = rows.find((r) => r.code === 'GP-104');
+  eq(bar.ingredients.find((i) => i.name === 'Protein').amount, '18 g', 'protein per bar');
+  eq(bar.ingredients.find((i) => i.name === 'Vitamin C').spec, '17 mg per 100 g', 'vitamin C in mg');
+  eq(/egg, hazelnut and soy/.test(rows.find((r) => r.code === 'GP-110').description), true, 'cookie allergens');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
