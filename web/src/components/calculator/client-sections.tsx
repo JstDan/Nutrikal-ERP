@@ -5,7 +5,7 @@ import { fixedCostsFor, packagingExtraCost, usesCatalogPackaging } from "@/lib/c
 import { ALUMINIUM_LID_EUR, GLASS_JAR_EUR } from "@/lib/calculator/catalogCapsules";
 import type { CrmClient } from "@/lib/calculator/db";
 import { SALES_PERSONS } from "@/lib/calculator/salesPersons";
-import { PRODUCT_TYPES, isCapsule, type FixedCosts, type LidType, type OfferForm, type ProductType } from "@/lib/calculator/types";
+import { BULK_UNIT, PRODUCT_TYPES, isBulk, isCapsule, type FixedCosts, type LidType, type OfferForm, type ProductType, type Settings } from "@/lib/calculator/types";
 import { fieldId, type FieldKey } from "@/lib/calculator/validation";
 import { fmt } from "@/lib/i18n";
 import { Field, Section, SubHeading, inputClass, useCalcText } from "./kit";
@@ -174,26 +174,38 @@ export function ClientSection({ form, setForm, errorFor, touch, clients }: Secti
 const LIDS: LidType[] = ["plastic", "aluminium"];
 
 /** Step 3: product type (capsules in glass / plastic, or powder) with its fixed cost per unit; then the lid of a jar. */
-export function ProductTypeSection({ form, setForm, errorFor, fixedCosts: settingsCosts }: SectionProps & { fixedCosts: FixedCosts }) {
+export function ProductTypeSection({ form, setForm, errorFor, fixedCosts: settingsCosts, bulkDefaults }: SectionProps & {
+  fixedCosts: FixedCosts; bulkDefaults: Pick<Settings, "bulk_rate_per_1000" | "bulk_shells_per_1000" | "bulk_batch_cost">;
+}) {
   const { t, eur } = useCalcText();
   const error = errorFor("productType");
   // From a catalog product: jar and lid at the catalog's prices (glass jar = plastic + its extra, with aluminium lid)
   const catalogPrices = usesCatalogPackaging(form);
   const fixedCosts = fixedCostsFor({ ...form, productType: "capsules_plastic" }, settingsCosts);
-  const lidChoice = isCapsule(form.productType) && !(catalogPrices && form.productType === "capsules_glass");
+  const lidChoice = isCapsule(form.productType) && !isBulk(form.productType) && !(catalogPrices && form.productType === "capsules_glass");
   const alu = packagingExtraCost({ ...form, productType: "capsules_plastic", lid: "aluminium" });
 
   const select = (p: ProductType) =>
     setForm((f) => {
       // Switching between capsules and powder: rows without an amount follow the new default unit.
       const unitChanged = isCapsule(p) !== isCapsule(f.productType) || !f.productType;
-      const unit = p === "powder" ? "g" : "mg";
-      return { ...f, productType: p, rows: unitChanged ? f.rows.map((r) => (r.amount.trim() ? r : { ...r, unit })) : f.rows };
+      const unit: "g" | "mg" = p === "powder" ? "g" : "mg";
+      const next: OfferForm = { ...f, productType: p, rows: unitChanged ? f.rows.map((r) => (r.amount.trim() ? r : { ...r, unit })) : f.rows };
+      // Bulk: a unit is 1,000 capsules; the costs start from the defaults under Settings (each offer may change them)
+      if (isBulk(p)) {
+        const d = (v: string, n: number) => (v.trim() ? v : n ? String(n) : "");
+        return {
+          ...next, quantityPerUnit: String(BULK_UNIT),
+          bulkRate: d(f.bulkRate ?? "", bulkDefaults.bulk_rate_per_1000), bulkShells: d(f.bulkShells ?? "", bulkDefaults.bulk_shells_per_1000),
+          bulkBatch: d(f.bulkBatch ?? "", bulkDefaults.bulk_batch_cost),
+        };
+      }
+      return isBulk(f.productType) ? { ...next, quantityPerUnit: "", numberOfUnits: "" } : next;
     });
 
   return (
     <Section step={3} title={t.productType.section} id={fieldId("productType")} required>
-      <fieldset className="m-0 grid grid-cols-1 gap-3 border-0 p-0 sm:grid-cols-3" aria-describedby="product-type-msg">
+      <fieldset className="m-0 grid grid-cols-1 gap-3 border-0 p-0 sm:grid-cols-2" aria-describedby="product-type-msg">
         <legend className="sr-only">{t.productType.section}</legend>
         {PRODUCT_TYPES.map((p) => {
           const selected = form.productType === p;
@@ -208,7 +220,9 @@ export function ProductTypeSection({ form, setForm, errorFor, fixedCosts: settin
               <span className="flex min-w-0 flex-col gap-0.5 text-sm">
                 <span className="font-semibold">{t.productType[p]}</span>
                 <span className="text-ink-2">{t.productType.packaging}: {t.productType[`packaging_${p}`]}</span>
-                <span className="text-ink-2">{t.productType.fixedCost}: <b className="text-ink">{eur(fixedCosts[p])}</b></span>
+                {isBulk(p)
+                  ? <span className="text-ink-2">{t.bulk.rate}: <b className="text-ink">{eur(bulkDefaults.bulk_rate_per_1000, 2)}</b></span>
+                  : <span className="text-ink-2">{t.productType.fixedCost}: <b className="text-ink">{eur(fixedCosts[p])}</b></span>}
                 {form.catalogPackaging && p === "capsules_glass" && <span className="text-ink-2">{fmt(t.productType.glassExtra, { price: eur(GLASS_JAR_EUR) })}</span>}
               </span>
             </label>
@@ -216,7 +230,7 @@ export function ProductTypeSection({ form, setForm, errorFor, fixedCosts: settin
         })}
       </fieldset>
       <p id="product-type-msg" className={`m-0 text-xs ${error ? "font-semibold text-red-ink" : "text-ink-2"}`}>
-        {error ?? t.productType.fixedCostHint}
+        {error ?? (isBulk(form.productType) ? t.bulk.excluded : t.productType.fixedCostHint)}
       </p>
       {catalogPrices && (
         <p className="m-0 text-xs text-ink-2">

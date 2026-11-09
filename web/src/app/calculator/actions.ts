@@ -89,7 +89,8 @@ export async function saveSettings(s: Settings): Promise<CalcResult<boolean>> {
          company_email = $10, company_phone = $11, bank_iban = $12, bank_name = $13, bank_bic = $14, bank_address = $15,
          default_payment_terms = $16, vat_exemption_text = $17, footer_text = $18, websites = $19, service_presets = $20::jsonb,
          logo_data_url = $21, terms_text = $22, google_sheet_url = $23,
-         company_name_bg = $24, company_address_bg = $25, terms_text_bg = $26
+         company_name_bg = $24, company_address_bg = $25, terms_text_bg = $26,
+         bulk_rate_per_1000 = $27, bulk_shells_per_1000 = $28, bulk_batch_cost = $29
        returning id`,
       [
         s.fixed_costs.capsules_glass, s.fixed_costs.capsules_plastic, s.fixed_costs.powder, s.default_markup, s.default_vat_rate,
@@ -97,6 +98,7 @@ export async function saveSettings(s: Settings): Promise<CalcResult<boolean>> {
         s.bank_bic, s.bank_address, s.default_payment_terms, s.vat_exemption_text, s.footer_text, s.websites,
         JSON.stringify(s.service_presets), s.logo_data_url, s.terms_text, s.google_sheet_url,
         s.company_name_bg, s.company_address_bg, s.terms_text_bg,
+        s.bulk_rate_per_1000 ?? 0, s.bulk_shells_per_1000 ?? 0, s.bulk_batch_cost ?? 0,
       ],
     );
     if (!rows.length) throw new Error("Not allowed");

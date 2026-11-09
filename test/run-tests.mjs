@@ -4579,5 +4579,49 @@ await ok('quantities are read as people type them, in either language', async ()
   for (const [text, want] of cases) eq(parseQty(text), want, text);
 });
 
+// ----- Capsules in bulk (owner, Nov 2026): no bottle or lid; a unit is 1,000 capsules
+console.log('\nCapsules in bulk');
+await ok('a bulk offer is allowed and its recipe has the capsule shell but no bottle or lid', async () => {
+  const c = await one('sales', "insert into clients (legal_name, country_code) values ('Bulk Buyer Ltd', 'DE') returning id");
+  const data = JSON.stringify({ productType: 'capsules_bulk', capsulesPerDose: '2', quantityPerUnit: '1000', numberOfUnits: '250',
+    bulkCapsules: '250000', bulkRate: '4.5', bulkShells: '1.2', bulkBatch: '150', bulkPackaging: '40',
+    rows: [{ name: 'Zinc Glycinate', amount: '15', unit: 'mg', materialId: (await one('admin', "select id from calc_raw_materials where name = 'Zinc Glycinate'")).id }] });
+  const o = await one('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, client_id, product_name, product_type, data, results)
+                                values ('NK-T-BULK', 'Bulk Buyer', '', $1, 'Zinc bulk', 'capsules_bulk', $2::jsonb, '{}') returning id`, [c.id, data]);
+  const f = await one('sales', `select f.product_format, f.servings_per_pack, s.sku as shell from formulas f left join items s on s.id = f.shell_item_id
+                                 where f.calc_offer_id = $1`, [o.id]);
+  eq(f.product_format, 'capsule', 'format'); eq(f.servings_per_pack, 500, '1,000 capsules / 2 a serving'); eq(f.shell, 'PK-CAPS-00', 'shell');
+  const pack = await as('sales', `select i.sku from formula_packaging p join formula_versions v on v.id = p.version_id join formulas f on f.id = v.formula_id
+                                   join items i on i.id = p.item_id where f.calc_offer_id = $1`, [o.id]);
+  eq(pack.map((p) => p.sku).join(), '', 'no bottle and no lid');
+});
+await ok('the bulk defaults are kept under Settings; only Admin changes them', async () => {
+  await as('admin', 'update calc_settings set bulk_rate_per_1000 = 4.5, bulk_shells_per_1000 = 1.2, bulk_batch_cost = 150');
+  const s = await one('sales', 'select bulk_rate_per_1000::float as r, bulk_shells_per_1000::float as sh, bulk_batch_cost::float as b from calc_settings');
+  eq(`${s.r}/${s.sh}/${s.b}`, '4.5/1.2/150', 'kept');
+  await as('sales', 'update calc_settings set bulk_rate_per_1000 = 99');
+  eq((await one('admin', 'select bulk_rate_per_1000::float as r from calc_settings')).r, 4.5, 'Sales cannot change them');
+});
+await fails('an unknown product type is refused', () => as('sales', `insert into calc_offers (offer_no, receiver_name, receiver_email, product_type, data, results)
+                                values ('NK-T-BAD', 'X', '', 'capsules_box', '{}', '{}')`), 'check constraint');
+await ok('the bulk price: ingredients and shells + capsules / 1,000 x rate + batch + packaging, then the markup, each once', async () => {
+  // The calculator code imports without extensions: bundled with the app's esbuild first
+  const esbuild = (await import(new URL('../web/node_modules/esbuild/lib/main.js', import.meta.url).href)).default;
+  const { fileURLToPath } = await import('node:url');
+  const built = await esbuild.build({ entryPoints: [fileURLToPath(new URL('../web/src/lib/calculator/calc.ts', import.meta.url))],
+    bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent' });
+  const { calculate } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
+  const r = calculate({ productType: 'capsules_bulk', rows: [{ name: 'X', amount: 500, unit: 'mg', pricePerKg: 20 }], capsulesPerDose: 1,
+    quantityPerUnit: 1000, numberOfUnits: 250, markupPct: 30, wastePct: null, addVat: false, vatRatePct: null, discountPct: 0, extraItems: [],
+    fixedCosts: { capsules_glass: 2.5, capsules_plastic: 2.2, capsules_bulk: 0, powder: 2.7 }, bulk: { rate: 4.5, shells: 1.2, batch: 150, packaging: 40 } });
+  // per 1,000: ingredients 0.5 g x 1,000 x 20 EUR/kg = 10; rate 4.5; shells 1.2; batch 150 / 250 = 0.6; packaging 40 / 250 = 0.16
+  eq(Number(r.unitCost.toFixed(4)), 16.46, 'cost per 1,000');
+  eq(r.unitPrice, 21.4, 'price per 1,000 with 30 % markup');
+  eq(Number(r.totalCost.toFixed(2)), 4115, 'total cost: batch and packaging once');
+  eq(r.productAmount, 5350, 'total price');
+  eq(r.bulk.pricePerCapsule, 0.0214, 'per capsule'); eq(r.bulk.capsules, 250000, 'capsules');
+  eq(r.fixedCostPerUnit < 2.2 + 10, true, 'no bottled fixed cost');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

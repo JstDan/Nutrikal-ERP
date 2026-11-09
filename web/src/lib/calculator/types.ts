@@ -1,5 +1,6 @@
-export type ProductType = 'capsules_glass' | 'capsules_plastic' | 'powder';
-export const PRODUCT_TYPES: ProductType[] = ['capsules_glass', 'capsules_plastic', 'powder'];
+/** Capsules in a glass or plastic bottle, capsules in bulk (no retail packaging; owner, Nov 2026), or powder. */
+export type ProductType = 'capsules_glass' | 'capsules_plastic' | 'capsules_bulk' | 'powder';
+export const PRODUCT_TYPES: ProductType[] = ['capsules_glass', 'capsules_plastic', 'capsules_bulk', 'powder'];
 
 /** Capsule jar and its lid. A glass jar comes with its own lid. */
 export type JarType = 'plastic' | 'glass';
@@ -14,7 +15,22 @@ export const CAPSULE_SIZES: Record<CapsuleSize, number> = { size1: 400, size0: 5
 export const CAPSULE_SIZE: CapsuleSize = 'size00';
 
 export function isCapsule(type: ProductType | null | undefined): boolean {
-  return type === 'capsules_glass' || type === 'capsules_plastic';
+  return type === 'capsules_glass' || type === 'capsules_plastic' || type === 'capsules_bulk';
+}
+
+/**
+ * Capsules in bulk (owner, Nov 2026): no bottle, lid, label or seal and none of their filling, sealing, capping,
+ * labelling or retail packing. One unit of the offer is 1,000 capsules; the quantity is typed as total capsules.
+ */
+export function isBulk(type: ProductType | null | undefined): boolean {
+  return type === 'capsules_bulk';
+}
+export const BULK_UNIT = 1000;
+
+/** Bulk: the total capsules typed, as units of 1,000; null unless a whole number of thousands above 0. */
+export function bulkThousands(form: Pick<OfferForm, 'bulkCapsules'>): number | null {
+  const n = Number(String(form.bulkCapsules ?? '').replace(/[\s\u00a0.,']/g, ''));
+  return Number.isInteger(n) && n > 0 && n % BULK_UNIT === 0 ? n / BULK_UNIT : null;
 }
 
 export interface RawMaterial {
@@ -103,6 +119,13 @@ export interface Settings {
   service_presets: ServicePreset[];
   logo_data_url: string | null;
   terms_text: string;
+  /**
+   * Capsules in bulk, defaults for a new offer (editable on each offer; the amounts are to be confirmed with the
+   * production team): the production rate per 1,000 capsules, the capsule shells per 1,000 and the cost per batch.
+   */
+  bulk_rate_per_1000: number;
+  bulk_shells_per_1000: number;
+  bulk_batch_cost: number;
   /** Former Google Sheet of the price list (synced until Nov 2026; kept, no longer used). */
   google_sheet_url: string;
   /** Former Google Sheet of the catalog products (synced until Nov 2026; kept, no longer used). */
@@ -110,7 +133,10 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  fixed_costs: { capsules_glass: 2.5, capsules_plastic: 2.2, powder: 2.7 },
+  fixed_costs: { capsules_glass: 2.5, capsules_plastic: 2.2, capsules_bulk: 0, powder: 2.7 },
+  bulk_rate_per_1000: 0,
+  bulk_shells_per_1000: 0,
+  bulk_batch_cost: 0,
   default_markup: 30,
   default_vat_rate: 20,
   company_name: 'Nutrikal Ltd',
@@ -240,6 +266,17 @@ export interface OfferForm {
   paymentTerms: string;
   includeComposition: boolean;
   notes: string;
+  /**
+   * Capsules in bulk (owner, Nov 2026), EUR as typed, each counted once: total capsules (a whole number of thousands);
+   * the production rate per 1,000 capsules (the manufacturing operations only: mixing, encapsulation, in-process
+   * checks, bulk handling); capsule shells per 1,000; one cost per batch (setup, cleaning: not by quantity); bulk
+   * packaging for the whole order (bags, liners, containers). Older offers: empty.
+   */
+  bulkCapsules: string;
+  bulkRate: string;
+  bulkShells: string;
+  bulkBatch: string;
+  bulkPackaging: string;
   /** Fixed costs snapshot; null means "use current settings" (unsaved offers). */
   fixedCosts: FixedCosts | null;
 }

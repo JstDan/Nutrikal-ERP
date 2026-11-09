@@ -4,7 +4,7 @@ import { marginFromMarkup, unitPriceFor, type CalcResult } from "@/lib/calculato
 import { catalogMinQty } from "@/lib/calculator/catalogPrice";
 import { parseNum } from "@/lib/calculator/numbers";
 import { catalogTierUnitPrice, tierUnitPrice } from "@/lib/calculator/priceOptions";
-import { isCapsule, type ExtraItem, type PriceTier, type ServicePreset } from "@/lib/calculator/types";
+import { BULK_UNIT, bulkThousands, isBulk, isCapsule, type ExtraItem, type PriceTier, type ServicePreset } from "@/lib/calculator/types";
 import { fieldId } from "@/lib/calculator/validation";
 import { fmt } from "@/lib/i18n";
 import type { SectionProps } from "./client-sections";
@@ -14,7 +14,53 @@ export const quantityLabel = (t: CalcDict, type: string | null) =>
   type === "powder" ? t.quantity.dosesPerPouch : t.quantity.capsulesPerBottle;
 
 export const unitsLabel = (t: CalcDict, type: string | null) =>
-  !type ? t.units.units : type === "powder" ? t.units.pouches : t.units.bottles;
+  !type ? t.units.units : type === "powder" ? t.units.pouches : type === "capsules_bulk" ? t.bulk.unit : t.units.bottles;
+
+/**
+ * Step 5 for capsules in bulk (owner, Nov 2026): the total capsules and the bulk costs, each counted once and each
+ * saying what it covers: production rate and shells per 1,000, one cost per batch, bulk packaging for the order.
+ */
+export function BulkSection({ form, setForm, errorFor, touch, result }: SectionProps & { result: CalcResult }) {
+  const { t, num } = useCalcText();
+  const B = t.bulk;
+  const capsError = errorFor("numberOfUnits");
+  const costError = errorFor("bulkCosts");
+  const thousands = bulkThousands(form);
+  const setCaps = (v: string) => setForm((f) => {
+    const next = { ...f, bulkCapsules: v };
+    const k = bulkThousands(next);
+    return { ...next, quantityPerUnit: String(BULK_UNIT), numberOfUnits: k ? String(k) : "" };
+  });
+  const cost = (key: "bulkRate" | "bulkShells" | "bulkBatch" | "bulkPackaging", label: string, hint: string, suffix: string) => (
+    <Field label={label} htmlFor={`bulk-${key}`} hint={hint}>
+      <NumberField id={`bulk-${key}`} value={form[key] ?? ""} onChange={(v) => setForm((f) => ({ ...f, [key]: v }))} onBlur={() => touch("bulkCosts")}
+        invalid={!!costError && (form[key] ?? "").trim() !== "" && (parseNum(form[key]) ?? -1) < 0} suffix={suffix} />
+    </Field>
+  );
+  return (
+    <Section step={5} title={B.section}>
+      <Notice>{B.excluded}</Notice>
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+        <Field label={B.capsules} htmlFor={fieldId("numberOfUnits")} required error={capsError} hint={thousands ? fmt(B.thousands, { n: num(thousands) }) : B.capsulesHint}>
+          <NumberField id={fieldId("numberOfUnits")} integer value={form.bulkCapsules ?? ""} onChange={setCaps} onBlur={() => touch("numberOfUnits")} invalid={!!capsError} />
+        </Field>
+        <div className="field">
+          <span id="bulk-doses">{B.servings}</span>
+          <output aria-labelledby="bulk-doses" className="flex min-h-11 items-center rounded-sm bg-canvas px-4 text-sm font-bold tabular-nums">
+            {result.dosesPerUnit !== null ? num(result.dosesPerUnit, 2) : "–"}
+          </output>
+        </div>
+        {cost("bulkRate", B.rate, B.rateHint, "€")}
+        {cost("bulkShells", B.shells, B.shellsHint, "€")}
+        {cost("bulkBatch", B.batch, B.batchHint, "€")}
+        {cost("bulkPackaging", B.packaging, B.packagingHint, "€")}
+      </div>
+      {costError && <p role="alert" className="m-0 text-sm font-semibold text-red-ink">{costError}</p>}
+      {!(parseNum(form.bulkRate ?? "") ?? 0) && <Notice tone="warning">{B.rateMissing}</Notice>}
+      <p id={fieldId("bulkCosts")} className="m-0 text-[13px] text-ink-2">{B.formula}</p>
+    </Section>
+  );
+}
 
 /** Step 5: capsules per bottle / doses per pouch. */
 export function QuantitySection({ form, setForm, errorFor, touch, result }: SectionProps & { result: CalcResult }) {
@@ -84,6 +130,12 @@ export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6
   return (
     <Section step={step} title={catalog ? t.markup.sectionCatalog : t.markup.section}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {!catalog && isBulk(form.productType) ? (
+          <div className="flex min-w-0 flex-col gap-1 text-sm">
+            <span className="label">{t.bulk.capsules}</span>
+            <span className="flex min-h-11 items-center font-bold tabular-nums">{form.bulkCapsules?.trim() ? num(parseNum(form.bulkCapsules) ?? 0) : "–"}</span>
+          </div>
+        ) : (
         <Field
           label={catalog ? t.units.units : unitsLabel(t, form.productType)}
           htmlFor={fieldId("numberOfUnits")}
@@ -100,6 +152,7 @@ export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6
             invalid={!!unitsError}
           />
         </Field>
+        )}
         {catalog ? (
           <div className="flex min-w-0 flex-col gap-1 text-sm">
             <span className="label">{t.catalog.unitPrice}</span>
@@ -146,7 +199,7 @@ export function MarkupSection({ form, setForm, errorFor, touch, result, step = 6
           return (
             <div key={tier.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3 rounded-sm border border-line p-3 md:grid-cols-[160px_160px_minmax(0,1fr)_auto]">
               <Field label={t.markup.tierQty} htmlFor={`tier-qty-${tier.key}`}>
-                <NumberField id={`tier-qty-${tier.key}`} integer value={tier.qty} onChange={(v) => updateTier(tier.key, { qty: v })} suffix={t.results.pcs} />
+                <NumberField id={`tier-qty-${tier.key}`} integer value={tier.qty} onChange={(v) => updateTier(tier.key, { qty: v })} suffix={!catalog && isBulk(form.productType) ? t.bulk.unit : t.results.pcs} />
               </Field>
               <Field label={t.markup.discount} htmlFor={`tier-discount-${tier.key}`} error={discountBad ? t.markup.tierDiscountInvalid : undefined}>
                 {/* typing a discount replaces the markup of an older tier */}

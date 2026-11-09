@@ -2,7 +2,7 @@ import { catalogMinQty } from './catalogPrice';
 import { CATALOG_CAPSULES_MAX, CATALOG_CAPSULES_MIN, standardCapsules } from './catalogCapsules';
 import { isUnmatched } from './catalogToCustom';
 import { parseNum, parsePositiveInt } from './numbers';
-import { isCapsule, type OfferForm } from './types';
+import { bulkThousands, isBulk, isCapsule, type OfferForm } from './types';
 
 export type FieldKey =
   | 'client'
@@ -13,12 +13,13 @@ export type FieldKey =
   | 'capsulesPerDose'
   | 'quantityPerUnit'
   | 'numberOfUnits'
+  | 'bulkCosts'
   | 'discount'
   | 'extraItems';
 
 /** Message keys in the calc.validation dictionary. */
 export type ValidationCode =
-  | 'required' | 'email' | 'client' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq' | 'capsuleRange' | 'unmatched';
+  | 'required' | 'email' | 'client' | 'productType' | 'materials' | 'positiveInt' | 'discount' | 'extraItems' | 'catalogProduct' | 'belowMoq' | 'capsuleRange' | 'unmatched' | 'thousands' | 'bulkCost';
 
 /** Field order = order on the page, used to scroll to the first error. */
 export const FIELD_ORDER: FieldKey[] = [
@@ -30,6 +31,7 @@ export const FIELD_ORDER: FieldKey[] = [
   'capsulesPerDose',
   'quantityPerUnit',
   'numberOfUnits',
+  'bulkCosts',
   'discount',
   'extraItems',
 ];
@@ -64,8 +66,15 @@ export function validateOffer(form: OfferForm): ValidationErrors {
     // Ingredients of a catalog product that are not in the price list have no price yet
     else if (form.rows.some(isUnmatched)) errors.rows = 'unmatched';
     if (isCapsule(form.productType) && !parsePositiveInt(form.capsulesPerDose)) errors.capsulesPerDose = 'positiveInt';
-    if (!parsePositiveInt(form.quantityPerUnit)) errors.quantityPerUnit = 'positiveInt';
-    if (!units) errors.numberOfUnits = 'positiveInt';
+    if (isBulk(form.productType)) {
+      // Bulk: the total capsules, in whole thousands; each cost a number of 0 or more (empty counts as 0)
+      if (!bulkThousands(form)) errors.numberOfUnits = 'thousands';
+      const bad = [form.bulkRate, form.bulkShells, form.bulkBatch, form.bulkPackaging].some((v) => (v ?? '').trim() !== '' && ((parseNum(v) ?? -1) < 0));
+      if (bad) errors.bulkCosts = 'bulkCost';
+    } else {
+      if (!parsePositiveInt(form.quantityPerUnit)) errors.quantityPerUnit = 'positiveInt';
+      if (!units) errors.numberOfUnits = 'positiveInt';
+    }
   }
   const discount = parseNum(form.discount || '0');
   if (discount === null || discount < 0 || discount > 100) errors.discount = 'discount';

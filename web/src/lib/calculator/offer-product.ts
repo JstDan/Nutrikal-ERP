@@ -5,7 +5,7 @@ import { hasAluminiumCap, type CalcResult } from './calc';
 import { formatNumber, parseNum } from './numbers';
 import { hasAluminiumLid, offerCapsules, offerServings } from './catalogCapsules';
 import { OFFER_TEXT, type OfferLang } from './offer-text';
-import { CAPSULE_SIZE, isCapsule, type OfferForm } from './types';
+import { CAPSULE_SIZE, isBulk, isCapsule, type OfferForm } from './types';
 
 export type OfferProduct = { pack: string; format: string; dosePortion: string; doseRows: { name: string; amount: string }[] };
 
@@ -26,6 +26,10 @@ export function offerProduct(form: OfferForm, result: CalcResult, lang: OfferLan
     const catalogServings = offerServings(form);
     pack = catalogCaps ? [`${catalogCaps} ${PDF.capsules}`, ...(catalogServings ? [`${formatNumber(catalogServings, 2)} ${PDF.servings}`] : [])].join(', ') : '';
     format = catalogCaps ? `${PDF[form.jar === 'glass' ? 'packaging_capsules_glass' : 'packaging_capsules_plastic']}${hasAluminiumLid(form) ? ` ${PDF.aluminiumLid}` : ''}` : '';
+  } else if (isBulk(type)) {
+    // Bulk: a unit is 1,000 capsules, with no retail packaging
+    pack = fmt(PDF.bulkPack, { s: servings });
+    format = fmt(PDF.bulkFormat, { s: CAPSULE_SIZE.replace('size', '').trim() });
   } else if (capsule) {
     pack = `${perUnit} ${PDF.capsules}, ${servings} ${PDF.servings}`;
     format = `${PDF[`packaging_${type}`]}${hasAluminiumCap(form) ? ` ${PDF.aluminiumLid}` : ''}, ${fmt(PDF.size, { s: CAPSULE_SIZE.replace('size', '').trim() })}`;

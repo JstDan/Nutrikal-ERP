@@ -6,10 +6,13 @@ import { DEFAULT_SETTINGS, type CatalogProduct, type OfferRecord, type RawMateri
 // Postgres numeric columns arrive as strings.
 const num = (v: number | string | null | undefined) => Number(v ?? 0);
 
-type SettingsRow = Omit<Settings, "fixed_costs" | "default_markup" | "default_vat_rate" | "service_presets"> & {
+type SettingsRow = Omit<Settings, "fixed_costs" | "default_markup" | "default_vat_rate" | "service_presets" | "bulk_rate_per_1000" | "bulk_shells_per_1000" | "bulk_batch_cost"> & {
   fixed_cost_capsules_glass: number | string;
   fixed_cost_capsules_plastic: number | string;
   fixed_cost_powder: number | string;
+  bulk_rate_per_1000: number | string | null;
+  bulk_shells_per_1000: number | string | null;
+  bulk_batch_cost: number | string | null;
   default_markup: number | string;
   default_vat_rate: number | string;
   service_presets: ServicePreset[] | null;
@@ -27,8 +30,12 @@ export function settingsFromRow(r: SettingsRow): Settings {
     fixed_costs: {
       capsules_glass: num(r.fixed_cost_capsules_glass),
       capsules_plastic: num(r.fixed_cost_capsules_plastic),
+      capsules_bulk: 0,
       powder: num(r.fixed_cost_powder),
     },
+    bulk_rate_per_1000: num(r.bulk_rate_per_1000),
+    bulk_shells_per_1000: num(r.bulk_shells_per_1000),
+    bulk_batch_cost: num(r.bulk_batch_cost),
     default_markup: num(r.default_markup),
     default_vat_rate: num(r.default_vat_rate),
     service_presets: (r.service_presets ?? []).map((p) => ({ ...p, price: num(p.price) })),

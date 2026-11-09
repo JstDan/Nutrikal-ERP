@@ -4,14 +4,19 @@ import { useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { saveSettings } from "@/app/calculator/actions";
 import { parseNum } from "@/lib/calculator/numbers";
-import { PRODUCT_TYPES, type ProductType, type Settings } from "@/lib/calculator/types";
+import { PRODUCT_TYPES, isBulk, type ProductType, type Settings } from "@/lib/calculator/types";
+
+/** The bottled products and powder have a fixed cost per finished unit; capsules in bulk have their own costs below. */
+const FIXED_TYPES = PRODUCT_TYPES.filter((p) => !isBulk(p));
+type BulkKey = "bulk_rate_per_1000" | "bulk_shells_per_1000" | "bulk_batch_cost";
+const BULK_KEYS: BulkKey[] = ["bulk_rate_per_1000", "bulk_shells_per_1000", "bulk_batch_cost"];
 import { Field, Notice, NumberField, RemoveButton, Section, SubHeading, inputClass, useCalcText } from "./kit";
 
 const MAX_LOGO_BYTES = 500 * 1024;
 
 type PresetDraft = { description: string; unit: string; price: string };
 
-type Draft = Omit<Settings, "fixed_costs" | "default_markup" | "default_vat_rate" | "service_presets"> & {
+type Draft = Omit<Settings, "fixed_costs" | "default_markup" | "default_vat_rate" | "service_presets" | BulkKey> & Record<BulkKey, string> & {
   service_presets: PresetDraft[];
   fixed_costs: Record<ProductType, string>;
   default_markup: string;
@@ -23,8 +28,12 @@ const toDraft = (s: Settings): Draft => ({
   fixed_costs: {
     capsules_glass: String(s.fixed_costs.capsules_glass),
     capsules_plastic: String(s.fixed_costs.capsules_plastic),
+    capsules_bulk: "0",
     powder: String(s.fixed_costs.powder),
   },
+  bulk_rate_per_1000: String(s.bulk_rate_per_1000),
+  bulk_shells_per_1000: String(s.bulk_shells_per_1000),
+  bulk_batch_cost: String(s.bulk_batch_cost),
   default_markup: String(s.default_markup),
   default_vat_rate: String(s.default_vat_rate),
   service_presets: s.service_presets.map((p) => ({ ...p, price: String(p.price) })),
@@ -47,7 +56,7 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
       <Section title={s.title}>
         <Notice>{s.adminOnly}</Notice>
         <div className="grid grid-cols-1 gap-x-8 text-sm sm:grid-cols-3">
-          {PRODUCT_TYPES.map((p) => (
+          {FIXED_TYPES.map((p) => (
             <div key={p} className="flex justify-between gap-3 border-b border-mist py-2">
               <span className="text-ink-2">{t.productType[p]}</span>
               <span className="font-semibold tabular-nums">{eur(settings.fixed_costs[p])}</span>
@@ -67,6 +76,9 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
     capsules_plastic: parseNum(draft.fixed_costs.capsules_plastic),
     powder: parseNum(draft.fixed_costs.powder),
     markup: parseNum(draft.default_markup),
+    bulk_rate_per_1000: parseNum(draft.bulk_rate_per_1000),
+    bulk_shells_per_1000: parseNum(draft.bulk_shells_per_1000),
+    bulk_batch_cost: parseNum(draft.bulk_batch_cost),
   };
   const presetsOk = draft.service_presets.every((p) => p.description.trim() && (parseNum(p.price) ?? -1) >= 0);
   const valid = Object.values(numbers).every((n) => n !== null && n >= 0) && presetsOk;
@@ -90,7 +102,10 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
     setError(null);
     const res = await saveSettings({
       ...draft,
-      fixed_costs: { capsules_glass: numbers.capsules_glass!, capsules_plastic: numbers.capsules_plastic!, powder: numbers.powder! },
+      fixed_costs: { capsules_glass: numbers.capsules_glass!, capsules_plastic: numbers.capsules_plastic!, capsules_bulk: 0, powder: numbers.powder! },
+      bulk_rate_per_1000: numbers.bulk_rate_per_1000!,
+      bulk_shells_per_1000: numbers.bulk_shells_per_1000!,
+      bulk_batch_cost: numbers.bulk_batch_cost!,
       default_markup: numbers.markup!,
       default_vat_rate: parseNum(draft.default_vat_rate) ?? 0,
       service_presets: draft.service_presets.map((p) => ({ description: p.description.trim(), unit: p.unit.trim(), price: parseNum(p.price)! })),
@@ -114,15 +129,28 @@ export function SettingsPanel({ settings, isAdmin, onSaved }: { settings: Settin
       <div className="flex flex-col gap-3">
         <SubHeading>{s.fixedCosts}</SubHeading>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {PRODUCT_TYPES.map((p) => (
+          {FIXED_TYPES.map((p) => (
             <Field key={p} label={t.productType[p]} htmlFor={`fixed-${p}`}>
               <NumberField
                 id={`fixed-${p}`}
                 value={draft.fixed_costs[p]}
                 onChange={(v) => set({ fixed_costs: { ...draft.fixed_costs, [p]: v } })}
-                invalid={numbers[p] === null}
+                invalid={numbers[p as Exclude<ProductType, "capsules_bulk">] === null}
                 suffix="€"
               />
+            </Field>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-mist pt-5">
+        <SubHeading>{t.bulk.settingsTitle}</SubHeading>
+        <p className="m-0 text-[13px] text-ink-2">{t.bulk.settingsHint}</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {BULK_KEYS.map((k) => (
+            <Field key={k} label={k === "bulk_rate_per_1000" ? t.bulk.rate : k === "bulk_shells_per_1000" ? t.bulk.shells : t.bulk.batch} htmlFor={`setting-${k}`}
+              hint={k === "bulk_rate_per_1000" ? t.bulk.rateHint : k === "bulk_shells_per_1000" ? t.bulk.shellsHint : t.bulk.batchHint}>
+              <NumberField id={`setting-${k}`} value={draft[k]} onChange={(v) => set({ [k]: v } as Partial<Draft>)} invalid={numbers[k] === null} suffix="€" />
             </Field>
           ))}
         </div>

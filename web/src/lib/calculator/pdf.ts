@@ -11,7 +11,7 @@ import { offerPriceOptions } from './priceOptions';
 import { OFFER_TEXT, type OfferLang } from "./offer-text";
 import { offerProduct } from "./offer-product";
 export type { OfferLang } from "./offer-text";
-import { isCapsule, type OfferForm, type ProductType, type Settings } from './types';
+import { bulkThousands, BULK_UNIT, isBulk, isCapsule, type OfferForm, type ProductType, type Settings } from './types';
 
 // Client-facing offer, laid out after Nutrikal's offer template (Poppins, two brand marks, customer /
 // supplier blocks, amount per serving table, sales prices table, excl. VAT note, payment terms, terms, footer).
@@ -62,6 +62,11 @@ export interface OfferPdfModel {
   noteLines: string[];
   /** Standard offer terms (Settings). */
   terms: string;
+  /**
+   * Capsules in bulk (owner, Nov 2026): what is and is not included, prices per 1,000 capsules. The bottled
+   * products' standard terms (filling, capping, labels) are left out for them.
+   */
+  bulk: { included: string; notIncluded: string } | null;
   footerText: string;
   websites: string[];
   /** Contacts under the logo. */
@@ -93,6 +98,7 @@ const money = (n: number) => n.toFixed(2);
 const packagingPlural: Record<ProductType, string> = {
   capsules_glass: 'glass bottles',
   capsules_plastic: 'plastic bottles',
+  capsules_bulk: 'no retail packaging',
   powder: 'doypack pouches',
 };
 
@@ -115,14 +121,17 @@ export function toPdfModel(
   const name = productName(form) || PDF.newFormula;
   const catalogCaps = offerCapsules(form);
 
+  const bulk = !catalog && isBulk(type);
   const productLine: OfferLine = {
-    description: catalog
+    description: bulk
+      ? fmt(PDF.bulkLine, { name, n: formatNumber((bulkThousands(form) ?? 0) * BULK_UNIT, 0) })
+      : catalog
       ? catalogCaps ? `${name} - ${catalogCaps} capsules` : name
       : capsule
         ? `${name} - ${perUnit} capsules with ${packagingPlural[type]}`
         : `${name} - ${perUnit} doses in ${packagingPlural[type]}`,
     qty: units,
-    unit: 'pcs',
+    unit: bulk ? PDF.bulkUnit : 'pcs',
     price: result.unitPrice,
     discountPct: parseNum(form.discount) ?? 0,
     amount: result.productAmount,
@@ -130,7 +139,8 @@ export function toPdfModel(
 
   // Product name + packaging, amount per serving table (no prices), then the account manager's notes.
   const { pack, format, dosePortion, doseRows } = offerProduct(form, result, lang);
-  const noteLines = form.notes.split('\n').map((l) => l.trim()).filter(Boolean);
+  // Bulk: said first and plainly, then the account manager's notes
+  const noteLines = [...(bulk ? [PDF.bulkStatement] : []), ...form.notes.split('\n').map((l) => l.trim()).filter(Boolean)];
 
   // Sales prices table: the offer quantity plus any price tiers; one column per quantity, no totals.
   // A catalog product shows its own price steps instead of tiers built from a markup.
@@ -188,7 +198,10 @@ export function toPdfModel(
     pack,
     format,
     noteLines,
-    terms: co.terms,
+    terms: bulk ? '' : co.terms,
+    bulk: bulk
+      ? { included: (parseNum(form.bulkPackaging ?? '') ?? 0) > 0 ? PDF.bulkIncludedPackaging : PDF.bulkIncluded, notIncluded: `${PDF.bulkStatement} ${PDF.bulkNotIncluded}` }
+      : null,
     footerText: settings.footer_text,
     headerContact: [[settings.company_email.trim(), settings.company_phone.trim()].filter(Boolean).join(' · '), co.address].filter(Boolean),
     validUntil: form.offer.validUntil,
@@ -217,7 +230,12 @@ const imageFormat = (img: PdfImage) => (img.dataUrl.startsWith('data:image/png')
  * fit: a body longer than one page continues on the next, payment terms and the thanks close the last page.
  */
 export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: string | null = null): jsPDF {
-  const PDF = OFFER_TEXT[m.lang ?? 'en'];
+  const base = OFFER_TEXT[m.lang ?? 'en'];
+  // Bulk: its own included and not included, prices per 1,000 capsules
+  const PDF = m.bulk
+    ? { ...base, includedText: m.bulk.included, notIncludedText: m.bulk.notIncluded, fromUnits: base.bulkFromUnits, pricesNote: base.bulkPricesNote }
+    : base;
+  const priceUnits = (n: number) => (m.bulk ? n * BULK_UNIT : n);
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
   const register = (file: string, data: string, family: string, style: string) => {
     doc.addFileToVFS(file, data);
@@ -446,7 +464,7 @@ export function createOfferPdf(m: OfferPdfModel, fonts: PdfFonts, docPhoto: stri
   const cardPrice = st(13, 'bold', TEXT, 1.2);
   const cardRows = Array.from({ length: Math.ceil(prices.length / PER_ROW) }, (_, r) => {
     const cards = prices.slice(r * PER_ROW, r * PER_ROW + PER_ROW).map((p) => ({
-      label: lay.wrap(fmt(PDF.fromUnits, { n: formatNumber(p.units, 0) }), cardW - 8, cardLabel),
+      label: lay.wrap(fmt(PDF.fromUnits, { n: formatNumber(priceUnits(p.units), 0) }), cardW - 8, cardLabel),
       price: lay.wrap(`€${money(p.price)}`, cardW - 8, cardPrice),
     }));
     const labelH = Math.max(...cards.map((c) => c.label.length)) * lay.lineHeight(cardLabel);

@@ -17,7 +17,8 @@ import { CopyRecipe } from "./copy-recipe";
 import { ClientSection, ContactSection, ProductTypeSection, type SectionProps } from "./client-sections";
 import { FormulaSection } from "./formula-section";
 import { CalcTextProvider, Notice, Toast, useCalcText, useToast, type CalcDict } from "./kit";
-import { MarkupSection, OfferLinesSection, QuantitySection } from "./pricing-sections";
+import { BulkSection, MarkupSection, OfferLinesSection, QuantitySection } from "./pricing-sections";
+import { isBulk } from "@/lib/calculator/types";
 import { ResultsSection } from "./results-section";
 
 type Props = {
@@ -278,9 +279,9 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
           </>
         ) : (
           <>
-            <ProductTypeSection {...sectionProps} fixedCosts={form.fixedCosts ?? settings.fixed_costs} />
+            <ProductTypeSection {...sectionProps} fixedCosts={form.fixedCosts ?? settings.fixed_costs} bulkDefaults={settings} />
             <FormulaSection {...sectionProps} materials={materials} result={result} />
-            <QuantitySection {...sectionProps} result={result} />
+            {isBulk(form.productType) ? <BulkSection {...sectionProps} result={result} /> : <QuantitySection {...sectionProps} result={result} />}
             <MarkupSection {...sectionProps} result={result} />
             <OfferLinesSection {...sectionProps} />
           </>

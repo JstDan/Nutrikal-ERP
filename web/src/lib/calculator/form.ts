@@ -41,6 +41,11 @@ export function createEmptyForm(settings: Settings, offerNo: string): OfferForm 
     maxFillMg: String(CAPSULE_SIZES[CAPSULE_SIZE]),
     quantityPerUnit: '',
     numberOfUnits: '',
+    bulkCapsules: '',
+    bulkRate: '',
+    bulkShells: '',
+    bulkBatch: '',
+    bulkPackaging: '',
     markup: String(settings.default_markup),
     waste: '',
     addVat: false,
@@ -142,6 +147,11 @@ export function copyRecipe(target: OfferForm, source: OfferForm, materials: RawM
     capsuleSize: source.capsuleSize ?? target.capsuleSize,
     maxFillMg: source.maxFillMg ?? target.maxFillMg,
     quantityPerUnit: source.quantityPerUnit ?? '',
+    // Bulk: the costs per 1,000 and per batch come with the recipe; the quantity stays this offer's
+    bulkRate: source.bulkRate ?? '',
+    bulkShells: source.bulkShells ?? '',
+    bulkBatch: source.bulkBatch ?? '',
+    bulkPackaging: source.bulkPackaging ?? '',
     includeComposition: source.includeComposition ?? true,
     offer: { ...target.offer, productName: source.offer?.productName ?? '' },
   };

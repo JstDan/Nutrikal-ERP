@@ -46,7 +46,14 @@ export function ResultsSection({ form, result: r, valid, busy, onCreate, onInval
             <InfoLine label={t.results.rawCostPerDose} value={eur(r.costPerDose, 4)} />
             <InfoLine label={t.results.dosesPerUnit} value={r.dosesPerUnit !== null ? num(r.dosesPerUnit, 2) : "–"} />
             <InfoLine label={t.results.rawCostPerUnit} value={eur(r.rawCostPerUnit, 4)} />
-            <InfoLine label={t.results.fixedCostPerUnit} value={eur(r.fixedCostPerUnit)} />
+            {r.bulk ? (
+              <>
+                <InfoLine label={t.bulk.ratePart} value={eur(r.bulk.ratePerUnit, 4)} />
+                <InfoLine label={t.bulk.shellsPart} value={eur(r.bulk.shellsPerUnit, 4)} />
+                <InfoLine label={fmt(t.bulk.batchPart, { total: eur(r.bulk.batch) })} value={eur(r.bulk.batchPerUnit, 4)} />
+                <InfoLine label={fmt(t.bulk.packagingPart, { total: eur(r.bulk.packaging) })} value={eur(r.bulk.packagingPerUnit, 4)} />
+              </>
+            ) : <InfoLine label={t.results.fixedCostPerUnit} value={eur(r.fixedCostPerUnit)} />}
             {r.packagingExtraPerUnit > 0 && (
               <InfoLine label={form.productType === "capsules_glass" ? t.results.glassJarPerUnit : t.results.lidCostPerUnit} value={eur(r.packagingExtraPerUnit)} />
             )}
@@ -132,7 +139,7 @@ export function ClientSummary({ form, result: r }: { form: OfferForm; result: Ca
         ? caps ? fmt(t.catalog.withCapsules, { name: productName(form), n: num(caps) }) : productName(form)
         : type ? form.offer.productName || t.productType[type] : "–",
       qty: units,
-      unit: t.results.pcs,
+      unit: r.bulk ? t.bulk.unit : t.results.pcs,
       price: r.unitPrice,
       amount: r.productAmount,
     },
@@ -164,15 +171,20 @@ export function ClientSummary({ form, result: r }: { form: OfferForm; result: Ca
               label={t.results.packaging}
               value={type ? (hasAluminiumCap(form) ? fmt(t.catalog.withAluminiumLid, { jar: t.productType[`packaging_${type}`] }) : t.productType[`packaging_${type}`]) : "–"}
             />
-            <InfoLine label={quantityLabel(t, type)} value={form.quantityPerUnit || "–"} />
+            {!r.bulk && <InfoLine label={quantityLabel(t, type)} value={form.quantityPerUnit || "–"} />}
             {isCapsule(type) && <InfoLine label={t.formula.capsulesPerDose} value={form.capsulesPerDose || "–"} />}
             <InfoLine label={`${t.results.quantity} (${unitsLabel(t, type).toLowerCase()})`} value={units ? num(units) : "–"} />
           </div>
         )}
         <div>
-          <InfoLine label={t.results.unitPrice} value={eur(r.unitPrice)} />
+          {r.bulk ? (
+            <>
+              <InfoLine label={t.bulk.perCapsule} value={r.complete ? eur(r.bulk.pricePerCapsule, 5) : "–"} />
+              <InfoLine label={t.bulk.per1000} value={eur(r.unitPrice)} />
+            </>
+          ) : <InfoLine label={t.results.unitPrice} value={eur(r.unitPrice)} />}
           {discount > 0 && <InfoLine label={t.results.discount} value={pct(discount, 2)} />}
-          <InfoLine label={t.results.subTotal} value={eur(r.totalPriceExclVat)} strong />
+          <InfoLine label={r.bulk && r.complete ? fmt(t.bulk.total, { n: num(r.bulk.capsules) }) : t.results.subTotal} value={eur(r.totalPriceExclVat)} strong />
         </div>
       </div>
   
