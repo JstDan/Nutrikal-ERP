@@ -8,8 +8,7 @@ import type { Dict } from "@/lib/i18n/en";
 import { Chip, Empty, PageHeader, type Tone } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { qcTone } from "@/lib/status";
-import { countStock } from "@/app/actions";
-import { SearchSelect } from "@/components/search-select";
+import { LotCount } from "@/components/lot-count";
 import { LotDetailsForm } from "@/components/lot-details-form";
 import { WarehouseSelect } from "@/components/warehouse-select";
 
@@ -101,14 +100,15 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
         order by s.type, s.name`,
       [TAB_TYPES[type], term],
     )).rows;
-    const lots = (await tx.query<Lot>(
-      // lot_costs is visible only to users who may see purchase prices (RLS); others get null
-      `select b.lot_id, b.item_id, b.location_id, b.lot_number, l.name as location, b.quantity, b.qc_status, b.expires_on::text, lo.supplier_lot, b.is_expired,
-              lc.unit_cost::text
-         from stock_balances b join locations l on l.id = b.location_id join lots lo on lo.id = b.lot_id
-         left join lot_costs lc on lc.lot_id = b.lot_id
-        where b.quantity > 0 order by b.expires_on nulls last, b.lot_number`,
-    )).rows;
+    // lot_costs is visible only to users who may see purchase prices (RLS); others get null. Lots below zero are shown
+    // (to be put right), and to Admin also those counted to zero in the last 60 days (owner, Nov 2026)
+    const lots = (await tx.query<Lot>(`select m.lot_id, m.item_id, m.location_id, lo.lot_number, l.name as location, sum(m.quantity)::text as quantity, lo.qc_status,
+              lo.expires_on::text, lo.supplier_lot, (lo.expires_on is not null and lo.expires_on < current_date) as is_expired, lc.unit_cost::text
+         from stock_movements m join locations l on l.id = m.location_id join lots lo on lo.id = m.lot_id
+         left join lot_costs lc on lc.lot_id = m.lot_id
+        group by m.lot_id, m.item_id, m.location_id, lo.lot_number, l.name, lo.qc_status, lo.expires_on, lo.supplier_lot, lc.unit_cost
+       having sum(m.quantity) <> 0 or ($1 and max(m.created_at) > now() - interval '60 days')
+        order by lo.expires_on nulls last, lo.lot_number`, [canReceive])).rows;
     const res = (await tx.query<Res>(
       `select r.item_id, coalesce(mo.code || coalesce(' · ' || p.code, ''), p.code) as code, c.legal_name as client, sum(r.quantity)::text as quantity
          from stock_reservations r
@@ -223,7 +223,11 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                           <span className="block text-xs text-ink-2 md:hidden">{l.location} · {t.enums.qcStatus[l.qc_status as "released"]}</span>
                         </span>
                         <span className="hide-sm min-w-0 break-words">{l.location}</span>
-                        <span className="text-right">{q(l.quantity, i.base_unit)}</span>
+                        <span className="text-right">
+                          {canReceive
+                            ? <LotCount lotId={l.lot_id} locationId={l.location_id} lot={l.lot_number} item={itemName(i)} location={l.location} quantity={l.quantity} unit={i.base_unit} locale={locale} T={t.inventory.count} />
+                            : <span className={Number(l.quantity) < 0 ? "font-semibold text-red-ink" : ""}>{q(l.quantity, i.base_unit)}</span>}
+                        </span>
                         <span className="hide-sm"><Chip tone={qcTone(l.qc_status)}>{t.enums.qcStatus[l.qc_status as "released"]}</Chip></span>
                         <span className={`hide-md ${l.is_expired ? "font-semibold text-red-ink" : ""}`}>{formatDate(locale, l.expires_on)}</span>
                         <span className="hide-md min-w-0 break-words">{l.supplier_lot ?? "—"}{l.unit_cost != null && <span className="block text-xs text-ink-2">{formatPrice(locale, l.unit_cost, "EUR", 4)} / {i.base_unit === "pcs" ? t.common.units : i.base_unit}</span>}</span>
@@ -255,27 +259,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
                     />
                   </div>
                 )}
-                {canReceive && lots.length > 0 && (
-                  <div className="flex flex-col gap-2 border-t border-line pt-3">
-                    <h3 className="m-0 text-sm font-bold">{t.inventory.count.title}</h3>
-                    <p className="m-0 text-[13px] text-ink-2">{t.inventory.count.hint}</p>
-                    <ActionForm action={countStock} submitLabel={t.inventory.count.submit}>
-                      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)]">
-                        <label className="field"><span>{t.inventory.count.lot} *</span>
-                          <SearchSelect name="lot_location" required placeholder={t.common.typeToSearch} noResults={t.common.noResults} defaultValue={lots.length === 1 ? `${lots[0].lot_id}|${lots[0].location_id}` : ""}
-                            options={lots.map((l) => ({
-                              value: `${l.lot_id}|${l.location_id}`, label: `${l.lot_number} · ${l.location}`, hint: q(l.quantity, i.base_unit),
-                              keywords: l.supplier_lot ?? "",
-                            }))} />
-                        </label>
-                        <label className="field"><span>{t.inventory.count.counted} *</span>
-                          <input name="counted" type="number" min="0" step="any" required className="input" />
-                        </label>
-                        <label className="field"><span>{t.inventory.count.reason}</span><input name="reason" className="input" /></label>
-                      </div>
-                    </ActionForm>
-                  </div>
-                )}
+                {canReceive && lots.length > 0 && <p className="m-0 border-t border-line pt-2 text-[13px] text-ink-2">{t.inventory.count.clickHint}</p>}
               </div>
             </details>
           );

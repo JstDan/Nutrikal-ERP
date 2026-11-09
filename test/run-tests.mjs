@@ -4555,5 +4555,29 @@ await ok('the checks are read by the team only', async () => {
 await fails('the partner cannot record a check', () => as('production', "select record_vat_check('DE811907980', true, null, null, null)"), 'Not allowed');
 await fails('nobody writes a check directly', () => as('admin', "insert into vat_checks (vat_number, valid) values ('DE811907980', true)"), 'row-level security');
 
+// ----- Stock counts (owner, Nov 2026: a quantity is clicked and corrected; the sums must stay right)
+console.log('\nStock counts');
+await ok('a count to zero and back, and a lot below zero put right, keep every total right', async () => {
+  const item = await one('admin', "select id from items where sku = 'RM-MGBG'");
+  const lot = await one('admin', 'select receive_lot($1, $2, 25.5) as id', [item.id, L['G-PRO']]);
+  const total = async () => Number((await one('admin', 'select on_hand from item_stock_summary where item_id = $1', [item.id])).on_hand);
+  const bal = async () => Number((await one('admin', 'select coalesce(sum(quantity), 0) as q from stock_movements where lot_id = $1 and location_id = $2', [lot.id, L['G-PRO']])).q);
+  const before = await total();
+  eq(Number((await one('admin', 'select count_stock($1, $2, 0) as d', [lot.id, L['G-PRO']])).d), -25.5, 'counted to zero');
+  eq(await bal(), 0, 'nothing left');
+  eq(await total(), before - 25.5, 'the item total follows');
+  eq(Number((await one('admin', 'select count_stock($1, $2, 24.75) as d', [lot.id, L['G-PRO']])).d), 24.75, 'a lot at zero is counted back up');
+  eq(await bal(), 24.75, 'balance');
+  eq(await total(), before - 0.75, 'the item total follows again');
+  eq(Number((await one('admin', 'select count_stock($1, $2, 3.125) as d', [lot.id, L['G-PRO']])).d), -21.625, 'three decimals');
+  eq(await bal(), 3.125, 'balance');
+});
+await ok('quantities are read as people type them, in either language', async () => {
+  const { parseQty } = await import(new URL('../web/src/lib/parse-qty.ts', import.meta.url).href);
+  const cases = [['12,5', 12.5], ['12.5', 12.5], ['1 234,5', 1234.5], ['1.234,5', 1234.5], ['1,234.5', 1234.5], ['1.234', 1.234],
+    ['1.234.567', 1234567], ['0', 0], [' 7 ', 7], ['abc', null], ['', null], ['1,2,3', null], ['−2', -2]];
+  for (const [text, want] of cases) eq(parseQty(text), want, text);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -16,6 +16,7 @@ export type ChatMessage = {
   id: string; author_id: string; author: string; body: string; created_at: string; edited_at: string | null;
   attachments: ChatAttachment[]; reactions: ChatReaction[];
   parent_id: string | null; reply_count: number; last_reply_at: string | null; repliers: string[] | null; pinned_at: string | null; saved?: boolean;
+  sending?: boolean;                        // shown at once, before the server has it
 };
 export type ChatPerson = { id: string; full_name: string };
 
@@ -41,6 +42,15 @@ const GROUP_MS = 5 * 60 * 1000;
 const GIF = /^https:\/\/(?:media\d?\.giphy\.com\/media|i\.giphy\.com)\/[\w./=%-]+\.(?:gif|webp)(?:\?[\w=&.%-]*)?$/;
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const time = (iso: string) => iso.slice(11, 16);
+/** The newest messages from the server over what the screen has: older ones stay, the latest are replaced. */
+const RECENT_N = 50;
+function mergeRecent(old: ChatMessage[], recent: ChatMessage[]): ChatMessage[] {
+  if (recent.length < RECENT_N || !recent.length) return recent;
+  const from = recent[0].created_at;
+  return [...old.filter((m) => m.created_at < from && !recent.some((r) => r.id === m.id)), ...recent];
+}
+/** The time as the database writes it (timestamptz::text), for a message shown before the server has it. */
+const nowText = () => new Date().toISOString().replace("T", " ").replace("Z", "+00");
 
 /** GIF search: trending until something is typed; a click sends the GIF. GIPHY asks to be named. */
 function GifPanel({ onPick, onClose, text }: { onPick: (g: Gif) => void; onClose: () => void; text: Dict["chat"] }) {
@@ -224,10 +234,10 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
   };
   const send = async () => {
     const body = draft.trim();
-    if ((!body && !files.length) || pending) return;
+    if (!body && !files.length) return;
     const d = { body, files, mentions: mentions.filter((m) => body.includes(`@${m.full_name}`)) };
     setDraft(""); setFiles([]); setMentions([]);
-    if (!(await onSend(d))) { setDraft(body); setFiles(d.files); }
+    if (!(await onSend(d))) { setDraft((cur) => (cur.trim() ? cur : body)); setFiles((cur) => (cur.length ? cur : d.files)); }
   };
   /** Wraps the selected words in the marks (or puts the marks at the cursor). */
   const wrap = (open: string, close = open, line = false) => {
@@ -342,7 +352,7 @@ function Composer({ id, placeholder, people, C, gifs, pending, onSend, onSendGif
             </button>
           )}
           <span className="ml-auto hidden pr-2 text-[11px] text-ink-2 @min-[520px]/composer:inline">{C.enterHint}</span>
-          <button type="submit" aria-label={C.send} disabled={pending || (!draft.trim() && !files.length)}
+          <button type="submit" aria-label={C.send} disabled={!draft.trim() && !files.length}
             className="ml-auto grid h-9 w-11 shrink-0 place-items-center rounded-md bg-[#007a5a] text-white transition-colors hover:bg-[#148567] disabled:bg-transparent disabled:text-ink-2 disabled:opacity-60 @min-[520px]/composer:ml-0">
             <Ico d="M4 12l16-8-6 16-2-7z" size={16} />
           </button>
@@ -371,7 +381,7 @@ function Message({ m, grouped, names, own, isAdmin, C, locale, inThread, editing
   const btn = "grid h-8 w-8 place-items-center rounded-md text-ink-2 hover:bg-mist hover:text-ink";
 
   return (
-    <div id={inThread ? undefined : `m-${m.id}`} className={`group relative flex min-w-0 gap-2 px-4 hover:bg-canvas ${grouped ? "py-0.5" : "pt-2 pb-0.5"} ${m.pinned_at && !inThread ? "bg-[#fef9ec] hover:bg-[#fdf3d7]" : ""} ${fresh ? "chat-in" : ""} ${editing ? "bg-[#fef9ec]" : ""}`}>
+    <div id={inThread ? undefined : `m-${m.id}`} className={`group relative flex min-w-0 gap-2 px-4 hover:bg-canvas ${grouped ? "py-0.5" : "pt-2 pb-0.5"} ${m.pinned_at && !inThread ? "bg-[#fef9ec] hover:bg-[#fdf3d7]" : ""} ${fresh ? "chat-in" : ""} ${editing ? "bg-[#fef9ec]" : ""} ${m.sending ? "pointer-events-none opacity-60" : ""}`} aria-busy={m.sending || undefined}>
       <div className="w-9 shrink-0">
         {grouped
           ? <span className="block pt-1 text-right text-[10px] text-ink-2 opacity-0 group-hover:opacity-100">{time(m.created_at)}</span>
@@ -567,11 +577,13 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
   const [replies, setReplies] = useState<ChatMessage[] | null>(null);
   const [showPins, setShowPins] = useState(false);
   const [pending, start] = useTransition();
+  const [outbox, setOutbox] = useState<ChatMessage[]>([]);
+  const busy = useRef(false);
   const first = useRef(new Set(initial.map((m) => m.id)));
   const firstReplies = useRef(new Set<string>());
   const names = [me, ...people.map((p) => p.full_name)];
-  const main = useFollow(messages.length);
-  const side = useFollow(replies?.length ?? 0);
+  const main = useFollow(messages.length + outbox.filter((m) => !m.parent_id).length);
+  const side = useFollow((replies?.length ?? 0) + outbox.filter((m) => m.parent_id).length);
   const router = useRouter();
   const live = useLive();
   const [topic, setTopic] = useState<Topic | null>(null);
@@ -582,22 +594,35 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
   const refreshRef = useRef<() => Promise<void>>(async () => {});
 
   // New messages are read here: the menu, the channel list and the bell are drawn again without them
+  // Only what is new: the latest messages, read only while the person is looking (a background tab keeps the
+  // phone's notifications), and the menu and bell drawn again only when someone else wrote
   const refresh = async () => {
-    const last = messages.at(-1)?.id ?? null;
-    const rows = await pollChat(channel, last);
-    setMessages(rows);
-    if (rows.at(-1)?.id !== last) router.refresh();
-    if (thread) setReplies(await pollThread(channel, thread));
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      const before = messages.at(-1);
+      const visible = !document.hidden;
+      const rows = await pollChat(channel, before?.id ?? null, visible);
+      setMessages((old) => mergeRecent(old, rows));
+      const last = rows.at(-1);
+      if (visible && last && last.id !== before?.id && last.author_id !== userId) router.refresh();
+      if (thread) setReplies(await pollThread(channel, thread));
+    } finally {
+      busy.current = false;
+    }
   };
-  // Opening a channel reads it (also when no new message comes while it is open)
+  // Opening a channel reads it (also when no new message comes while it is open), and so does coming back to it
   useEffect(() => {
     let live = true;
-    markChatRead(channel).then(() => { if (live) router.refresh(); }).catch(() => {});
-    return () => { live = false; };
+    const read = () => { if (!document.hidden) markChatRead(channel).then(() => { if (live) router.refresh(); }).catch(() => {}); };
+    read();
+    const back = () => { if (!document.hidden) { read(); refreshRef.current().catch(() => {}); } };
+    document.addEventListener("visibilitychange", back);
+    return () => { live = false; document.removeEventListener("visibilitychange", back); };
   }, [channel, router]);
   refreshRef.current = refresh;
   useEffect(() => {
-    const t = setInterval(() => { if (!document.hidden && !pending) refresh().catch(() => {}); }, live?.realtime ? LIVE_POLL_MS : POLL_MS);
+    const t = setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, live?.realtime ? LIVE_POLL_MS : POLL_MS);
     return () => clearInterval(t);
   });
   // The live topic of the channel: a change brings the messages at once; who is typing; the huddle
@@ -665,15 +690,22 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
     if (parent) fd.set("parent", parent);
     fd.set("mentions", JSON.stringify(d.mentions.map((m) => m.id)));
     d.files.forEach((f) => fd.append("files", f));
+    fd.set("as", userId);
     setError(null);
     (parent ? side : main).atEnd.current = true;
-    start(async () => {
-      const r = await sendChat(fd).catch(() => ({ error: C.failed }));
-      if (r.error) { setError(r.error); resolve(false); } else {
-        if (topic && live) topic.send("stop-typing", { session: live.session });
-        lastTyping.current = 0;
-        await refresh(); resolve(true);
-      }
+    const temp: ChatMessage = {
+      id: `sending-${Date.now()}-${Math.random().toString(36).slice(2)}`, author_id: userId, author: me, body: d.body || "📎", created_at: nowText(),
+      edited_at: null, attachments: d.files.map((f, i) => ({ id: `f${i}`, name: f.name, mime: null, size: f.size })), reactions: [],
+      parent_id: parent, reply_count: 0, last_reply_at: null, repliers: null, pinned_at: null, sending: true,
+    };
+    setOutbox((o) => [...o, temp]);
+    if (topic && live) topic.send("stop-typing", { session: live.session });
+    lastTyping.current = 0;
+    sendChat(fd).catch(() => ({ error: C.failed } as Awaited<ReturnType<typeof sendChat>>)).then((r) => {
+      if (r.messages) setMessages((old) => mergeRecent(old, r.messages!));
+      if (r.replies && parent === thread) setReplies(r.replies);
+      setOutbox((o) => o.filter((m) => m.id !== temp.id));
+      if (r.error) { setError(r.error); resolve(false); } else resolve(true);
     });
   });
   const gif = (g: Gif, parent: string | null) => post({ body: g.url, files: [], mentions: [] }, parent);
@@ -734,7 +766,7 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
               </div>
           )}
         </div>
-        <Feed {...feedProps} messages={messages} inThread={false} lastRead={lastRead} onThread={(m) => setThread(m.id)} firstIds={first.current}
+        <Feed {...feedProps} messages={[...messages, ...outbox.filter((m) => !m.parent_id)]} inThread={false} lastRead={lastRead} onThread={(m) => setThread(m.id)} firstIds={first.current}
           scroller={main.scroller} onScroll={main.onScroll} empty={<><p className="m-0 text-base font-bold text-ink">{name ?? C.title}</p><p className="m-0">{C.empty}</p></>} />
         {main.behind && (
           <button type="button" onClick={() => main.toEnd()} className="chat-in absolute bottom-36 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#1264a3] px-4 py-2 text-xs font-semibold text-white shadow-lg">↓ {C.newMessages}</button>
@@ -754,7 +786,7 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
             <button type="button" onClick={() => setThread(null)} aria-label={C.close} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-xl text-ink-2 hover:bg-mist hover:text-ink">×</button>
           </header>
           {replies === null ? <p className="m-0 p-4 text-sm text-ink-2">…</p> : (
-            <Feed {...feedProps} messages={replies} inThread lastRead={null} onThread={() => {}} firstIds={firstReplies.current}
+            <Feed {...feedProps} messages={[...replies, ...outbox.filter((m) => m.parent_id === thread)]} inThread lastRead={null} onThread={() => {}} firstIds={firstReplies.current}
               scroller={side.scroller} onScroll={side.onScroll} empty={C.noThread} head={<div className="h-2" />} />
           )}
           {error && thread && <p role="alert" className="m-0 mx-4 mb-1 text-sm font-semibold text-red-ink">{error}</p>}

@@ -3,8 +3,32 @@
 import { useEffect, useState, useTransition } from "react";
 import type { Dict } from "@/lib/i18n/en";
 import { subscribePush } from "@/components/push-toggle";
+import { pushSubscriptionKnown, savePushSubscription } from "@/app/push-actions";
 
 const LATER = "nk-push-later";
+const SYNCED = "nk-push-synced";
+
+/**
+ * A device with notifications on is signed up again when the server no longer has it (the push service dropped it,
+ * or someone else signed in on the phone), at most every few hours. One switched off under Notifications has no
+ * subscription and is left alone.
+ */
+async function keepPushAlive(publicKey: string) {
+  try { if (Number(localStorage.getItem(SYNCED) ?? 0) > Date.now()) return; } catch { /* check anyway */ }
+  const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(() => navigator.serviceWorker.ready);
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  if (!(await pushSubscriptionKnown(sub.endpoint))) {
+    await sub.unsubscribe().catch(() => false);
+    const fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(publicKey) });
+    await savePushSubscription(fresh.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }, navigator.userAgent);
+  }
+  try { localStorage.setItem(SYNCED, String(Date.now() + 6 * 3600e3)); } catch { /* fine */ }
+}
+const b64 = (s: string) => {
+  const raw = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+};
 
 /**
  * On a phone without notifications yet: one line that offers them (owner, Nov 2026: phone notifications).
@@ -17,6 +41,7 @@ export function PushPrompt({ publicKey, T }: { publicKey: string | null; T: Dict
 
   useEffect(() => {
     if (!publicKey || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+    if (Notification.permission === "granted") { keepPushAlive(publicKey).catch(() => {}); return; }
     if (Notification.permission !== "default") return;
     if (!window.matchMedia("(pointer: coarse)").matches) return;
     try { if (Number(localStorage.getItem(LATER) ?? 0) > Date.now()) return; } catch { /* private window: ask */ }

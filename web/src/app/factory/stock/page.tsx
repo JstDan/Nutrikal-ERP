@@ -3,9 +3,7 @@ import { LiveSearch } from "@/components/live-search";
 import { requireRole } from "@/lib/session";
 import { formatDate, formatQty } from "@/lib/i18n";
 import { Card, Chip, Empty, PageHeader } from "@/components/ui";
-import { ActionForm } from "@/components/action-form";
-import { countStock } from "@/app/actions";
-import { SearchSelect } from "@/components/search-select";
+import { LotCount } from "@/components/lot-count";
 import { qcTone } from "@/lib/status";
 
 type Stock = {
@@ -24,18 +22,19 @@ export default async function FactoryStockPage({ searchParams }: PageProps<"/fac
 
   const data = await withUser(user.id, async (tx) => ({
     stock: (await tx.query<Stock>(
-      `select b.lot_id, b.location_id, b.lot_number, i.name as item, i.name_bg as item_bg, i.type as item_type, i.base_unit,
-              b.quantity::text, l.code as location, b.qc_status, b.expires_on::text, lo.supplier_lot, i.sku
-         from stock_balances b join items i on i.id = b.item_id join locations l on l.id = b.location_id
-         join lots lo on lo.id = b.lot_id
-        where b.quantity > 0 and l.is_partner_visible`)).rows,
+      `select m.lot_id, m.location_id, lo.lot_number, i.name as item, i.name_bg as item_bg, i.type as item_type, i.base_unit,
+              sum(m.quantity)::text as quantity, l.code as location, lo.qc_status, lo.expires_on::text, lo.supplier_lot, i.sku
+         from stock_movements m join items i on i.id = m.item_id join locations l on l.id = m.location_id
+         join lots lo on lo.id = m.lot_id
+        where l.is_partner_visible
+        group by m.lot_id, m.location_id, lo.lot_number, i.name, i.name_bg, i.type, i.base_unit, l.code, lo.qc_status, lo.expires_on, lo.supplier_lot, i.sku
+       having sum(m.quantity) <> 0 or max(m.created_at) > now() - interval '60 days'`)).rows,
     corrections: (await tx.query<Correction>(
       `select m.id::text, m.created_at::text, lo.lot_number, i.name as item, i.name_bg as item_bg, i.base_unit, m.quantity::text, m.reason, l.code as location
          from stock_movements m join lots lo on lo.id = m.lot_id join items i on i.id = m.item_id join locations l on l.id = m.location_id
         where m.type = 'adjustment' and m.created_by = auth.uid() order by m.created_at desc limit 10`)).rows,
   }));
   const name = (s: { item: string; item_bg: string | null }) => (locale === "bg" && s.item_bg ? s.item_bg : s.item);
-  const correctable = data.stock.filter((s) => CORRECTABLE.includes(s.item_type));
   // Search: our lot number, the supplier's batch, item name or SKU
   const needle = term.toLowerCase();
   const shown = needle
@@ -65,7 +64,11 @@ export default async function FactoryStockPage({ searchParams }: PageProps<"/fac
                 <span className="block text-xs text-ink-2">{s.lot_number}{s.supplier_lot ? ` · ${S.supplierLot} ${s.supplier_lot}` : ""} · {t.enums.itemType[s.item_type as "raw_material"]} · {t.inventory.expires} {formatDate(locale, s.expires_on)}<span className="@xl:hidden"> · {s.location}</span></span>
               </span>
               <span className="cq-hide-sm">{s.location}</span>
-              <span className="text-right font-semibold">{formatQty(locale, s.quantity, s.base_unit)}</span>
+              <span className="text-right font-semibold">
+                {CORRECTABLE.includes(s.item_type)
+                  ? <LotCount lotId={s.lot_id} locationId={s.location_id} lot={s.lot_number} item={name(s)} location={s.location} quantity={s.quantity} unit={s.base_unit} locale={locale} T={t.inventory.count} reasonRequired={user.role === "production"} />
+                  : formatQty(locale, s.quantity, s.base_unit)}
+              </span>
               <span className="cq-hide-sm"><Chip tone={qcTone(s.qc_status)}>{t.enums.qcStatus[s.qc_status as "released"]}</Chip></span>
             </div>
           ))}
@@ -73,20 +76,7 @@ export default async function FactoryStockPage({ searchParams }: PageProps<"/fac
 
         <div className="flex min-w-0 flex-col gap-4">
           <Card title={S.correct} id="correct-h">
-            <p className="m-0 text-sm text-ink-2">{S.correctNote}</p>
-            <ActionForm action={countStock} submitLabel={S.submit}>
-              <label className="field"><span>{S.lot} *</span>
-                <SearchSelect name="lot_location" required placeholder={t.common.typeToSearch} noResults={t.common.noResults}
-                  options={correctable.map((s) => ({
-                    value: `${s.lot_id}|${s.location_id}`, label: `${s.lot_number} · ${name(s)} · ${s.location}`,
-                    hint: formatQty(locale, s.quantity, s.base_unit), keywords: `${s.item} ${s.item_bg ?? ""} ${s.sku} ${s.supplier_lot ?? ""}`,
-                  }))} />
-              </label>
-              <label className="field"><span>{S.counted} *</span>
-                <input name="counted" type="number" min={0} step="any" required className="input" />
-              </label>
-              <label className="field"><span>{S.reason} *</span><input name="reason" required className="input" /></label>
-            </ActionForm>
+            <p className="m-0 text-sm text-ink-2">{S.correctNote} {t.inventory.count.clickHint}</p>
           </Card>
 
           <Card title={S.recent} id="recent-h">

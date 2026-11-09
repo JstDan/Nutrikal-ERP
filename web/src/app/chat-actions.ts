@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import { q, qChat } from "@/lib/db/engine";
+import { q, qChat, withUser } from "@/lib/db/engine";
 import { CHAT_BUCKET, MAX_DESIGN_BYTES, newTaskFilePath, putFile } from "@/lib/files";
 import { getSession } from "@/lib/session";
 import { pushPending } from "@/lib/push-send";
@@ -17,6 +17,9 @@ const COLS = "id, author_id, author, body, created_at::text, edited_at::text, at
   + ", exists (select 1 from chat_saved s where s.message_id = f.id and s.user_id = auth.uid()) as saved";
 const FEED = `select ${COLS} from chat_feed($1) f`;
 const THREAD = `select ${COLS} from chat_feed($1, $2) f`;
+/** The latest messages only: what a poll or a send brings back (the screen keeps the older ones it has). */
+const RECENT_N = 50;
+const RECENT = `select * from (select ${COLS} from chat_feed($1) f order by f.created_at desc limit ${RECENT_N}) r order by created_at`;
 const uuid = (v: unknown) => (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
 /** When the person last read the channel (before opening it now): where the "New" line goes. */
 export const lastReadOf = async (userId: string, channel: string) =>
@@ -32,16 +35,21 @@ async function writer() {
   return { ...s, writerId: s.developer?.id ?? s.user.id };
 }
 
-/** The channel is read, and the notifications of mentions in it go away. */
-const markRead = (userId: string, channel: string) =>
-  qChat(userId, "insert into chat_reads (channel_id, user_id) values ($1, auth.uid()) on conflict (channel_id, user_id) do update set read_at = now()", [channel])
-    .then(() => qChat(userId, "select mark_notifications_seen($1)", [`/chat?c=${channel}`]));
+/** The channel is read, and the notifications of mentions in it go away (one trip to the database). */
+const markRead = (userId: string, channel: string) => withUser(userId, async (tx) => {
+  await tx.query("insert into chat_reads (channel_id, user_id) values ($1, auth.uid()) on conflict (channel_id, user_id) do update set read_at = now()", [channel]);
+  await tx.query("select mark_notifications_seen($1)", [`/chat?c=${channel}`]);
+}, true);
 
-/** The last messages with their reactions and files. New ones mark the channel as read. */
-export async function pollChat(channel: string, seen: string | null): Promise<ChatMessage[]> {
+/**
+ * The latest messages with their reactions and files. New ones mark the channel as read, but only when the person
+ * is looking (read): a chat left open in a background tab must not swallow the phone's notifications.
+ */
+export async function pollChat(channel: string, seen: string | null, read = true): Promise<ChatMessage[]> {
   const { user } = await getSession();
-  const rows = await q<ChatMessage>(user.id, FEED, [channel]);
-  if (rows.at(-1)?.id !== seen) await markRead(user.id, channel);
+  if (!uuid(channel)) return [];
+  const rows = await q<ChatMessage>(user.id, RECENT, [channel]);
+  if (read && rows.at(-1)?.id !== seen) await markRead(user.id, channel);
   return rows;
 }
 
@@ -97,17 +105,26 @@ export async function openDirectChat(person: string): Promise<string> {
   return (await qChat<{ id: string }>(user.id, "select chat_open_direct($1) as id", [person]))[0].id;
 }
 
-/** A message with its files: fd has channel, body, mentions, files and, for a reply, parent. */
-export async function sendChat(fd: FormData): Promise<{ error?: string }> {
-  const { t, developer, writerId } = await writer();
+/**
+ * A message with its files: fd has channel, body, mentions, files, for a reply parent, and as (who the chat was
+ * opened as). Brings back the latest messages (and the thread's), so the screen needs no second request, and pushes
+ * the notifications to the phones at once.
+ */
+export async function sendChat(fd: FormData): Promise<{ error?: string; messages?: ChatMessage[]; replies?: ChatMessage[] }> {
+  const { t, user, developer, writerId } = await writer();
   const channel = String(fd.get("channel") ?? "");
+  // Another tab switched the account (Production screen, acting as someone): say so instead of "not allowed"
+  const as = fd.get("as");
+  if (typeof as === "string" && as && as !== writerId) return { error: t.chat.otherAccount };
+  if (!uuid(channel)) return { error: t.chat.failed };
+  const parent = uuid(fd.get("parent"));
   const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   if (files.some((f) => f.size > MAX_DESIGN_BYTES)) return { error: t.chat.tooBig };
   const body = String(fd.get("body") ?? "").trim() || (files.length ? "📎" : "");
   if (!body) return {};
   try {
     const mentions = (JSON.parse(String(fd.get("mentions") ?? "[]")) as string[]).filter((x) => /^[0-9a-f-]{36}$/i.test(x));
-    const [{ id }] = await qChat<{ id: string }>(writerId, "select chat_post($1, $2, $3::uuid[], $4) as id", [channel, body, mentions, uuid(fd.get("parent"))]);
+    const [{ id }] = await qChat<{ id: string }>(writerId, "select chat_post($1, $2, $3::uuid[], $4) as id", [channel, body, mentions, parent]);
     for (const f of files) {
       const key = newTaskFilePath(channel, randomUUID(), f.name);
       await putFile(CHAT_BUCKET, key, Buffer.from(await f.arrayBuffer()), f.type || "application/octet-stream");
@@ -117,9 +134,20 @@ export async function sendChat(fd: FormData): Promise<{ error?: string }> {
   } catch (e) {
     // A developer is not a member of the direct messages of the person they act as
     if (developer && /Not allowed in this channel/.test(text(e))) return { error: t.chat.developerDirect };
+    if (/Not allowed in this channel/.test(text(e))) return { error: t.chat.notMember };
     return { error: text(e) };
   }
-  return {};
+  if (pushConfigured()) after(() => pushPending(0).then(() => undefined).catch((e) => console.error("Push", e)));
+  // The sender has seen the channel up to their own message
+  const [messages, replies] = await Promise.all([
+    withUser(user.id, async (tx) => {
+      const rows = (await tx.query<ChatMessage>(RECENT, [channel])).rows;
+      if (!parent) await tx.query("insert into chat_reads (channel_id, user_id) values ($1, auth.uid()) on conflict (channel_id, user_id) do update set read_at = now()", [channel]);
+      return rows;
+    }, true),
+    parent ? q<ChatMessage>(user.id, THREAD, [channel, parent]) : Promise.resolve(undefined),
+  ]).catch(() => [undefined, undefined] as const);
+  return { messages, replies };
 }
 
 export async function editChatMessage(id: string, body: string) {

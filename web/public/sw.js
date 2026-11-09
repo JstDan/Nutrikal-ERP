@@ -63,20 +63,24 @@ self.addEventListener("push", (event) => {
   try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data ? event.data.text() : "" }; }
   event.waitUntil((async () => {
     const link = new URL(data.link || "/notifications", self.location.origin);
-    // The person is looking at that very conversation: no notification needed
+    // The person is looking at that very conversation: a silent notification, closed at once. Every push must
+    // show one: Safari on iPhone (and Chrome) cancel the subscription of a site whose pushes show nothing.
     const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     const channel = link.pathname === "/chat" ? link.searchParams.get("c") : null;
-    if (channel && wins.some((w) => w.focused && w.visibilityState === "visible" && new URL(w.url).searchParams.get("c") === channel)) return;
+    const looking = !!channel && wins.some((w) => w.focused && w.visibilityState === "visible" && new URL(w.url).searchParams.get("c") === channel);
+    const tag = data.tag || `n${Date.now()}`;
     await self.registration.showNotification(data.title || "Nutrikal", {
       body: data.body || "",
       icon: "/app/icon-192.png",
       badge: "/app/badge-96.png",
-      tag: data.tag || undefined,
-      renotify: !!data.tag,
-      vibrate: [80, 40, 80],
+      tag,
+      renotify: !looking,
+      silent: looking,
+      vibrate: looking ? undefined : [80, 40, 80],
       timestamp: Date.now(),
       data: { link: link.href },
     });
+    if (looking) (await self.registration.getNotifications({ tag })).forEach((n) => n.close());
   })());
 });
 

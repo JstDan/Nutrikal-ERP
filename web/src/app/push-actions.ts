@@ -27,3 +27,9 @@ export async function notificationCount(): Promise<number> {
   const { user } = await getSession();
   return (await q<{ n: number }>(user.id, "select count(*)::int as n from notifications where read_at is null"))[0]?.n ?? 0;
 }
+
+/** Whether the server still sends to this device for the signed-in user (it forgets devices that went away). */
+export async function pushSubscriptionKnown(endpoint: string): Promise<boolean> {
+  const { user } = await getSession();
+  return (await q<{ n: number }>(user.id, "select count(*)::int as n from push_subscriptions where endpoint = $1", [endpoint]))[0]?.n > 0;
+}

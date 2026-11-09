@@ -14,6 +14,7 @@ import type { Tx } from "@/lib/db/engine";
 import { offerPriceOptions } from "@/lib/calculator/priceOptions";
 import type { CalcResult } from "@/lib/calculator/calc";
 import type { OfferForm } from "@/lib/calculator/types";
+import { parseQty } from "@/lib/parse-qty";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string };
 
@@ -25,12 +26,7 @@ const str = (fd: FormData, k: string) => {
   const t = v.trim();
   return t === "" ? null : t;
 };
-const num = (fd: FormData, k: string) => {
-  const v = str(fd, k);
-  if (v === null) return null;
-  const n = Number(v.replace(",", ".").replace("−", "-"));
-  return Number.isFinite(n) ? n : null;
-};
+const num = (fd: FormData, k: string) => parseQty(str(fd, k));
 const errorText = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
 
 // ------------------------------------------------------------ preferences
