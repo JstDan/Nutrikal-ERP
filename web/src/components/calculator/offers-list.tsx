@@ -19,6 +19,8 @@ type Props = {
   settings: Settings;
   userId: string;
   isAdmin: boolean;
+  /** The designer reads offers: open and download only (owner, Nov 2026). */
+  readOnly?: boolean;
   /** Offers in an order that is not cancelled: fixed, no Delete */
   inOrder: string[];
   /** Download in BG / Download in EN, asked before every download. */
@@ -47,7 +49,7 @@ const TONE: Record<State["kind"], string> = {
 /** Today as yyyy-mm-dd in Sofia. */
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Sofia" }).format(new Date());
 
-function List({ offers, settings, userId, isAdmin, inOrder, langText }: Props) {
+function List({ offers, settings, userId, isAdmin, inOrder, langText, readOnly = false }: Props) {
   const { t, locale, eur } = useCalcText();
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -154,11 +156,11 @@ function List({ offers, settings, userId, isAdmin, inOrder, langText }: Props) {
           const person = x.company_name && x.receiver_name && x.receiver_name !== x.company_name ? x.receiver_name : null;
           const units = Number(x.data.numberOfUnits) || 0;
           const kind = x.product_type ? (t.productType as Record<string, string>)[x.product_type] : null;
-          const canDelete = (isAdmin || x.created_by === userId) && !inOrder.includes(x.id);
+          const canDelete = !readOnly && (isAdmin || x.created_by === userId) && !inOrder.includes(x.id);
           const menu = (
               <div className="absolute right-0 z-20 mt-1 flex w-60 max-w-[calc(100vw-48px)] flex-col rounded-sm border border-line bg-white p-1 shadow-lg" onClick={close}>
                 <Link href={`/offers/calc/${x.id}`} className={item}>{o.open}</Link>
-                <Link href={`/calculator?open=${x.id}`} className={item}>{o.edit}</Link>
+                {!readOnly && <Link href={`/calculator?open=${x.id}`} className={item}>{o.edit}</Link>}
                 <button type="button" className={item} disabled={busy} onClick={() => setAsking(x)}>{t.results.downloadPdf}</button>
                 {canDelete && <button type="button" className={`${item} text-red-ink`} onClick={() => setConfirmId(x.id)}>{t.delete}</button>}
               </div>

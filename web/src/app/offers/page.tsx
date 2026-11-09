@@ -14,7 +14,8 @@ type Row = {
 const STATUSES = ["draft", "sent", "accepted", "rejected", "expired"] as const;
 
 export default async function OffersPage({ searchParams }: PageProps<"/offers">) {
-  const { user, locale, t } = await requireRole("admin", "sales");
+  const { user, locale, t } = await requireRole("admin", "sales", "designer");
+  const reader = user.access === "designer";
   const sp = await searchParams;
   const status = typeof sp.status === "string" && (STATUSES as readonly string[]).includes(sp.status) ? sp.status : "";
 
@@ -46,10 +47,10 @@ export default async function OffersPage({ searchParams }: PageProps<"/offers">)
       <PageHeader
         title={t.offers.title}
         subtitle={t.offers.subtitle}
-        actions={<Link href="/calculator" className="btn btn-primary">{t.offers.new}</Link>}
+        actions={!reader && <Link href="/calculator" className="btn btn-primary">{t.offers.new}</Link>}
       />
       {/* Offers are created in the calculator (Create offer), not here */}
-      <OffersList t={t.calc} locale={locale} offers={calcOffers} settings={settings} userId={user.id} isAdmin={user.role === "admin"} inOrder={inOrder} langText={t.common.docLang} />
+      <OffersList t={t.calc} locale={locale} offers={calcOffers} settings={settings} userId={user.id} isAdmin={user.role === "admin"} inOrder={inOrder} langText={t.common.docLang} readOnly={reader} />
 
       {rows.length > 0 || status ? (
       <Fold title={t.offers.formulaOffers} note={t.offers.formulaOffersNote} open={!!status}>

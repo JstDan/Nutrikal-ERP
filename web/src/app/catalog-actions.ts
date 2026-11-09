@@ -48,6 +48,30 @@ export async function saveCatalogProduct(_: ActionState, fd: FormData): Promise<
   return { ok: true, message: t.catalog.saved };
 }
 
+/**
+ * The designer (and Admin) keep a product's look (owner, Nov 2026): names, descriptions, site names, category and
+ * pack text. The database lets the designer change nothing else (catalog_products_designer_guard).
+ */
+export async function saveCatalogLook(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { user, t } = await getSession();
+  const base = PRODUCT_NAMES[val(fd, "code")];
+  const names = Object.fromEntries(CATALOG_NAME_LANGS
+    .map((l) => [l, val(fd, `name_${l}`)] as const)
+    .filter(([l, v]) => v && v !== base?.[l]));
+  try {
+    const rows = await q(user.id,
+      `update catalog_products set name = $2, name_bg = $3, description = $4, description_bg = $5, category_id = $6, pack = $7, pack_bg = $8,
+              names = $9::jsonb where id = $1 returning id`,
+      [val(fd, "id"), val(fd, "name"), opt(fd, "name_bg"), opt(fd, "description"), opt(fd, "description_bg"), opt(fd, "category_id"),
+       opt(fd, "pack"), opt(fd, "pack_bg"), JSON.stringify(names)]);
+    if (!rows.length) return { error: t.catalog.imageNotAllowed };
+  } catch (e) {
+    return { error: text(e) };
+  }
+  revalidatePath("/catalog", "layout");
+  return { ok: true, message: t.catalog.saved };
+}
+
 const IMAGE_URL = /^\/api\/catalog-image\/([0-9a-f-]{36}\/[0-9a-f-]{36}\.[a-z]{3,4})$/;
 
 /**

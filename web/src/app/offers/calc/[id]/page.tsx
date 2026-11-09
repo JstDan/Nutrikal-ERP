@@ -11,7 +11,8 @@ import { closeOfferFollowup } from "@/app/shortcut-actions";
 import { fmt, formatDate, getDict } from "@/lib/i18n";
 
 export default async function CalculatorOfferPage({ params }: PageProps<"/offers/calc/[id]">) {
-  const { user, locale, t } = await requireRole("admin", "sales");
+  const { user, locale, t } = await requireRole("admin", "sales", "designer");
+  const reader = user.access === "designer";
   const { id } = await params;
   const [offer, settings] = await Promise.all([loadOffer(user.id, id), loadSettings(user.id)]);
   if (!offer) notFound();
@@ -26,7 +27,7 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
 
   // The sender picks the language of the offer on the card (owner, Nov 2026); English first
   const lang: "bg" | "en" = "en";
-  const send = await loadSendInfo(user.id, user.name, "calc_offer", offer.id, {
+  const send = reader ? null : await loadSendInfo(user.id, user.name, "calc_offer", offer.id, {
     to: offer.receiver_email, title: getDict(lang).send.offerTitle, no: offer.offer_no, lang,
     titles: { bg: getDict("bg").send.offerTitle, en: getDict("en").send.offerTitle },
   });
@@ -39,7 +40,7 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
       body: fmt(M.offerReminderBody, { no: offer.offer_no, date: formatDate(l, offer.created_at.slice(0, 10)), name: user.name }),
     };
   };
-  const reminder = !inOrder && !closed ? {
+  const reminder = send && !inOrder && !closed ? {
     ...send, history: [], ...reminderIn(lang),
     versions: { bg: reminderIn("bg"), en: reminderIn("en") },
   } : null;
@@ -53,7 +54,7 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
         actions={(recipe || (offer.client_id && !inOrder)) && (
           <div className="flex flex-wrap gap-3">
             {recipe && <Link href={`/formulas/${recipe.id}`} className="btn btn-outline">{t.formulas.openRecipe}</Link>}
-            {offer.client_id && !inOrder && <Link href={`/orders/new?client=${offer.client_id}&offer=${offer.id}`} className="btn btn-primary">{t.orders.detail.orderFromOffer}</Link>}
+            {!reader && offer.client_id && !inOrder && <Link href={`/orders/new?client=${offer.client_id}&offer=${offer.id}`} className="btn btn-primary">{t.orders.detail.orderFromOffer}</Link>}
           </div>
         )}
       />
@@ -62,7 +63,7 @@ export default async function CalculatorOfferPage({ params }: PageProps<"/offers
         locale={locale}
         offer={offer}
         settings={settings}
-        canDelete={(user.role === "admin" || offer.created_by === user.id) && !inOrder}
+        canDelete={!reader && (user.role === "admin" || offer.created_by === user.id) && !inOrder}
         send={send}
         reminder={reminder}
         sendText={t.send}

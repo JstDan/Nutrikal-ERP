@@ -62,6 +62,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const d = t.orders.detail;
   const canEdit = user.role === "admin" || user.role === "sales";
   const isAdmin = user.role === "admin";
+  // The designer sees the prices and the payment terms, read only (owner, Nov 2026)
+  const seePrices = canEdit || user.access === "designer";
   const productName = (l: { product: string; product_bg: string | null }) => (locale === "bg" && l.product_bg ? l.product_bg : l.product);
 
   const data = await withUser(user.id, async (tx) => {
@@ -77,12 +79,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     const mos = (await tx.query<Mo>(
       `select id, code, status, sales_order_line_id, quantity, produced_quantity from manufacturing_orders
         where sales_order_line_id in (select id from sales_order_line_overview where order_id = $1) order by code`, [id])).rows;
-    const c = canEdit
+    const c = seePrices
       ? (await tx.query<Commercial>(
           `select currency, deposit_pct::text, deposit_amount::text, vat_pct::text, balance_terms, balance_net_days, deposit_received_on::text, balance_received_on::text,
                   customer_ref, notes, transport_amount::text from sales_orders where id = $1`, [id])).rows[0]
       : undefined;
-    const prices = canEdit
+    const prices = seePrices
       ? (await tx.query<{ id: string; unit_price: string; offer_code: string }>(
           `select l.id, l.unit_price::text, of.code as offer_code from sales_order_lines l left join offers of on of.id = l.offer_id
             where l.order_id = $1`, [id])).rows
@@ -491,7 +493,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           balanceTerms={c.balance_terms} balanceNetDays={c.balance_net_days} userId={user.id} locale={locale} t={t} />
       )}
 
-      {c ? (
+      {c && canEdit ? (
         <Fold title={d.payments} note={paymentText}>
           <p className="m-0 text-sm">
             {c.deposit_amount != null ? <>{fmt(d.depositAmount, { amount: money(c.deposit_amount) })} · </>
@@ -521,7 +523,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           </ActionForm>
         </Fold>
       ) : (
-        <Fold title={d.payments}>
+        <Fold title={d.payments} note={c ? paymentText : undefined}>
+          {c && (
+            <p className="m-0 text-sm">
+              {c.deposit_amount != null ? <>{fmt(d.depositAmount, { amount: money(c.deposit_amount) })} · </>
+                : c.deposit_pct != null && Number(c.deposit_pct) > 0 && <>{fmt(d.depositAmount, { amount: money(total * Number(c.deposit_pct) / 100) })} · </>}
+              {balanceText}
+            </p>
+          )}
           <Fact label={d.requested}>{formatDate(locale, o.requested_date)}</Fact>
         </Fold>
       )}

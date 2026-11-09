@@ -2423,6 +2423,7 @@ export const en = {
     close: "Back to Admin",
   },
   catalog: {
+    lookOnly: "You keep the product's look: picture, names, descriptions, category and pack text. Prices, the minimum order, composition and publishing stay with Admin.",
     conversations: "Conversations",
     conversationsNote: "What visitors asked Nutri AI on the open catalog. Those without an enquiry are deleted after 12 months.",
     noConversations: "No conversations yet.",

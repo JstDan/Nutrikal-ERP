@@ -14,7 +14,7 @@ type Recipe = { id: string; code: string; name: string; name_bg: string | null }
 
 /** The stock formulas: what is on catalog.nutrikal.com and what is still a draft. */
 export default async function CatalogPage() {
-  const { user, locale, t } = await requireRole("admin", "sales");
+  const { user, locale, t } = await requireRole("admin", "sales", "designer");
   const C = t.catalog;
   const canEdit = user.role === "admin" && !user.readOnly;
 

@@ -2611,8 +2611,9 @@ await ok('designer sees clients, projects and order overviews', async () => {
   eq((await session('designer', 'select id from projects')).length > 0, true, 'projects');
   eq((await session('designer', 'select id from sales_order_overview')).length > 0, true, 'orders');
 });
-await ok('designer sees no prices: not the orders themselves, invoices, offers, costs or mail', async () => {
-  for (const t of ['sales_orders', 'sales_order_lines', 'invoices', 'calc_offers', 'offers', 'client_emails', 'invoice_payments', 'lot_costs']) {
+// The designer reads the prices of orders and calculator offers since Nov 2026 (owner); invoices, costs and mail stay closed
+await ok('designer sees no invoices, payments, purchase costs, older ERP offers or mail', async () => {
+  for (const t of ['invoices', 'offers', 'client_emails', 'invoice_payments', 'lot_costs']) {
     eq((await session('designer', `select count(*)::int as n from ${t}`))[0].n, 0, t);
   }
   const cols = (await db.query(`select column_name from information_schema.columns where table_name in ('sales_order_overview', 'sales_order_line_overview')`)).rows.map((r) => r.column_name);
@@ -2889,8 +2890,8 @@ await fails('a concept marked as an evidence gap cannot go public', async () => 
   await as('admin', "update catalog_products set is_published = false, review_status = 'evidence_gap' where code = 'NTL-LC104'");
   await as('admin', "update catalog_products set is_published = true where code = 'NTL-LC104'");
 }, 'catalog_no_formula');
-await ok('Production and Design see no review notes or category links; nobody signed in neither', async () => {
-  for (const r of ['production', 'designer']) eq((await as(r, 'select product_id from catalog_product_categories')).length, 0, r);
+await ok('Production sees no review notes or category links; nobody signed in neither', async () => {
+  eq((await as('production', 'select product_id from catalog_product_categories')).length, 0, 'production');
 });
 await fails('nobody signed in reads no category link', () => asAnon('select * from catalog_product_categories'), 'denied');
 await ok('the public ingredient list has names only, and only Admin changes it', async () => {
@@ -2970,12 +2971,11 @@ await ok('an enquiry takes the tier price from the database and tells Sales', as
   eq(Number((await one('sales', 'select unit_price from catalog_enquiry_lines where enquiry_id = $1', [e.id])).unit_price), 4, 'price');
   if (!(await as('sales', `select id from notifications where kind = 'catalog_enquiry'`)).length) throw new Error('not told');
 });
-await ok('Production and Design see no enquiries and no catalogue', async () => {
-  for (const r of ['production', 'designer']) {
-    eq((await as(r, 'select id from catalog_enquiries')).length, 0, r);
-    eq((await as(r, 'select id from catalog_products')).length, 0, r);
-    eq((await as(r, 'select id from catalog_price_tiers')).length, 0, r);
-  }
+// The designer keeps the catalogue's look since Nov 2026 (owner): reads it, but no enquiries
+await ok('Production sees no enquiries and no catalogue; the designer sees no enquiries', async () => {
+  for (const r of ['production', 'designer']) eq((await as(r, 'select id from catalog_enquiries')).length, 0, r);
+  eq((await as('production', 'select id from catalog_products')).length, 0, 'production');
+  eq((await as('production', 'select id from catalog_price_tiers')).length, 0, 'production');
 });
 await fails('what the client wrote cannot be changed', () => as('sales', `update catalog_enquiries set company = 'x' where id = $1`, [enquiryId]), 'denied');
 await fails('Production does not turn an enquiry into a client', () => as('production', 'select catalog_enquiry_to_client($1)', [enquiryId]), 'not allowed');
@@ -4621,6 +4621,36 @@ await ok('the bulk price: ingredients and shells + capsules / 1,000 x rate + bat
   eq(r.productAmount, 5350, 'total price');
   eq(r.bulk.pricePerCapsule, 0.0214, 'per capsule'); eq(r.bulk.capsules, 250000, 'capsules');
   eq(r.fixedCostPerUnit < 2.2 + 10, true, 'no bottled fixed cost');
+});
+
+// ----- The designer, wider (owner, Nov 2026): reads recipes, offers and order prices; keeps the catalogue's look
+console.log('\nDesigner: wider access');
+await ok('the designer reads recipes, offers and the prices of orders; the partner still does not', async () => {
+  for (const [t, what] of [['formulas', 'recipes'], ['formula_lines', 'recipe lines'], ['calc_offers', 'offers'], ['sales_order_lines', 'order prices'], ['catalog_products', 'catalogue']]) {
+    eq((await as('designer', `select 1 from ${t} limit 1`)).length, 1, `designer: ${what}`);
+  }
+  eq((await as('production', 'select 1 from calc_offers limit 1')).length, 0, 'partner: offers');
+  eq((await as('production', 'select 1 from sales_order_lines limit 1')).length, 0, 'partner: order prices');
+  eq((await as('clientA', 'select 1 from formulas limit 1')).length, 0, 'client: recipes');
+});
+await ok('the designer changes the picture, names and descriptions of a catalogue product', async () => {
+  const p = await one('admin', 'select id from catalog_products order by code limit 1');
+  const n = await as('designer', "update catalog_products set description = 'New words', image = '/api/catalog-image/x' where id = $1 returning id", [p.id]);
+  eq(n.length, 1, 'updated');
+  eq((await one('admin', 'select description from catalog_products where id = $1', [p.id])).description, 'New words', 'kept');
+});
+await fails('the designer cannot change the minimum order of a product', async () => {
+  const p = await one('admin', 'select id from catalog_products order by code limit 1');
+  await as('designer', 'update catalog_products set min_qty = 1 where id = $1', [p.id]);
+}, 'only the picture');
+await fails('the designer cannot change catalogue prices', async () => {
+  const tier = await one('admin', 'select id from catalog_price_tiers limit 1');
+  const r = await as('designer', 'update catalog_price_tiers set unit_price = 0.01 where id = $1 returning id', [tier.id]);
+  if (!r.length) throw new Error('not allowed');
+}, 'not allowed');
+await ok('Sales still cannot change the catalogue', async () => {
+  const p = await one('admin', 'select id from catalog_products order by code limit 1');
+  eq((await as('sales', "update catalog_products set description = 'x' where id = $1 returning id", [p.id])).length, 0, 'sales');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -100,9 +100,9 @@ export async function AppShell({ children }: { children: ReactNode }) {
           : []),
       ];
 
-  // Designer: the client work only
+  // Designer: the client work, and to read offers and recipes and keep the catalogue's look (owner, Nov 2026)
   const shown = user.access === "designer"
-    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/chat", "/clients", "/orders", "/my-tasks", "/boards"].includes(i.href ?? "")) })).filter((g) => g.items.length)
+    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => ["/", "/chat", "/clients", "/orders", "/offers", "/catalog", "/formulas", "/my-tasks", "/boards"].includes(i.href ?? "")) })).filter((g) => g.items.length)
     : groups;
 
   // On a phone the main sections sit in a bar at the foot; the rest behind More (owner, Nov 2026)

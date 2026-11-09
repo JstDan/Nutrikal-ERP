@@ -6,7 +6,7 @@ import { ActionForm } from "@/components/action-form";
 import { FileInput } from "@/components/file-input";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { formatMoney, formatNumber, fmt } from "@/lib/i18n";
-import { addCatalogTier, linkCatalogRecipe, publishCatalogProduct, removeCatalogImage, removeCatalogTier, saveCatalogProduct, unpublishCatalogProduct, uploadCatalogImage } from "@/app/catalog-actions";
+import { addCatalogTier, linkCatalogRecipe, publishCatalogProduct, removeCatalogImage, removeCatalogTier, saveCatalogLook, saveCatalogProduct, unpublishCatalogProduct, uploadCatalogImage } from "@/app/catalog-actions";
 import { CATALOG_NAME_LANGS, PRODUCT_NAMES } from "@/lib/i18n/product-names";
 
 type Product = {
@@ -21,10 +21,12 @@ type Tier = { id: string; min_qty: number; unit_price: string };
 type Category = { id: string; name: string; name_bg: string | null };
 
 export default async function CatalogProductPage({ params }: PageProps<"/catalog/[id]">) {
-  const { user, locale, t } = await requireRole("admin", "sales");
+  const { user, locale, t } = await requireRole("admin", "sales", "designer");
   const { id } = await params;
   const C = t.catalog;
   const canEdit = user.role === "admin" && !user.readOnly;
+  // The designer keeps the look: picture, names, descriptions, category and pack text (owner, Nov 2026)
+  const canDesign = canEdit || user.access === "designer";
 
   const [p] = await q<Product>(user.id,
     `select p.id, p.code, p.name, p.name_bg, p.description, p.description_bg, p.category_id, p.sort_order, p.is_published,
@@ -125,6 +127,38 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
                 <label className="field"><span>{C.minOrder}</span><input name="min_qty" type="number" min={1} step={1} inputMode="numeric" defaultValue={p.min_qty} className="input" /></label>
                 <label className="field"><span>{C.order}</span><input name="sort_order" type="number" inputMode="numeric" defaultValue={p.sort_order} className="input" /></label>
               </ActionForm>
+            ) : canDesign ? (
+              <ActionForm action={saveCatalogLook} submitLabel={t.common.save} resetOnSuccess={false}>
+                <input type="hidden" name="id" value={p.id} />
+                <input type="hidden" name="code" value={p.code} />
+                <p className="m-0 text-sm text-ink-2">{C.lookOnly}</p>
+                <label className="field"><span>{C.nameEn} *</span><input name="name" required defaultValue={p.name} className="input" /></label>
+                <label className="field"><span>{C.nameBg}</span><input name="name_bg" defaultValue={p.name_bg ?? ""} className="input" /></label>
+                <label className="field"><span>{C.descriptionEn}</span><textarea name="description" rows={3} defaultValue={p.description ?? ""} className="input" /></label>
+                <label className="field"><span>{C.descriptionBg}</span><textarea name="description_bg" rows={3} defaultValue={p.description_bg ?? ""} className="input" /></label>
+                <p className="m-0 text-sm text-ink-2">{C.claimsNote}</p>
+                <fieldset className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+                  <legend className="mb-1 p-0 text-sm font-semibold">{C.siteNames}</legend>
+                  <p className="m-0 text-sm text-ink-2">{C.siteNamesNote}</p>
+                  <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                    {CATALOG_NAME_LANGS.map((l) => (
+                      <label key={l} className="field"><span>{C.langNames[l]}</span>
+                        <input name={`name_${l}`} lang={l} defaultValue={siteName(l)} className="input" />
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <label className="field"><span>{C.category}</span>
+                  <select name="category_id" defaultValue={p.category_id ?? ""} className="input">
+                    <option value="">—</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{locale === "bg" && c.name_bg ? c.name_bg : c.name}</option>)}
+                  </select>
+                </label>
+                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="field"><span>{C.packEn}</span><input name="pack" defaultValue={p.pack ?? ""} className="input" /></label>
+                  <label className="field"><span>{C.packBg}</span><input name="pack_bg" defaultValue={p.pack_bg ?? ""} className="input" /></label>
+                </div>
+              </ActionForm>
             ) : (
               <div className="flex flex-col gap-3 text-sm">
                 <Fact label={C.nameEn}>{p.name}</Fact>
@@ -173,14 +207,14 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
               {!p.image && <p className="m-0 text-ink-2">{C.noPicture}</p>}
               <div className="flex flex-wrap items-center gap-2">
                 {p.image && <a href={p.image} download={pictureFile} className="btn btn-outline">{C.downloadPicture}</a>}
-                {canEdit && p.image && (
+                {canDesign && p.image && (
                   <form action={removeCatalogImage}>
                     <input type="hidden" name="id" value={p.id} />
                     <button type="submit" className="btn btn-outline">{C.removePicture}</button>
                   </form>
                 )}
               </div>
-              {canEdit && (
+              {canDesign && (
                 <ActionForm action={uploadCatalogImage} submitLabel={C.replacePicture}>
                   <input type="hidden" name="id" value={p.id} />
                   <label className="field"><span>{C.uploadPicture}</span>

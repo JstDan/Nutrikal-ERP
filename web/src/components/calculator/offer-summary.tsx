@@ -19,7 +19,8 @@ type Props = {
   offer: OfferRecord;
   settings: Settings;
   canDelete: boolean;
-  send: SendInfo;
+  /** Null for the designer, who reads offers (open and download only). */
+  send: SendInfo | null;
   reminder: SendInfo | null;
   sendText: Dict["send"];
   reminderTitle: string;
@@ -105,12 +106,16 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
             {t.delete}
           </button>
         )}
-        <Link href={`/calculator?next=${x.id}`} className="btn btn-outline" title={o.nextFormulaHint}>+ {o.nextFormula}</Link>
-        <Link href={`/calculator?copy=${x.id}`} className="btn btn-outline">{o.duplicate}</Link>
-        <Link href={`/calculator?open=${x.id}`} className="btn btn-outline">{o.edit}</Link>
-        <button type="button" onClick={() => setSending((v) => !v)} aria-expanded={sending} aria-controls="offer-send" className="btn btn-outline">
-          {sendText.title}
-        </button>
+        {send && (
+          <>
+            <Link href={`/calculator?next=${x.id}`} className="btn btn-outline" title={o.nextFormulaHint}>+ {o.nextFormula}</Link>
+            <Link href={`/calculator?copy=${x.id}`} className="btn btn-outline">{o.duplicate}</Link>
+            <Link href={`/calculator?open=${x.id}`} className="btn btn-outline">{o.edit}</Link>
+            <button type="button" onClick={() => setSending((v) => !v)} aria-expanded={sending} aria-controls="offer-send" className="btn btn-outline">
+              {sendText.title}
+            </button>
+          </>
+        )}
         <button type="button" onClick={() => setAsking(true)} disabled={busy} className="btn btn-primary" aria-haspopup="dialog">
           {busy ? "…" : t.results.downloadPdf}
         </button>
@@ -123,8 +128,8 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
         </div>
       )}
       {/* Opened with the button next to Download PDF */}
-      {sending && (
-        <SendDocument id="offer-send" open onToggle={setSending} info={send} text={sendText} locale={locale}
+      {send && sending && (
+        <SendDocument id="offer-send" open onToggle={setSending} info={send!} text={sendText} locale={locale}
           makePdfIn={async (lang) => (await import("@/lib/calculator/pdf")).offerPdfBase64(form, result, settings, lang)} />
       )}
       {reminder && (
