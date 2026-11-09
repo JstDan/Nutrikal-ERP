@@ -42,11 +42,11 @@ const connection = () => ({
  * HYPERDRIVE in wrangler.jsonc): it pools the connections to Supabase and
  * handles Supabase's TLS certificate, which Workers sockets do not accept.
  */
+type CfContext = { env?: { HYPERDRIVE?: { connectionString: string } }; ctx?: { waitUntil?: (p: Promise<unknown>) => void } };
+const cfContext = () => (globalThis as Record<symbol, CfContext | undefined>)[Symbol.for("__cloudflare-context__")];
+
 function hyperdriveUrl(): string | undefined {
-  const ctx = (globalThis as Record<symbol, { env?: { HYPERDRIVE?: { connectionString: string } } } | undefined>)[
-    Symbol.for("__cloudflare-context__")
-  ];
-  return ctx?.env?.HYPERDRIVE?.connectionString;
+  return cfContext()?.env?.HYPERDRIVE?.connectionString;
 }
 
 /** A connection for one transaction: from the pool on a Node server, a fresh one on Workers. */
@@ -55,8 +55,17 @@ async function connect(): Promise<{ client: ClientBase; done: () => void }> {
   if (onWorkers()) {
     const url = hyperdriveUrl();
     const client = new pg.Client(url ? { connectionString: url } : connection());
+    // A socket closed under a finished request reports late: nothing waits for it any more, so it is not an error
+    client.on("error", () => {});
     await client.connect();
-    return { client, done: () => void client.end().catch(() => {}) };
+    return {
+      client,
+      // Closing happens after the answer; the Worker is told to wait for it, so it is not cut off half-way
+      done: () => {
+        const closing = client.end().catch(() => {});
+        try { cfContext()?.ctx?.waitUntil?.(closing); } catch { /* outside a request: it simply finishes */ }
+      },
+    };
   }
   g.__nkPool ??= new pg.Pool({ ...connection(), max: Number(process.env.DATABASE_POOL_SIZE ?? 5) });
   const client = await g.__nkPool.connect();

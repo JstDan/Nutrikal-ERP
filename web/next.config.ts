@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { execSync } from "node:child_process";
 
 // Cloudflare Workers build (npm run cf:build): the app always runs on
 // Supabase there, so the embedded local database (PGlite) is left out.
@@ -9,7 +10,15 @@ const browserOnly = (browser: string) => ({ browser, default: "./src/lib/browser
 
 // Internal, fully per-user app: every page depends on the signed-in user,
 // so the classic dynamic rendering model is used (cache components off).
+// The version of this build: an open page compares it with the server's and reloads itself after a release
+// (owner, Nov 2026: a tab left open called the actions of the release before and failed)
+// The git commit: the same in every part of one build (the config is loaded more than once while building)
+const buildId = process.env.NK_BUILD_ID?.trim() || (() => {
+  try { return execSync("git rev-parse --short=12 HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim(); } catch { return "dev"; }
+})();
+
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_BUILD_ID: buildId },
   cacheComponents: false,
   serverExternalPackages: cloudflare ? [] : ["@electric-sql/pglite"],
   // pg loads its Workers socket (pg-cloudflare) only under the "workerd"

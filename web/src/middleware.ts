@@ -71,5 +71,5 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // Everything except static files, images, the cron route (which has its own secret) and what the browser
   // fetches without the sign-in to install the app (manifest, service worker)
-  matcher: ["/((?!_next/static|_next/image|api/cron|manifest.webmanifest|sw.js|offline.html|.*\.(?:ico|svg|png|jpg|jpeg|webp|pdf)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|api/cron|api/version|manifest.webmanifest|sw.js|offline.html|.*\.(?:ico|svg|png|jpg|jpeg|webp|pdf)$).*)"],
 };
