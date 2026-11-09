@@ -20,8 +20,8 @@ export type ProductionScreen = { adminId: string; adminName: string };
  */
 export type SessionUser = { id: string; name: string; role: Role; access: Role; readOnly: boolean; canPay: boolean; locale: Locale; initials: string };
 export type ActAsTarget = { id: string; full_name: string; email: string; role: Role; locale: Locale };
-/** Set when the signed-in user is a developer acting as someone else. */
-export type Developer = { id: string; name: string; targets: ActAsTarget[] };
+/** Set when the signed-in user is a developer: on their own profile (self, with Admin rights) or acting as someone else. */
+export type Developer = { id: string; name: string; targets: ActAsTarget[]; self: boolean };
 
 /** Local development without Supabase: always the demo developer (who can act as any demo user). */
 const LOCAL_USER = DEMO_USERS.find((u) => u.role === "developer")!;
@@ -63,9 +63,12 @@ export const getOptionalSession = cache(async () => {
   let developer: Developer | null = null;
   if (user.role === "developer") {
     const targets = await q<ActAsTarget>(user.id, "select id, full_name, email, role, locale from impersonation_targets()");
-    const target = targets.find((x) => x.id === jar.get(ACT_AS_COOKIE)?.value) ?? targets[0];
-    developer = { id: user.id, name: user.name, targets };
-    if (target) user = { id: target.id, name: target.full_name, ...rights(target.role), locale: target.locale, initials: initials(target.full_name) };
+    // Own profile (Admin rights: the database gives the developer what Admin has) unless someone else is picked
+    const target = targets.find((x) => x.id === jar.get(ACT_AS_COOKIE)?.value);
+    developer = { id: user.id, name: user.name, targets, self: !target };
+    user = target
+      ? { id: target.id, name: target.full_name, ...rights(target.role), locale: target.locale, initials: initials(target.full_name) }
+      : { ...user, ...rights("admin") };
   }
 
   // Admin in the Production screen: every page and action runs as the production account

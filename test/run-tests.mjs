@@ -2088,11 +2088,16 @@ await ok('no view in public can be written by users', async () => {
 });
 
 console.log('\nDeveloper role');
-await ok('developer has no data rights of their own', async () => {
-  eq((await as('developer', 'select * from clients')).length, 0, 'clients');
-  eq((await as('developer', 'select * from suppliers')).length, 0, 'suppliers');
-  eq((await as('developer', 'select * from lot_costs')).length, 0, 'lot costs');
-  eq((await one('developer', 'select public.is_staff() as s')).s, false, 'not staff');
+await ok('developer on their own profile has the rights of Admin', async () => {
+  eq((await as('developer', 'select * from clients')).length, (await as('admin', 'select * from clients')).length, 'clients');
+  eq((await as('developer', 'select * from lot_costs')).length, (await as('admin', 'select * from lot_costs')).length, 'lot costs');
+  eq((await one('developer', "select public.has_role('admin') as a")).a, true, 'admin');
+  eq((await one('developer', 'select public.can_see_purchase_prices() as p')).p, true, 'purchase prices');
+  eq((await one('developer', 'select public.is_developer() as d')).d, true, 'still a developer');
+});
+await ok('the team can mention the developer in the chat', async () => {
+  eq((await as('sales', 'select id from chat_people()')).some(r => r.id === U.developer), true, 'sales sees the developer');
+  eq((await as('developer', 'select id from chat_people()')).some(r => r.id === U.developer), false, 'not oneself');
 });
 await ok('developer lists every active user except developers', async () => {
   const rows = await as('developer', 'select id, role from impersonation_targets()');

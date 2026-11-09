@@ -63,11 +63,8 @@ export async function signIn(_: ActionState, fd: FormData): Promise<ActionState>
   jar.delete(LOCALE_COOKIE); // use the user's saved language
   jar.delete(ACT_AS_COOKIE);
   jar.delete(PRODUCTION_SCREEN_COOKIE);
-  if (profile.role === "developer") {
-    // a developer starts as the first user in the list; log it like any switch
-    await q(data.user.id, "select start_impersonation(id) from impersonation_targets() limit 1");
-  }
-  redirect(homeFor(profile.role));
+  // a developer starts on their own profile (Admin rights)
+  redirect(homeFor(profile.role === "developer" ? "admin" : profile.role));
 }
 
 /** Always the same answer, so the form does not tell who has an account. */
@@ -98,9 +95,13 @@ export async function signOut() {
   redirect("/login");
 }
 
-/** Developer: act as another user (checked and logged in the database). */
+/** Developer: act as another user (checked and logged in the database), or back on their own profile. */
 export async function actAs(fd: FormData) {
   const { developer } = await getSession();
+  if (developer && fd.get("user") === developer.id) {
+    (await cookies()).delete(ACT_AS_COOKIE);
+    redirect("/");
+  }
   const target = developer?.targets.find((x) => x.id === fd.get("user"));
   if (!developer || !target) return;
   await q(developer.id, "select start_impersonation($1)", [target.id]);

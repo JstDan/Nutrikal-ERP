@@ -121,7 +121,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
       <>
         {more && !isProduction && (
           <a href="/signature" className="flex min-h-11 min-w-0 items-center gap-3 text-sm font-semibold text-ink no-underline">
-            <UserAvatar id={user.id} size={32} /><span className="min-w-0 break-words">{developer?.name ?? user.name}</span>
+            <UserAvatar id={developer?.id ?? user.id} size={32} /><span className="min-w-0 break-words">{developer?.name ?? user.name}</span>
           </a>
         )}
         <div className={`flex flex-wrap items-center gap-3 ${more ? "" : "contents"}`}>
@@ -151,7 +151,10 @@ export async function AppShell({ children }: { children: ReactNode }) {
             id={more ? "act-as-more" : "act-as"}
             current={user.id}
             label={t.topbar.actAs}
-            options={developer.targets.map((u) => ({ id: u.id, label: `${u.full_name} · ${t.enums.role[u.role]}` }))}
+            options={[
+              { id: developer.id, label: fmt(t.topbar.ownProfile, { name: developer.name }) },
+              ...developer.targets.map((u) => ({ id: u.id, label: `${u.full_name} · ${t.enums.role[u.role]}` })),
+            ]}
           />
         )}
         {!local && !more && (
@@ -160,7 +163,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
               <span className="min-w-0 truncate text-xs font-semibold text-ink-2">{developer?.name ?? screen?.adminName ?? user.name}</span>
             ) : (
               // One's own e-mail signature is kept under one's name
-              <a href="/signature" title={t.signature.title} className="flex min-h-11 min-w-0 items-center gap-2 truncate text-xs font-semibold text-ink-2 hover:text-ink"><UserAvatar id={user.id} size={28} />{developer?.name ?? user.name}</a>
+              <a href="/signature" title={t.signature.title} className="flex min-h-11 min-w-0 items-center gap-2 truncate text-xs font-semibold text-ink-2 hover:text-ink"><UserAvatar id={developer?.id ?? user.id} size={28} />{developer?.name ?? user.name}</a>
             )}
             <button type="submit" className="btn btn-outline">{t.topbar.signOut}</button>
           </form>
@@ -220,7 +223,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
         )}
         <main className="w-full max-w-[1360px] px-4 py-4 sm:px-8 sm:py-8">
           {user.readOnly && <p className="m-0 mb-4 text-sm font-semibold text-ink-2 print:hidden">{t.common.readOnlyNote}</p>}
-          {!screen && !developer && <PushPrompt publicKey={process.env.VAPID_PUBLIC_KEY?.trim() || null} T={t.push} />}
+          {!screen && (!developer || developer.self) && <PushPrompt publicKey={process.env.VAPID_PUBLIC_KEY?.trim() || null} T={t.push} />}
           {children}
         </main>
       </div>

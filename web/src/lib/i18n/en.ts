@@ -103,6 +103,7 @@ export const en = {
     language: "Language",
     signOut: "Sign out",
     actAs: "Developer: acting as",
+    ownProfile: "{name} · own profile (Admin)",
     toDark: "Switch to dark mode",
     toLight: "Switch to light mode",
     notifications: "Notifications",

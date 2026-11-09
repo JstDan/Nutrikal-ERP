@@ -105,6 +105,7 @@ export const bg: Dict = {
     language: "Език",
     signOut: "Изход",
     actAs: "Developer: действате като",
+    ownProfile: "{name} · личен профил (Админ)",
     toDark: "Превключи към тъмен режим",
     toLight: "Превключи към светъл режим",
     notifications: "Известия",
