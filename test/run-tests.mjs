@@ -4668,6 +4668,17 @@ await ok('the matching bars and cookies have ingredients, allergens and pack; ba
   eq(bar.ingredients.find((i) => i.name === 'Vitamin C').spec, '17 mg per 100 g', 'vitamin C in mg');
   eq(/egg, hazelnut and soy/.test(rows.find((r) => r.code === 'GP-110').description), true, 'cookie allergens');
 });
+await ok('the owner\'s answers: GP-101 is Raspberry Cheesecake, GP-109 is off the open catalogue, GP-112 Cookies & Cream at the bars\' prices', async () => {
+  eq((await one('admin', "select name from catalog_products where code = 'GP-101'")).name, 'Protein Bar Raspberry Cheesecake - 60g', 'renamed');
+  eq((await one('admin', "select catalog_publish_problem(id) as p from catalog_products where code = 'GP-109'")).p, 'in_review', 'GP-109 held back');
+  const n = await one('admin', "select id, min_qty, is_published, description from catalog_products where code = 'GP-112'");
+  const tiers = async (code) => (await as('admin', `select t.min_qty, t.unit_price::text as p from catalog_price_tiers t join catalog_products p on p.id = t.product_id where p.code = $1 order by t.min_qty`, [code])).map((x) => `${x.min_qty}:${x.p}`).join();
+  eq(await tiers('GP-112'), await tiers('GP-104'), 'same prices as the bars');
+  eq(/soy/.test(n.description) && /wheat/.test(n.description), true, 'soy and wheat declared');
+  const pub = (await asAnon('select catalog_public() as d'))[0].d;
+  const codes = JSON.stringify(pub).match(/GP-1\d\d/g) ?? [];
+  eq(codes.includes('GP-109'), false, 'GP-109 not public');
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
