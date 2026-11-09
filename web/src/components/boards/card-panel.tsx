@@ -1,5 +1,6 @@
 "use client";
 
+import { shrinkImages } from "@/lib/shrink-image";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { fmt, formatDate, formatNumber, type Locale } from "@/lib/i18n";
@@ -85,8 +86,9 @@ export function CardPanel({ card: c, data, T, locale, userId, isAdmin, canEdit, 
   const files = data.files.filter((f) => f.card_id === c.id);
   const [uploading, setUploading] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const upload = async (list: File[]) => {
+  const upload = async (picked: File[]) => {
     setError(null);
+    const list = await shrinkImages(picked, { photosOnly: true, maxSide: 2560 });
     for (const f of list) {
       if (f.size > TASK_FILE_MAX) { setError(fmt(fileText.tooBig, { name: f.name })); continue; }
       if (!TASK_FILE_TYPES.includes(fileExt(f.name))) { setError(fmt(fileText.type, { name: f.name })); continue; }

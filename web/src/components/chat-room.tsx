@@ -6,6 +6,7 @@ import { deleteChatMessage, editChatMessage, markChatRead, pinChatMessage, pollC
 import { useLive, type Topic } from "@/components/live";
 import { Huddle } from "@/components/huddle";
 import { MemeMaker } from "@/components/meme-maker";
+import { shrinkImages } from "@/lib/shrink-image";
 import { fmt, formatDate, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import { UserAvatar } from "@/components/user-avatar";
@@ -689,7 +690,6 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
     fd.set("body", d.body);
     if (parent) fd.set("parent", parent);
     fd.set("mentions", JSON.stringify(d.mentions.map((m) => m.id)));
-    d.files.forEach((f) => fd.append("files", f));
     fd.set("as", userId);
     setError(null);
     (parent ? side : main).atEnd.current = true;
@@ -701,7 +701,9 @@ export function ChatRoom({ channel, initial, people, me, userId, isAdmin, locale
     setOutbox((o) => [...o, temp]);
     if (topic && live) topic.send("stop-typing", { session: live.session });
     lastTyping.current = 0;
-    sendChat(fd).catch(() => ({ error: C.failed } as Awaited<ReturnType<typeof sendChat>>)).then((r) => {
+    shrinkImages(d.files, { photosOnly: true, maxSide: 2560 })
+      .then((small) => { small.forEach((f) => fd.append("files", f)); return sendChat(fd); })
+      .catch(() => ({ error: C.failed } as Awaited<ReturnType<typeof sendChat>>)).then((r) => {
       if (r.messages) setMessages((old) => mergeRecent(old, r.messages!));
       if (r.replies && parent === thread) setReplies(r.replies);
       setOutbox((o) => o.filter((m) => m.id !== temp.id));

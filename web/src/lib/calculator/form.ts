@@ -1,6 +1,6 @@
 import { DEFAULT_COUNTRY } from './countries';
 import { isoDate } from './numbers';
-import { CAPSULE_SIZE, CAPSULE_SIZES, type OfferForm, type Settings } from './types';
+import { CAPSULE_SIZE, CAPSULE_SIZES, type OfferForm, type RawMaterial, type Settings } from './types';
 
 /** A new offer is valid for two weeks from its date (owner, Nov 2026; was 30 days). */
 export const OFFER_VALID_DAYS = 14;
@@ -100,4 +100,49 @@ export function duplicateForm(form: OfferForm, offerNo: string): OfferForm {
 
 export function defaultUnitFor(form: Pick<OfferForm, 'productType'>) {
   return form.productType === 'powder' ? 'g' : 'mg';
+}
+
+/**
+ * The next formula for the same client (owner, Nov 2026: a client often needs two or more formulas costed): a new,
+ * empty offer that keeps the client, the contact person, the receiver, the invoice details and the payment terms.
+ */
+export function nextFormulaForm(prev: OfferForm, settings: Settings, offerNo: string): OfferForm {
+  const f = createEmptyForm(settings, offerNo);
+  return {
+    ...f,
+    clientId: prev.clientId,
+    contact: { ...prev.contact },
+    receiver: { ...prev.receiver },
+    invoice: { ...prev.invoice },
+    paymentTerms: prev.paymentTerms || f.paymentTerms,
+  };
+}
+
+/**
+ * The recipe of another offer, of any client, into this one (owner, Nov 2026): the formula type, catalog product,
+ * ingredients, capsules, pack, jar and lid and the product name. This offer's client, quantities, markup and extra
+ * lines stay. Raw materials take today's price and regulatory note from the price list.
+ */
+export function copyRecipe(target: OfferForm, source: OfferForm, materials: RawMaterial[]): OfferForm {
+  const byId = new Map(materials.map((m) => [m.id, m]));
+  return {
+    ...target,
+    mode: source.mode ?? 'custom',
+    catalog: source.catalog ? structuredClone(source.catalog) : null,
+    catalogCapsules: source.catalogCapsules ?? '',
+    jar: source.jar ?? 'plastic',
+    lid: source.lid ?? 'plastic',
+    catalogPackaging: !!source.catalogPackaging,
+    productType: source.productType ?? null,
+    rows: (source.rows ?? []).map((r, i) => {
+      const m = r.materialId ? byId.get(r.materialId) : undefined;
+      return { ...r, key: `copy-${Date.now()}-${i}`, pricePerKg: m ? m.price_eur_per_kg : r.pricePerKg, regulatoryNote: m ? m.regulatory_note : r.regulatoryNote };
+    }),
+    capsulesPerDose: source.capsulesPerDose ?? target.capsulesPerDose,
+    capsuleSize: source.capsuleSize ?? target.capsuleSize,
+    maxFillMg: source.maxFillMg ?? target.maxFillMg,
+    quantityPerUnit: source.quantityPerUnit ?? '',
+    includeComposition: source.includeComposition ?? true,
+    offer: { ...target.offer, productName: source.offer?.productName ?? '' },
+  };
 }

@@ -1,5 +1,6 @@
 export const en = {
   common: {
+    preparingPhoto: "Preparing the photo…",
     moreActions: "More actions",
     docLang: { title: "Which language?", bg: "Download in BG", en: "Download in EN", cancel: "Cancel" },
     readOnly: "This account only reads",
@@ -1921,6 +1922,18 @@ export const en = {
     title: "Formula calculator",
     subtitle: "Cost a new formula, set the price and download the client PDF offer",
     tabs: { label: "Calculator sections", offers: "Offers", calculator: "Calculator", materials: "Raw materials", catalog: "Catalog formulas" },
+    copyRecipe: {
+      button: "Copy a recipe from an offer",
+      title: "Copy a recipe from another offer",
+      hint: "Any client's offer: the ingredients, format, capsules and pack are copied; this offer's client and quantities stay. Raw material prices are today's.",
+      search: "Offer number, client, product or ingredient",
+      none: "No offer found.",
+      use: "Copy",
+      replace: "This replaces the recipe in the form. Copy the recipe of {no}?",
+      copied: "Recipe of {no} copied. Check the quantities and the price.",
+      failed: "The offer could not be read.",
+      close: "Close",
+    },
     mode: {
       label: "Formula type",
       custom: "New formula",
@@ -2238,6 +2251,8 @@ export const en = {
       summary: "Offer summary",
       edit: "Edit in calculator",
       duplicate: "Duplicate",
+      nextFormula: "Next formula for this client",
+      nextFormulaHint: "A new offer for the same client: client, contact and payment terms filled in, the formula empty.",
       vat: "VAT",
       totalInclVat: "Total incl. VAT",
       deleteConfirm: "Move offer {no} to the trash? Admin can restore it for 30 days.",

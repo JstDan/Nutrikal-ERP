@@ -1,5 +1,6 @@
 "use client";
 
+import { shrinkImages } from "@/lib/shrink-image";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
@@ -105,8 +106,9 @@ export function TaskPanel({ orderId, task: t, data, T, locale, userId, isAdmin, 
   const files = data.files.filter((f) => f.task_id === t.id);
   const [uploading, setUploading] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const upload = async (list: File[], commentId?: string) => {
+  const upload = async (picked: File[], commentId?: string) => {
     setError(null);
+    const list = await shrinkImages(picked, { photosOnly: true, maxSide: 2560 });
     for (const f of list) {
       if (f.size > TASK_FILE_MAX) { setError(fmt(P.fileTooBig, { name: f.name })); continue; }
       if (!TASK_FILE_TYPES.includes(fileExt(f.name))) { setError(fmt(P.fileType, { name: f.name })); continue; }

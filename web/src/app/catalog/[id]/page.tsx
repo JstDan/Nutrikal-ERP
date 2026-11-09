@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { q } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
 import { ActionForm } from "@/components/action-form";
+import { FileInput } from "@/components/file-input";
 import { Card, Chip, Empty, Fact, PageHeader } from "@/components/ui";
 import { formatMoney, formatNumber, fmt } from "@/lib/i18n";
 import { addCatalogTier, linkCatalogRecipe, publishCatalogProduct, removeCatalogImage, removeCatalogTier, saveCatalogProduct, unpublishCatalogProduct, uploadCatalogImage } from "@/app/catalog-actions";
@@ -183,7 +184,7 @@ export default async function CatalogProductPage({ params }: PageProps<"/catalog
                 <ActionForm action={uploadCatalogImage} submitLabel={C.replacePicture}>
                   <input type="hidden" name="id" value={p.id} />
                   <label className="field"><span>{C.uploadPicture}</span>
-                    <input name="image" type="file" required accept="image/jpeg,image/png,image/webp" aria-describedby="picture-note" className="input" />
+                    <FileInput name="image" required accept="image/*" describedBy="picture-note" maxSide={1600} preparing={t.common.preparingPhoto} />
                   </label>
                   <p id="picture-note" className="m-0 text-[13px] text-ink-2">{C.pictureNote}</p>
                 </ActionForm>

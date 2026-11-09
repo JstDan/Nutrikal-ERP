@@ -2,6 +2,7 @@ import { q } from "@/lib/db/engine";
 import { formatDate, formatNumber, type Locale } from "@/lib/i18n";
 import type { Dict } from "@/lib/i18n/en";
 import { ActionForm } from "@/components/action-form";
+import { FileInput } from "@/components/file-input";
 import { Card, Empty } from "@/components/ui";
 import { deleteClientFile, shareClientFile, uploadClientFile } from "@/app/file-actions";
 
@@ -45,7 +46,7 @@ export async function ClientFiles({ clientId, orderId, userId, isAdmin, canShare
       <ActionForm action={uploadClientFile} submitLabel={F.upload}>
         <input type="hidden" name="client_id" value={clientId} />
         {orderId && <input type="hidden" name="order_id" value={orderId} />}
-        <label className="field"><span>{F.file} *</span><input name="file" type="file" required className="input" /></label>
+        <label className="field"><span>{F.file} *</span><FileInput name="file" required photosOnly maxSide={2560} preparing={t.common.preparingPhoto} /></label>
         <label className="field"><span>{F.note}</span><input name="note" className="input" /></label>
       </ActionForm>
     </Card>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { withUser } from "@/lib/db/engine";
 import { requireRole } from "@/lib/session";
+import { FileInput } from "@/components/file-input";
 import { formatDate, formatQty } from "@/lib/i18n";
 import { Card, Chip, Empty, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
@@ -63,7 +64,7 @@ export default async function QualityPage({ searchParams }: PageProps<"/quality"
     <ActionForm action={attachCoa} submitLabel={Q.attachCoa} resetOnSuccess={false}>
       <input type="hidden" name="lot_id" value={x.id} />
       <label className="field"><span>{Q.coaFile}</span>
-        <input name="coa" type="file" required accept="application/pdf,image/*" className="input" />
+        <FileInput name="coa" required accept="application/pdf,image/*" photosOnly maxSide={2560} preparing={t.common.preparingPhoto} />
       </label>
     </ActionForm>
   );

@@ -207,3 +207,32 @@ export async function saveCatalogProduct(p: CatalogProductInput): Promise<CalcRe
   if (res.ok) revalidatePath("/calculator", "layout");
   return res;
 }
+
+/** An offer found to copy its recipe from: any client's (owner, Nov 2026). */
+export type RecipeSource = { id: string; offer_no: string; company: string | null; product: string | null; created_at: string; client_id: string | null };
+
+/**
+ * Offers to copy a recipe from: by offer number, client or product, with a letter wrong or in the other alphabet
+ * (the smart search); the latest first. Admin and Sales read every offer (the rules of calc_offers).
+ */
+export async function findRecipeSources(term: string): Promise<CalcResult<RecipeSource[]>> {
+  const t = (term ?? "").trim().slice(0, 80);
+  return run((userId) => q<RecipeSource>(userId,
+    `select id, offer_no, company_name as company, coalesce(nullif(product_name, ''), data #>> '{offer,productName}', data #>> '{catalog,name}') as product,
+            created_at::text, client_id
+       from calc_offers o
+      where $1 = '' or offer_no ilike '%' || $1 || '%'
+         or nk_search_hit(concat_ws(' ', company_name, receiver_name, product_name, data #>> '{offer,productName}', data #>> '{catalog,name}'), $1)
+         or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(data -> 'rows') = 'array' then data -> 'rows' else '[]'::jsonb end) r
+                     where nk_search_hit(r ->> 'name', $1))
+      order by created_at desc limit 12`, [t]));
+}
+
+/** The whole form of one offer, to take its recipe. */
+export async function recipeSource(id: string): Promise<CalcResult<OfferRecord | null>> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: true, data: null };
+  return run(async (userId) => {
+    const { loadOffer } = await import("@/lib/calculator/db");
+    return loadOffer(userId, id);
+  });
+}

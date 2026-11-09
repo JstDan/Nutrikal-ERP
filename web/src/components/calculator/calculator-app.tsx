@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { offerState, reserveOfferNo, saveOffer } from "@/app/calculator/actions";
 import { calcInputFromForm, calculate } from "@/lib/calculator/calc";
 import type { CrmClient } from "@/lib/calculator/db";
-import { BASELINE_KEY, createEmptyForm, DRAFT_KEY, duplicateForm, normalizeForm } from "@/lib/calculator/form";
+import { BASELINE_KEY, createEmptyForm, DRAFT_KEY, duplicateForm, nextFormulaForm, normalizeForm } from "@/lib/calculator/form";
 import { toOfferInput } from "@/lib/calculator/offerRecord";
 import { readStorage, removeStorage, writeStorage } from "@/lib/calculator/storage";
 import type { CatalogProduct, OfferForm, OfferRecord, RawMaterial, Settings } from "@/lib/calculator/types";
@@ -13,6 +13,7 @@ import { fieldId, firstError, validateOffer, type FieldKey } from "@/lib/calcula
 import { fmt, type Locale } from "@/lib/i18n";
 import { PageHeader } from "@/components/ui";
 import { CatalogProductSection, FormulaModeSwitch } from "./catalog-section";
+import { CopyRecipe } from "./copy-recipe";
 import { ClientSection, ContactSection, ProductTypeSection, type SectionProps } from "./client-sections";
 import { FormulaSection } from "./formula-section";
 import { CalcTextProvider, Notice, Toast, useCalcText, useToast, type CalcDict } from "./kit";
@@ -28,7 +29,7 @@ type Props = {
   settings: Settings;
   clients: CrmClient[];
   /** A saved offer to open (or copy as a new one), from /calculator?open=… or ?copy=… */
-  initial: { mode: "open" | "copy"; offer: OfferRecord } | null;
+  initial: { mode: "open" | "copy" | "next"; offer: OfferRecord } | null;
   tabs: ReactNode;
 };
 
@@ -111,7 +112,8 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
         } else {
           const res = await reserveOfferNo();
           if (!res.ok) setNumberError(res.error);
-          loadForm(duplicateForm(normalizeForm(o.data, settings), res.ok ? res.data : ""), true);
+          const base = normalizeForm(o.data, settings);
+          loadForm(initial.mode === "next" ? nextFormulaForm(base, settings, res.ok ? res.data : "") : duplicateForm(base, res.ok ? res.data : ""), true);
         }
         window.history.replaceState(null, "", "/calculator");
         return;
@@ -264,6 +266,7 @@ function Calculator({ materials, catalog, settings, clients, initial, tabs }: Pr
         {numberError && <Notice tone="error">{numberError}</Notice>}
         <p className="m-0 text-[13px] font-semibold text-red-ink">{t.requiredLegend}</p>
         <FormulaModeSwitch form={form} setForm={setForm} />
+        <CopyRecipe form={form} setForm={setForm} materials={materials} onCopied={(msg) => show("success", msg)} />
         <ContactSection {...sectionProps} email={settings.company_email} />
         <ClientSection {...sectionProps} clients={clients} />
         {form.mode === "catalog" ? (

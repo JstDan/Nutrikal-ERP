@@ -105,6 +105,7 @@ function Summary({ offer: x, settings, canDelete, send, reminder, sendText, remi
             {t.delete}
           </button>
         )}
+        <Link href={`/calculator?next=${x.id}`} className="btn btn-outline" title={o.nextFormulaHint}>+ {o.nextFormula}</Link>
         <Link href={`/calculator?copy=${x.id}`} className="btn btn-outline">{o.duplicate}</Link>
         <Link href={`/calculator?open=${x.id}`} className="btn btn-outline">{o.edit}</Link>
         <button type="button" onClick={() => setSending((v) => !v)} aria-expanded={sending} aria-controls="offer-send" className="btn btn-outline">

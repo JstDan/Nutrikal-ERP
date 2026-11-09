@@ -6,7 +6,7 @@ import { CalcTabs } from "@/components/calculator/calc-tabs";
 export default async function CalculatorPage({ searchParams }: PageProps<"/calculator">) {
   const { user, locale, t } = await requireRole("admin", "sales");
   const sp = await searchParams;
-  const openId = typeof sp.open === "string" ? sp.open : typeof sp.copy === "string" ? sp.copy : null;
+  const openId = typeof sp.open === "string" ? sp.open : typeof sp.copy === "string" ? sp.copy : typeof sp.next === "string" ? sp.next : null;
 
   const [materials, catalog, settings, clients, offer] = await Promise.all([
     loadMaterials(user.id),
@@ -24,7 +24,7 @@ export default async function CalculatorPage({ searchParams }: PageProps<"/calcu
       catalog={catalog}
       settings={settings}
       clients={clients}
-      initial={offer ? { mode: typeof sp.open === "string" ? "open" : "copy", offer } : null}
+      initial={offer ? { mode: typeof sp.open === "string" ? "open" : typeof sp.copy === "string" ? "copy" : "next", offer } : null}
       tabs={<CalcTabs t={t.calc} active="calculator" />}
     />
   );
